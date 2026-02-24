@@ -29,6 +29,9 @@ import {
   Security as SecurityIcon,
   Timeline as TimelineIcon,
   TrendingUp as TrendingUpIcon,
+  RocketLaunch as RocketLaunchIcon,
+  Block as BlockIcon,
+  Assessment as AssessmentIcon,
 } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
 import apiClient from '../api/client';
@@ -143,6 +146,182 @@ const MetricCard: React.FC<{
             color={getStatusColor(status)}
             sx={{ height: 8, borderRadius: 4 }}
           />
+        </Box>
+      </CardContent>
+    </Card>
+  );
+};
+
+const GoNoGoDecisionPanel: React.FC<{
+  metrics: SLOMetricsData;
+  timeWindow: number;
+}> = ({ metrics, timeWindow }) => {
+  const allGatesPassed = metrics.qualityGates.passed;
+  const failedGates = metrics.qualityGates.gates.filter(g => !g.passed);
+  const passedGates = metrics.qualityGates.gates.filter(g => g.passed);
+  
+  // Calculate deployment readiness score (percentage of gates passed)
+  const readinessScore = metrics.qualityGates.gates.length > 0
+    ? Math.round((passedGates.length / metrics.qualityGates.gates.length) * 100)
+    : 100;
+  
+  // Determine if there's enough data for a reliable decision
+  const hasEnoughData = metrics.totalRequests >= 10;
+  
+  // Decision logic
+  const decision = !hasEnoughData ? 'INSUFFICIENT_DATA' : allGatesPassed ? 'GO' : 'NO_GO';
+  
+  const getDecisionColor = () => {
+    switch (decision) {
+      case 'GO': return 'success';
+      case 'NO_GO': return 'error';
+      default: return 'warning';
+    }
+  };
+  
+  const getDecisionBgColor = () => {
+    switch (decision) {
+      case 'GO': return 'success.light';
+      case 'NO_GO': return 'error.light';
+      default: return 'warning.light';
+    }
+  };
+  
+  const getDecisionTextColor = () => {
+    switch (decision) {
+      case 'GO': return 'success.dark';
+      case 'NO_GO': return 'error.dark';
+      default: return 'warning.dark';
+    }
+  };
+
+  return (
+    <Card sx={{ mb: 3, border: 2, borderColor: `${getDecisionColor()}.main` }}>
+      <CardContent>
+        <Box display="flex" alignItems="center" justifyContent="space-between" mb={3}>
+          <Box display="flex" alignItems="center" gap={2}>
+            <AssessmentIcon sx={{ fontSize: 32 }} color={getDecisionColor()} />
+            <Typography variant="h5" fontWeight="bold">
+              Deployment Readiness Assessment
+            </Typography>
+          </Box>
+          <Chip
+            label={`${readinessScore}% Ready`}
+            color={getDecisionColor()}
+            size="medium"
+            sx={{ fontWeight: 'bold', fontSize: '1rem', py: 2 }}
+          />
+        </Box>
+
+        {/* Main Decision Banner */}
+        <Paper 
+          sx={{ 
+            p: 3, 
+            mb: 3, 
+            bgcolor: getDecisionBgColor(),
+            textAlign: 'center',
+            borderRadius: 2,
+          }}
+        >
+          <Box display="flex" alignItems="center" justifyContent="center" gap={2}>
+            {decision === 'GO' ? (
+              <RocketLaunchIcon sx={{ fontSize: 48, color: getDecisionTextColor() }} />
+            ) : decision === 'NO_GO' ? (
+              <BlockIcon sx={{ fontSize: 48, color: getDecisionTextColor() }} />
+            ) : (
+              <WarningIcon sx={{ fontSize: 48, color: getDecisionTextColor() }} />
+            )}
+            <Box>
+              <Typography variant="h3" fontWeight="bold" color={getDecisionTextColor()}>
+                {decision === 'GO' ? 'GO' : decision === 'NO_GO' ? 'NO-GO' : 'WAIT'}
+              </Typography>
+              <Typography variant="h6" color={getDecisionTextColor()}>
+                {decision === 'GO' 
+                  ? 'All quality gates passed - Safe to deploy'
+                  : decision === 'NO_GO'
+                  ? `${failedGates.length} quality gate(s) failed - Do not deploy`
+                  : 'Insufficient data - Need more traffic for reliable decision'}
+              </Typography>
+            </Box>
+          </Box>
+        </Paper>
+
+        {/* Metrics Summary Grid */}
+        <Grid container spacing={2} sx={{ mb: 3 }}>
+          {/* @ts-expect-error - MUI Grid item prop type issue */}
+          <Grid item xs={6} sm={3}>
+            <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'grey.50' }}>
+              <Typography variant="h4" color={getStatusColor(metrics.availability.status)}>
+                {metrics.availability.current}%
+              </Typography>
+              <Typography variant="body2" color="text.secondary">Availability</Typography>
+              <Typography variant="caption" color="text.secondary">
+                Target: {metrics.availability.target}%
+              </Typography>
+            </Paper>
+          </Grid>
+          {/* @ts-expect-error - MUI Grid item prop type issue */}
+          <Grid item xs={6} sm={3}>
+            <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'grey.50' }}>
+              <Typography variant="h4" color={getStatusColor(metrics.latency.p95.status)}>
+                {metrics.latency.p95.current}ms
+              </Typography>
+              <Typography variant="body2" color="text.secondary">P95 Latency</Typography>
+              <Typography variant="caption" color="text.secondary">
+                Target: {metrics.latency.p95.target}ms
+              </Typography>
+            </Paper>
+          </Grid>
+          {/* @ts-expect-error - MUI Grid item prop type issue */}
+          <Grid item xs={6} sm={3}>
+            <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'grey.50' }}>
+              <Typography variant="h4" color={getStatusColor(metrics.errorRate.status)}>
+                {metrics.errorRate.current}%
+              </Typography>
+              <Typography variant="body2" color="text.secondary">Error Rate</Typography>
+              <Typography variant="caption" color="text.secondary">
+                Target: &lt;{metrics.errorRate.target}%
+              </Typography>
+            </Paper>
+          </Grid>
+          {/* @ts-expect-error - MUI Grid item prop type issue */}
+          <Grid item xs={6} sm={3}>
+            <Paper sx={{ p: 2, textAlign: 'center', bgcolor: 'grey.50' }}>
+              <Typography variant="h4" color={getStatusColor(metrics.throughput.status)}>
+                {metrics.throughput.requestsPerMinute}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">Throughput (req/min)</Typography>
+              <Typography variant="caption" color="text.secondary">
+                Target: &gt;{metrics.throughput.target}
+              </Typography>
+            </Paper>
+          </Grid>
+        </Grid>
+
+        {/* Quality Gates Status */}
+        <Box>
+          <Typography variant="subtitle1" fontWeight="bold" mb={1}>
+            Quality Gates Status ({passedGates.length}/{metrics.qualityGates.gates.length} Passed)
+          </Typography>
+          <Box display="flex" flexWrap="wrap" gap={1}>
+            {metrics.qualityGates.gates.map((gate) => (
+              <Chip
+                key={gate.name}
+                icon={gate.passed ? <CheckCircleIcon /> : <ErrorIcon />}
+                label={`${gate.name}: ${gate.current}${gate.unit}`}
+                color={gate.passed ? 'success' : 'error'}
+                variant={gate.passed ? 'outlined' : 'filled'}
+              />
+            ))}
+          </Box>
+        </Box>
+
+        {/* Additional Info */}
+        <Box sx={{ mt: 2, pt: 2, borderTop: 1, borderColor: 'divider' }}>
+          <Typography variant="body2" color="text.secondary">
+            Analysis based on {metrics.totalRequests} requests over the last {timeWindow} minutes | 
+            Last updated: {new Date(metrics.timestamp).toLocaleString()}
+          </Typography>
         </Box>
       </CardContent>
     </Card>
@@ -309,23 +488,8 @@ const SLODashboardPage: React.FC = () => {
 
       {metrics && (
         <>
-          <Paper sx={{ p: 2, mb: 3, bgcolor: metrics.qualityGates.passed ? 'success.light' : 'error.light' }}>
-            <Box display="flex" alignItems="center" gap={2}>
-              {metrics.qualityGates.passed ? (
-                <CheckCircleIcon sx={{ fontSize: 40, color: 'success.dark' }} />
-              ) : (
-                <ErrorIcon sx={{ fontSize: 40, color: 'error.dark' }} />
-              )}
-              <Box>
-                <Typography variant="h5" color={metrics.qualityGates.passed ? 'success.dark' : 'error.dark'}>
-                  {metrics.qualityGates.passed ? 'All SLOs Met' : 'SLO Violations Detected'}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {metrics.totalRequests} requests in the last {timeWindow} minutes | Last updated: {new Date(metrics.timestamp).toLocaleTimeString()}
-                </Typography>
-              </Box>
-            </Box>
-          </Paper>
+          {/* Go/No-Go Decision Panel for Deployment Engineers */}
+          <GoNoGoDecisionPanel metrics={metrics} timeWindow={timeWindow} />
 
           <Grid container spacing={3} sx={{ mb: 3 }}>
             {/* @ts-expect-error - MUI Grid item prop type issue */}
