@@ -170,6 +170,11 @@ class ApiClient {
     const response = await this.client.get('/api/slo/quality-gates', { params });
     return response.data;
   }
+
+  async getSLOMatrix() {
+    const response = await this.client.get('/api/slo/matrix');
+    return response.data;
+  }
 }
 
 export const apiClient = new ApiClient();
