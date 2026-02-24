@@ -1,3 +1,21 @@
+/**
+ * @module routes/clients
+ * @description CRUD routes for managing client entities.
+ *
+ * All routes in this module require authentication via the
+ * {@link module:middleware/auth~authenticateUser} middleware, which is applied
+ * at the router level.  Each client is scoped to the authenticated user's
+ * email so users can only access their own clients.
+ *
+ * Endpoints:
+ *   GET    /api/clients      - List all clients for the authenticated user.
+ *   GET    /api/clients/:id  - Retrieve a single client by ID.
+ *   POST   /api/clients      - Create a new client.
+ *   PUT    /api/clients/:id  - Partially update an existing client.
+ *   DELETE /api/clients      - Delete **all** clients for the authenticated user.
+ *   DELETE /api/clients/:id  - Delete a single client by ID (cascades to work entries).
+ */
+
 const express = require('express');
 const { getDatabase } = require('../database/init');
 const { authenticateUser } = require('../middleware/auth');
@@ -5,10 +23,19 @@ const { clientSchema, updateClientSchema } = require('../validation/schemas');
 
 const router = express.Router();
 
-// All routes require authentication
+// All routes in this router require authentication
 router.use(authenticateUser);
 
-// Get all clients for authenticated user
+/**
+ * GET /api/clients
+ *
+ * Returns every client owned by the authenticated user, ordered
+ * alphabetically by name.
+ *
+ * @route   GET /api/clients
+ * @returns {Object} 200 - { clients: Array<Client> }
+ * @returns {Object} 500 - Internal server error.
+ */
 router.get('/', (req, res) => {
   const db = getDatabase();
   
@@ -26,7 +53,19 @@ router.get('/', (req, res) => {
   );
 });
 
-// Get specific client
+/**
+ * GET /api/clients/:id
+ *
+ * Returns a single client identified by its numeric ID, provided it belongs
+ * to the authenticated user.
+ *
+ * @route   GET /api/clients/:id
+ * @param   {string} req.params.id - Numeric client ID.
+ * @returns {Object} 200 - { client: Client }
+ * @returns {Object} 400 - Invalid (non-numeric) client ID.
+ * @returns {Object} 404 - Client not found or not owned by user.
+ * @returns {Object} 500 - Internal server error.
+ */
 router.get('/:id', (req, res) => {
   const clientId = parseInt(req.params.id);
   
@@ -54,7 +93,22 @@ router.get('/:id', (req, res) => {
   );
 });
 
-// Create new client
+/**
+ * POST /api/clients
+ *
+ * Creates a new client for the authenticated user.  The request body is
+ * validated against {@link module:validation/schemas~clientSchema}.
+ *
+ * @route   POST /api/clients
+ * @param   {Object} req.body
+ * @param   {string} req.body.name        - Required client name.
+ * @param   {string} [req.body.description] - Optional description.
+ * @param   {string} [req.body.department]  - Optional department.
+ * @param   {string} [req.body.email]       - Optional contact email.
+ * @returns {Object} 201 - { message, client: Client }
+ * @returns {Object} 400 - Validation error.
+ * @returns {Object} 500 - Internal server error.
+ */
 router.post('/', (req, res, next) => {
   try {
     const { error, value } = clientSchema.validate(req.body);
@@ -97,7 +151,26 @@ router.post('/', (req, res, next) => {
   }
 });
 
-// Update client
+/**
+ * PUT /api/clients/:id
+ *
+ * Partially updates an existing client.  Only the supplied fields are
+ * changed; at least one field must be provided (enforced by
+ * {@link module:validation/schemas~updateClientSchema}).  The `updated_at`
+ * timestamp is refreshed automatically.
+ *
+ * @route   PUT /api/clients/:id
+ * @param   {string} req.params.id          - Numeric client ID.
+ * @param   {Object} req.body               - Fields to update.
+ * @param   {string} [req.body.name]        - New client name.
+ * @param   {string} [req.body.description] - New description.
+ * @param   {string} [req.body.department]  - New department.
+ * @param   {string} [req.body.email]       - New contact email.
+ * @returns {Object} 200 - { message, client: Client }
+ * @returns {Object} 400 - Invalid client ID or validation error.
+ * @returns {Object} 404 - Client not found or not owned by user.
+ * @returns {Object} 500 - Internal server error.
+ */
 router.put('/:id', (req, res, next) => {
   try {
     const clientId = parseInt(req.params.id);
@@ -186,7 +259,16 @@ router.put('/:id', (req, res, next) => {
   }
 });
 
-// Delete all clients for authenticated user
+/**
+ * DELETE /api/clients
+ *
+ * Deletes **all** clients belonging to the authenticated user.  Returns
+ * the number of deleted records.
+ *
+ * @route   DELETE /api/clients
+ * @returns {Object} 200 - { message, deletedCount: number }
+ * @returns {Object} 500 - Internal server error.
+ */
 router.delete('/', (req, res) => {
   const db = getDatabase();
   
@@ -207,7 +289,19 @@ router.delete('/', (req, res) => {
   );
 });
 
-// Delete client
+/**
+ * DELETE /api/clients/:id
+ *
+ * Deletes a single client by ID.  Due to the `ON DELETE CASCADE` foreign
+ * key constraint, all associated work entries are removed as well.
+ *
+ * @route   DELETE /api/clients/:id
+ * @param   {string} req.params.id - Numeric client ID.
+ * @returns {Object} 200 - { message }
+ * @returns {Object} 400 - Invalid (non-numeric) client ID.
+ * @returns {Object} 404 - Client not found or not owned by user.
+ * @returns {Object} 500 - Internal server error.
+ */
 router.delete('/:id', (req, res) => {
   const clientId = parseInt(req.params.id);
   

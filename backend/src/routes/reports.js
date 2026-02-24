@@ -1,3 +1,17 @@
+/**
+ * @module routes/reports
+ * @description Reporting and export routes for client work-entry data.
+ *
+ * All routes require authentication via the
+ * {@link module:middleware/auth~authenticateUser} middleware applied at the
+ * router level.
+ *
+ * Endpoints:
+ *   GET /api/reports/client/:clientId          - JSON summary report for a client.
+ *   GET /api/reports/export/csv/:clientId       - Download work entries as CSV.
+ *   GET /api/reports/export/pdf/:clientId       - Download work entries as PDF.
+ */
+
 const express = require('express');
 const { getDatabase } = require('../database/init');
 const { authenticateUser } = require('../middleware/auth');
@@ -8,10 +22,23 @@ const fs = require('fs');
 
 const router = express.Router();
 
-// All routes require authentication
+// All routes in this router require authentication
 router.use(authenticateUser);
 
-// Get hourly report for specific client
+/**
+ * GET /api/reports/client/:clientId
+ *
+ * Returns a JSON summary report for a specific client, including every work
+ * entry (ordered by date descending), the total hours logged, and the
+ * number of entries.
+ *
+ * @route   GET /api/reports/client/:clientId
+ * @param   {string} req.params.clientId - Numeric client ID.
+ * @returns {Object} 200 - { client, workEntries, totalHours, entryCount }
+ * @returns {Object} 400 - Invalid (non-numeric) client ID.
+ * @returns {Object} 404 - Client not found or not owned by user.
+ * @returns {Object} 500 - Internal server error.
+ */
 router.get('/client/:clientId', (req, res) => {
   const clientId = parseInt(req.params.clientId);
   
@@ -63,7 +90,22 @@ router.get('/client/:clientId', (req, res) => {
   );
 });
 
-// Export client report as CSV
+/**
+ * GET /api/reports/export/csv/:clientId
+ *
+ * Generates a CSV file containing all work entries for the specified client
+ * and streams it as a download.  The file is written to a temporary
+ * directory, sent to the client, and then deleted.
+ *
+ * CSV columns: Date, Hours, Description, Created At.
+ *
+ * @route   GET /api/reports/export/csv/:clientId
+ * @param   {string} req.params.clientId - Numeric client ID.
+ * @returns {File}   200 - CSV file download.
+ * @returns {Object} 400 - Invalid (non-numeric) client ID.
+ * @returns {Object} 404 - Client not found or not owned by user.
+ * @returns {Object} 500 - Internal server error or CSV generation failure.
+ */
 router.get('/export/csv/:clientId', (req, res) => {
   const clientId = parseInt(req.params.clientId);
   
@@ -146,7 +188,23 @@ router.get('/export/csv/:clientId', (req, res) => {
   );
 });
 
-// Export client report as PDF
+/**
+ * GET /api/reports/export/pdf/:clientId
+ *
+ * Generates a PDF report for the specified client and streams it directly
+ * to the response.  The PDF includes a title, summary statistics (total
+ * hours, entry count, generation timestamp), and a tabular listing of
+ * every work entry.
+ *
+ * The document automatically paginates when entries exceed the page height.
+ *
+ * @route   GET /api/reports/export/pdf/:clientId
+ * @param   {string} req.params.clientId - Numeric client ID.
+ * @returns {File}   200 - PDF file download (Content-Type: application/pdf).
+ * @returns {Object} 400 - Invalid (non-numeric) client ID.
+ * @returns {Object} 404 - Client not found or not owned by user.
+ * @returns {Object} 500 - Internal server error.
+ */
 router.get('/export/pdf/:clientId', (req, res) => {
   const clientId = parseInt(req.params.clientId);
   
