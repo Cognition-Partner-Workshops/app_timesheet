@@ -1,3 +1,18 @@
+/**
+ * @module routes/reports
+ * @description Reporting and export route handlers mounted at `/api/reports`.
+ *
+ * All routes require authentication via the `x-user-email` header. Data is
+ * scoped to the authenticated user.
+ *
+ * Endpoints:
+ * | Method | Path                                  | Description                                      |
+ * |--------|---------------------------------------|--------------------------------------------------|
+ * | GET    | `/api/reports/client/:clientId`       | Get an hourly summary report for a client.       |
+ * | GET    | `/api/reports/export/csv/:clientId`   | Download a CSV export of a client's time entries.|
+ * | GET    | `/api/reports/export/pdf/:clientId`   | Download a PDF export of a client's time entries.|
+ */
+
 const express = require('express');
 const { getDatabase } = require('../database/init');
 const { authenticateUser } = require('../middleware/auth');
@@ -11,7 +26,20 @@ const router = express.Router();
 // All routes require authentication
 router.use(authenticateUser);
 
-// Get hourly report for specific client
+/**
+ * GET /api/reports/client/:clientId
+ *
+ * Returns a summary report for the specified client including every work entry
+ * (sorted by date descending), the total accumulated hours, and the entry count.
+ *
+ * @route GET /api/reports/client/:clientId
+ * @group Reports
+ * @param {string} req.params.clientId - The client's numeric ID.
+ * @returns {object} 200 — `{ client, workEntries, totalHours, entryCount }`.
+ * @returns {object} 400 — invalid (non-numeric) client ID.
+ * @returns {object} 404 — client not found or does not belong to the user.
+ * @returns {object} 500 — database error.
+ */
 router.get('/client/:clientId', (req, res) => {
   const clientId = parseInt(req.params.clientId);
   
@@ -63,7 +91,26 @@ router.get('/client/:clientId', (req, res) => {
   );
 });
 
-// Export client report as CSV
+/**
+ * GET /api/reports/export/csv/:clientId
+ *
+ * Generates and downloads a CSV file containing all work entries for the
+ * specified client. The file includes columns for Date, Hours, Description,
+ * and Created At.
+ *
+ * Implementation notes:
+ * - A temporary file is written to `backend/temp/` via the `csv-writer` library.
+ * - The temp directory is created automatically if it does not exist.
+ * - The file is streamed to the client via `res.download()` and then deleted.
+ *
+ * @route GET /api/reports/export/csv/:clientId
+ * @group Reports
+ * @param {string} req.params.clientId - The client's numeric ID.
+ * @returns {file} 200 — CSV file download (`Content-Disposition: attachment`).
+ * @returns {object} 400 — invalid (non-numeric) client ID.
+ * @returns {object} 404 — client not found or does not belong to the user.
+ * @returns {object} 500 — database or file-system error.
+ */
 router.get('/export/csv/:clientId', (req, res) => {
   const clientId = parseInt(req.params.clientId);
   
@@ -146,7 +193,27 @@ router.get('/export/csv/:clientId', (req, res) => {
   );
 });
 
-// Export client report as PDF
+/**
+ * GET /api/reports/export/pdf/:clientId
+ *
+ * Generates and streams a PDF report for the specified client. The document
+ * contains a title, summary statistics (total hours, entry count, generation
+ * date), and a tabular listing of every work entry.
+ *
+ * Implementation notes:
+ * - Uses the `pdfkit` library to build the PDF in-memory.
+ * - The PDF stream is piped directly to the response (no temp file).
+ * - Automatic page-breaks are inserted when content exceeds the page height.
+ * - Separator lines are drawn every 5 entries for readability.
+ *
+ * @route GET /api/reports/export/pdf/:clientId
+ * @group Reports
+ * @param {string} req.params.clientId - The client's numeric ID.
+ * @returns {file} 200 — PDF file download (`Content-Type: application/pdf`).
+ * @returns {object} 400 — invalid (non-numeric) client ID.
+ * @returns {object} 404 — client not found or does not belong to the user.
+ * @returns {object} 500 — database error.
+ */
 router.get('/export/pdf/:clientId', (req, res) => {
   const clientId = parseInt(req.params.clientId);
   

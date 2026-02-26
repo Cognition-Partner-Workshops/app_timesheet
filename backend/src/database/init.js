@@ -1,10 +1,40 @@
+/**
+ * @module database/init
+ * @description Database initialization and connection management for the SQLite
+ * in-memory database. Provides a singleton database connection, schema creation
+ * for the users/clients/work_entries tables, and graceful shutdown support.
+ *
+ * Tables created:
+ *  - **users** — stores registered user emails (primary key: email).
+ *  - **clients** — stores client records owned by a user (FK: user_email).
+ *  - **work_entries** — stores time entries linked to a client and user
+ *    (FKs: client_id, user_email) with CASCADE deletes.
+ *
+ * Performance indexes are created on foreign-key and date columns.
+ */
+
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 
+/** @type {import('sqlite3').Database | null} Singleton database instance. */
 let db = null;
+
+/** @type {boolean} Guards against concurrent close attempts. */
 let isClosing = false;
+
+/** @type {boolean} Tracks whether the connection has been fully closed. */
 let isClosed = false;
 
+/**
+ * Returns the singleton SQLite database connection, creating it on first call.
+ *
+ * The connection uses an in-memory database (`:memory:`), meaning all data is
+ * lost when the process exits. For persistent storage, replace the connection
+ * string with a file path (e.g. `'./data.db'`).
+ *
+ * @returns {import('sqlite3').Database} The active database connection.
+ * @throws {Error} If the SQLite driver fails to open the database.
+ */
 function getDatabase() {
   if (!db) {
     // Reset state when creating a new database connection
@@ -22,6 +52,19 @@ function getDatabase() {
   return db;
 }
 
+/**
+ * Creates all application tables and indexes if they do not already exist.
+ *
+ * Tables are created inside a serialized transaction to guarantee ordering:
+ * 1. `users` — email-based user accounts.
+ * 2. `clients` — client records owned by a user.
+ * 3. `work_entries` — hourly time entries linked to a client and user.
+ *
+ * Indexes are added on frequently-queried columns (`user_email`, `client_id`,
+ * `date`) to improve read performance.
+ *
+ * @returns {Promise<void>} Resolves when all DDL statements have executed.
+ */
 async function initializeDatabase() {
   const database = getDatabase();
   
@@ -78,6 +121,19 @@ async function initializeDatabase() {
   });
 }
 
+/**
+ * Gracefully closes the database connection.
+ *
+ * Handles three edge-cases:
+ * - Connection already closed — resolves immediately.
+ * - Connection currently closing (concurrent call) — polls until complete.
+ * - No connection exists — resolves immediately.
+ *
+ * After closing, the singleton reference is reset so that {@link getDatabase}
+ * will create a fresh connection on the next call.
+ *
+ * @returns {Promise<void>} Resolves once the connection is fully closed.
+ */
 function closeDatabase() {
   return new Promise((resolve, reject) => {
     if (isClosed) {
