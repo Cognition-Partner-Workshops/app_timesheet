@@ -39,15 +39,14 @@ app.use(express.json());
 app.use('/api/reports', reportRoutes);
 
 describe('Report Routes', () => {
-  let mockDb;
+  let mockPool;
 
   beforeEach(() => {
-    mockDb = {
-      all: jest.fn(),
-      get: jest.fn()
+    mockPool = {
+      query: jest.fn()
     };
-    getDatabase.mockReturnValue(mockDb);
-    
+    getDatabase.mockReturnValue(mockPool);
+
     // Mock fs methods
     fs.existsSync = jest.fn().mockReturnValue(true);
     fs.mkdirSync = jest.fn();
@@ -66,13 +65,9 @@ describe('Report Routes', () => {
         { id: 2, hours: 3.0, description: 'Work 2', date: '2024-01-02' }
       ];
 
-      mockDb.get.mockImplementation((query, params, callback) => {
-        callback(null, mockClient);
-      });
-
-      mockDb.all.mockImplementation((query, params, callback) => {
-        callback(null, mockWorkEntries);
-      });
+      mockPool.query
+        .mockResolvedValueOnce({ rows: [mockClient], rowCount: 1 }) // Client lookup
+        .mockResolvedValueOnce({ rows: mockWorkEntries, rowCount: 2 }); // Work entries
 
       const response = await request(app).get('/api/reports/client/1');
 
@@ -86,13 +81,9 @@ describe('Report Routes', () => {
     test('should return report with zero hours for client with no entries', async () => {
       const mockClient = { id: 1, name: 'Empty Client' };
 
-      mockDb.get.mockImplementation((query, params, callback) => {
-        callback(null, mockClient);
-      });
-
-      mockDb.all.mockImplementation((query, params, callback) => {
-        callback(null, []);
-      });
+      mockPool.query
+        .mockResolvedValueOnce({ rows: [mockClient], rowCount: 1 })
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       const response = await request(app).get('/api/reports/client/1');
 
@@ -102,9 +93,7 @@ describe('Report Routes', () => {
     });
 
     test('should return 404 if client not found', async () => {
-      mockDb.get.mockImplementation((query, params, callback) => {
-        callback(null, null);
-      });
+      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       const response = await request(app).get('/api/reports/client/999');
 
@@ -120,9 +109,7 @@ describe('Report Routes', () => {
     });
 
     test('should handle database error when fetching client', async () => {
-      mockDb.get.mockImplementation((query, params, callback) => {
-        callback(new Error('Database error'), null);
-      });
+      mockPool.query.mockRejectedValueOnce(new Error('Database error'));
 
       const response = await request(app).get('/api/reports/client/1');
 
@@ -131,13 +118,9 @@ describe('Report Routes', () => {
     });
 
     test('should handle database error when fetching work entries', async () => {
-      mockDb.get.mockImplementation((query, params, callback) => {
-        callback(null, { id: 1, name: 'Test Client' });
-      });
-
-      mockDb.all.mockImplementation((query, params, callback) => {
-        callback(new Error('Database error'), null);
-      });
+      mockPool.query
+        .mockResolvedValueOnce({ rows: [{ id: 1, name: 'Test Client' }], rowCount: 1 })
+        .mockRejectedValueOnce(new Error('Database error'));
 
       const response = await request(app).get('/api/reports/client/1');
 
@@ -146,21 +129,15 @@ describe('Report Routes', () => {
     });
 
     test('should filter work entries by user email', async () => {
-      mockDb.get.mockImplementation((query, params, callback) => {
-        callback(null, { id: 1, name: 'Test Client' });
-      });
-
-      mockDb.all.mockImplementation((query, params, callback) => {
-        expect(params).toEqual([1, 'test@example.com']);
-        callback(null, []);
-      });
+      mockPool.query
+        .mockResolvedValueOnce({ rows: [{ id: 1, name: 'Test Client' }], rowCount: 1 })
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       await request(app).get('/api/reports/client/1');
 
-      expect(mockDb.all).toHaveBeenCalledWith(
-        expect.stringContaining('WHERE client_id = ? AND user_email = ?'),
-        [1, 'test@example.com'],
-        expect.any(Function)
+      expect(mockPool.query).toHaveBeenCalledWith(
+        expect.stringContaining('WHERE client_id = $1 AND user_email = $2'),
+        [1, 'test@example.com']
       );
     });
   });
@@ -174,9 +151,7 @@ describe('Report Routes', () => {
     });
 
     test('should return 404 if client not found', async () => {
-      mockDb.get.mockImplementation((query, params, callback) => {
-        callback(null, null);
-      });
+      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       const response = await request(app).get('/api/reports/export/csv/999');
 
@@ -185,29 +160,23 @@ describe('Report Routes', () => {
     });
 
     test('should handle database error when fetching client', async () => {
-      mockDb.get.mockImplementation((query, params, callback) => {
-        callback(new Error('Database error'), null);
-      });
+      mockPool.query.mockRejectedValueOnce(new Error('Database error'));
 
       const response = await request(app).get('/api/reports/export/csv/1');
 
       expect(response.status).toBe(500);
-      expect(response.body).toEqual({ error: 'Internal server error' });
+      expect(response.body).toEqual({ error: 'Failed to generate CSV report' });
     });
 
     test('should handle database error when fetching work entries', async () => {
-      mockDb.get.mockImplementation((query, params, callback) => {
-        callback(null, { id: 1, name: 'Test Client' });
-      });
-
-      mockDb.all.mockImplementation((query, params, callback) => {
-        callback(new Error('Database error'), null);
-      });
+      mockPool.query
+        .mockResolvedValueOnce({ rows: [{ id: 1, name: 'Test Client' }], rowCount: 1 })
+        .mockRejectedValueOnce(new Error('Database error'));
 
       const response = await request(app).get('/api/reports/export/csv/1');
 
       expect(response.status).toBe(500);
-      expect(response.body).toEqual({ error: 'Internal server error' });
+      expect(response.body).toEqual({ error: 'Failed to generate CSV report' });
     });
   });
 
@@ -220,9 +189,7 @@ describe('Report Routes', () => {
     });
 
     test('should return 404 if client not found', async () => {
-      mockDb.get.mockImplementation((query, params, callback) => {
-        callback(null, null);
-      });
+      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       const response = await request(app).get('/api/reports/export/pdf/999');
 
@@ -231,9 +198,7 @@ describe('Report Routes', () => {
     });
 
     test('should handle database error', async () => {
-      mockDb.get.mockImplementation((query, params, callback) => {
-        callback(new Error('Database error'), null);
-      });
+      mockPool.query.mockRejectedValueOnce(new Error('Database error'));
 
       const response = await request(app).get('/api/reports/export/pdf/1');
 
@@ -244,39 +209,24 @@ describe('Report Routes', () => {
 
   describe('Data Isolation', () => {
     test('should only return data for authenticated user', async () => {
-      mockDb.get.mockImplementation((query, params, callback) => {
-        expect(params).toContain('test@example.com');
-        callback(null, { id: 1, name: 'Test Client' });
-      });
-
-      mockDb.all.mockImplementation((query, params, callback) => {
-        expect(params).toContain('test@example.com');
-        callback(null, []);
-      });
+      mockPool.query
+        .mockResolvedValueOnce({ rows: [{ id: 1, name: 'Test Client' }], rowCount: 1 })
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       await request(app).get('/api/reports/client/1');
 
-      expect(mockDb.get).toHaveBeenCalledWith(
-        expect.any(String),
-        expect.arrayContaining(['test@example.com']),
-        expect.any(Function)
+      expect(mockPool.query).toHaveBeenCalledWith(
+        expect.stringContaining('SELECT id, name FROM clients'),
+        expect.arrayContaining([1, 'test@example.com'])
       );
     });
   });
 
   describe('Hours Calculation', () => {
     test('should correctly sum decimal hours', async () => {
-      mockDb.get.mockImplementation((query, params, callback) => {
-        callback(null, { id: 1, name: 'Test Client' });
-      });
-
-      mockDb.all.mockImplementation((query, params, callback) => {
-        callback(null, [
-          { hours: 2.5 },
-          { hours: 3.75 },
-          { hours: 1.25 }
-        ]);
-      });
+      mockPool.query
+        .mockResolvedValueOnce({ rows: [{ id: 1, name: 'Test Client' }], rowCount: 1 })
+        .mockResolvedValueOnce({ rows: [{ hours: 2.5 }, { hours: 3.75 }, { hours: 1.25 }], rowCount: 3 });
 
       const response = await request(app).get('/api/reports/client/1');
 
@@ -284,16 +234,9 @@ describe('Report Routes', () => {
     });
 
     test('should handle integer hours', async () => {
-      mockDb.get.mockImplementation((query, params, callback) => {
-        callback(null, { id: 1, name: 'Test Client' });
-      });
-
-      mockDb.all.mockImplementation((query, params, callback) => {
-        callback(null, [
-          { hours: 8 },
-          { hours: 4 }
-        ]);
-      });
+      mockPool.query
+        .mockResolvedValueOnce({ rows: [{ id: 1, name: 'Test Client' }], rowCount: 1 })
+        .mockResolvedValueOnce({ rows: [{ hours: 8 }, { hours: 4 }], rowCount: 2 });
 
       const response = await request(app).get('/api/reports/client/1');
 
@@ -308,13 +251,9 @@ describe('Report Routes', () => {
         { date: '2024-01-01', hours: 5, description: 'Work 1', created_at: '2024-01-01' }
       ];
 
-      mockDb.get.mockImplementation((query, params, callback) => {
-        callback(null, mockClient);
-      });
-
-      mockDb.all.mockImplementation((query, params, callback) => {
-        callback(null, mockWorkEntries);
-      });
+      mockPool.query
+        .mockResolvedValueOnce({ rows: [mockClient], rowCount: 1 })
+        .mockResolvedValueOnce({ rows: mockWorkEntries, rowCount: 1 });
 
       const csvWriter = require('csv-writer');
       csvWriter.createObjectCsvWriter.mockReturnValue({
@@ -330,13 +269,9 @@ describe('Report Routes', () => {
     test('should verify CSV export calls correct database queries', async () => {
       const mockClient = { id: 1, name: 'Test Client' };
 
-      mockDb.get.mockImplementation((query, params, callback) => {
-        callback(null, mockClient);
-      });
-
-      mockDb.all.mockImplementation((query, params, callback) => {
-        callback(null, []);
-      });
+      mockPool.query
+        .mockResolvedValueOnce({ rows: [mockClient], rowCount: 1 })
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       const csvWriter = require('csv-writer');
       csvWriter.createObjectCsvWriter.mockReturnValue({
@@ -345,10 +280,9 @@ describe('Report Routes', () => {
 
       await request(app).get('/api/reports/export/csv/1');
 
-      expect(mockDb.get).toHaveBeenCalledWith(
+      expect(mockPool.query).toHaveBeenCalledWith(
         expect.stringContaining('SELECT id, name FROM clients'),
-        expect.arrayContaining([1, 'test@example.com']),
-        expect.any(Function)
+        expect.arrayContaining([1, 'test@example.com'])
       );
     });
 
@@ -358,13 +292,9 @@ describe('Report Routes', () => {
         { date: '2024-01-01', hours: 5, description: 'Work 1', created_at: '2024-01-01' }
       ];
 
-      mockDb.get.mockImplementation((query, params, callback) => {
-        callback(null, mockClient);
-      });
-
-      mockDb.all.mockImplementation((query, params, callback) => {
-        callback(null, mockWorkEntries);
-      });
+      mockPool.query
+        .mockResolvedValueOnce({ rows: [mockClient], rowCount: 1 })
+        .mockResolvedValueOnce({ rows: mockWorkEntries, rowCount: 1 });
 
       fs.existsSync.mockReturnValue(false);
 
@@ -382,13 +312,9 @@ describe('Report Routes', () => {
       const mockClient = { id: 1, name: 'Test Client' };
       const mockWorkEntries = [];
 
-      mockDb.get.mockImplementation((query, params, callback) => {
-        callback(null, mockClient);
-      });
-
-      mockDb.all.mockImplementation((query, params, callback) => {
-        callback(null, mockWorkEntries);
-      });
+      mockPool.query
+        .mockResolvedValueOnce({ rows: [mockClient], rowCount: 1 })
+        .mockResolvedValueOnce({ rows: mockWorkEntries, rowCount: 0 });
 
       fs.existsSync.mockReturnValue(true);
 
@@ -406,13 +332,9 @@ describe('Report Routes', () => {
 
   describe('PDF Export Success Path', () => {
     test('should handle database error when fetching work entries for PDF', async () => {
-      mockDb.get.mockImplementation((query, params, callback) => {
-        callback(null, { id: 1, name: 'Test Client' });
-      });
-
-      mockDb.all.mockImplementation((query, params, callback) => {
-        callback(new Error('Database error'), null);
-      });
+      mockPool.query
+        .mockResolvedValueOnce({ rows: [{ id: 1, name: 'Test Client' }], rowCount: 1 })
+        .mockRejectedValueOnce(new Error('Database error'));
 
       const response = await request(app).get('/api/reports/export/pdf/1');
 
@@ -421,20 +343,15 @@ describe('Report Routes', () => {
     });
 
     test('should verify PDF export calls correct database queries', async () => {
-      mockDb.get.mockImplementation((query, params, callback) => {
-        callback(null, { id: 1, name: 'Test Client' });
-      });
-
-      mockDb.all.mockImplementation((query, params, callback) => {
-        callback(new Error('Database error'), null);
-      });
+      mockPool.query
+        .mockResolvedValueOnce({ rows: [{ id: 1, name: 'Test Client' }], rowCount: 1 })
+        .mockRejectedValueOnce(new Error('Database error'));
 
       await request(app).get('/api/reports/export/pdf/1');
 
-      expect(mockDb.get).toHaveBeenCalledWith(
+      expect(mockPool.query).toHaveBeenCalledWith(
         expect.stringContaining('SELECT id, name FROM clients'),
-        expect.arrayContaining([1, 'test@example.com']),
-        expect.any(Function)
+        expect.arrayContaining([1, 'test@example.com'])
       );
     });
   });

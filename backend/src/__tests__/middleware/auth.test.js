@@ -4,7 +4,7 @@ const { getDatabase } = require('../../database/init');
 jest.mock('../../database/init');
 
 describe('Authentication Middleware', () => {
-  let req, res, next, mockDb;
+  let req, res, next, mockPool;
 
   beforeEach(() => {
     req = {
@@ -15,13 +15,12 @@ describe('Authentication Middleware', () => {
       json: jest.fn()
     };
     next = jest.fn();
-    
-    mockDb = {
-      get: jest.fn(),
-      run: jest.fn()
+
+    mockPool = {
+      query: jest.fn()
     };
-    
-    getDatabase.mockReturnValue(mockDb);
+
+    getDatabase.mockReturnValue(mockPool);
   });
 
   afterEach(() => {
@@ -29,8 +28,8 @@ describe('Authentication Middleware', () => {
   });
 
   describe('Email Header Validation', () => {
-    test('should return 401 if x-user-email header is missing', () => {
-      authenticateUser(req, res, next);
+    test('should return 401 if x-user-email header is missing', async () => {
+      await authenticateUser(req, res, next);
 
       expect(res.status).toHaveBeenCalledWith(401);
       expect(res.json).toHaveBeenCalledWith({
@@ -39,10 +38,10 @@ describe('Authentication Middleware', () => {
       expect(next).not.toHaveBeenCalled();
     });
 
-    test('should return 400 if email format is invalid', () => {
+    test('should return 400 if email format is invalid', async () => {
       req.headers['x-user-email'] = 'invalid-email';
 
-      authenticateUser(req, res, next);
+      await authenticateUser(req, res, next);
 
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.json).toHaveBeenCalledWith({
@@ -51,135 +50,106 @@ describe('Authentication Middleware', () => {
       expect(next).not.toHaveBeenCalled();
     });
 
-    test('should accept valid email format', () => {
+    test('should accept valid email format', async () => {
       req.headers['x-user-email'] = 'test@example.com';
-      
-      mockDb.get.mockImplementation((query, params, callback) => {
-        callback(null, { email: 'test@example.com' });
-      });
 
-      authenticateUser(req, res, next);
+      mockPool.query.mockResolvedValueOnce({ rows: [{ email: 'test@example.com' }], rowCount: 1 });
 
-      expect(mockDb.get).toHaveBeenCalled();
+      await authenticateUser(req, res, next);
+
+      expect(mockPool.query).toHaveBeenCalled();
     });
   });
 
   describe('Existing User Authentication', () => {
-    test('should authenticate existing user and call next()', (done) => {
+    test('should authenticate existing user and call next()', async () => {
       req.headers['x-user-email'] = 'existing@example.com';
-      
-      mockDb.get.mockImplementation((query, params, callback) => {
-        callback(null, { email: 'existing@example.com' });
-      });
 
-      authenticateUser(req, res, next);
+      mockPool.query.mockResolvedValueOnce({ rows: [{ email: 'existing@example.com' }], rowCount: 1 });
 
-      setImmediate(() => {
-        expect(req.userEmail).toBe('existing@example.com');
-        expect(next).toHaveBeenCalled();
-        expect(res.status).not.toHaveBeenCalled();
-        done();
-      });
+      await authenticateUser(req, res, next);
+
+      expect(req.userEmail).toBe('existing@example.com');
+      expect(next).toHaveBeenCalled();
+      expect(res.status).not.toHaveBeenCalled();
     });
 
-    test('should handle database error when checking user', (done) => {
+    test('should handle database error when checking user', async () => {
       req.headers['x-user-email'] = 'test@example.com';
-      
-      mockDb.get.mockImplementation((query, params, callback) => {
-        callback(new Error('Database error'), null);
-      });
 
-      authenticateUser(req, res, next);
+      mockPool.query.mockRejectedValueOnce(new Error('Database error'));
 
-      setImmediate(() => {
-        expect(res.status).toHaveBeenCalledWith(500);
-        expect(res.json).toHaveBeenCalledWith({
-          error: 'Internal server error'
-        });
-        expect(next).not.toHaveBeenCalled();
-        done();
+      await authenticateUser(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({
+        error: 'Internal server error'
       });
+      expect(next).not.toHaveBeenCalled();
     });
   });
 
   describe('New User Creation', () => {
-    test('should create new user if not exists and call next()', (done) => {
+    test('should create new user if not exists and call next()', async () => {
       req.headers['x-user-email'] = 'newuser@example.com';
-      
-      mockDb.get.mockImplementation((query, params, callback) => {
-        callback(null, null); // User doesn't exist
-      });
-      
-      mockDb.run.mockImplementation((query, params, callback) => {
-        callback(null);
-      });
 
-      authenticateUser(req, res, next);
+      mockPool.query
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // User doesn't exist
+        .mockResolvedValueOnce({ rows: [], rowCount: 1 }); // Insert
 
-      setImmediate(() => {
-        expect(mockDb.run).toHaveBeenCalledWith(
-          'INSERT INTO users (email) VALUES (?)',
-          ['newuser@example.com'],
-          expect.any(Function)
-        );
-        expect(req.userEmail).toBe('newuser@example.com');
-        expect(next).toHaveBeenCalled();
-        done();
-      });
+      await authenticateUser(req, res, next);
+
+      expect(mockPool.query).toHaveBeenCalledWith(
+        'INSERT INTO users (email) VALUES ($1)',
+        ['newuser@example.com']
+      );
+      expect(req.userEmail).toBe('newuser@example.com');
+      expect(next).toHaveBeenCalled();
     });
 
-    test('should handle error when creating new user', (done) => {
+    test('should handle error when creating new user', async () => {
       req.headers['x-user-email'] = 'newuser@example.com';
-      
-      mockDb.get.mockImplementation((query, params, callback) => {
-        callback(null, null);
-      });
-      
-      mockDb.run.mockImplementation((query, params, callback) => {
-        callback(new Error('Insert failed'));
-      });
 
-      authenticateUser(req, res, next);
+      mockPool.query
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // User doesn't exist
+        .mockRejectedValueOnce(new Error('Insert failed')); // Insert fails
 
-      setImmediate(() => {
-        expect(res.status).toHaveBeenCalledWith(500);
-        expect(res.json).toHaveBeenCalledWith({
-          error: 'Failed to create user'
-        });
-        expect(next).not.toHaveBeenCalled();
-        done();
+      await authenticateUser(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.json).toHaveBeenCalledWith({
+        error: 'Internal server error'
       });
+      expect(next).not.toHaveBeenCalled();
     });
   });
 
   describe('Email Format Edge Cases', () => {
-    test('should reject email without @', () => {
+    test('should reject email without @', async () => {
       req.headers['x-user-email'] = 'notanemail';
-      authenticateUser(req, res, next);
+      await authenticateUser(req, res, next);
       expect(res.status).toHaveBeenCalledWith(400);
     });
 
-    test('should reject email without domain', () => {
+    test('should reject email without domain', async () => {
       req.headers['x-user-email'] = 'test@';
-      authenticateUser(req, res, next);
+      await authenticateUser(req, res, next);
       expect(res.status).toHaveBeenCalledWith(400);
     });
 
-    test('should reject email without TLD', () => {
+    test('should reject email without TLD', async () => {
       req.headers['x-user-email'] = 'test@domain';
-      authenticateUser(req, res, next);
+      await authenticateUser(req, res, next);
       expect(res.status).toHaveBeenCalledWith(400);
     });
 
-    test('should accept email with subdomain', () => {
+    test('should accept email with subdomain', async () => {
       req.headers['x-user-email'] = 'test@mail.example.com';
-      
-      mockDb.get.mockImplementation((query, params, callback) => {
-        callback(null, { email: 'test@mail.example.com' });
-      });
 
-      authenticateUser(req, res, next);
-      expect(mockDb.get).toHaveBeenCalled();
+      mockPool.query.mockResolvedValueOnce({ rows: [{ email: 'test@mail.example.com' }], rowCount: 1 });
+
+      await authenticateUser(req, res, next);
+      expect(mockPool.query).toHaveBeenCalled();
     });
   });
 });
