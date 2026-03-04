@@ -140,6 +140,88 @@ router.post('/', (req, res, next) => {
   }
 });
 
+// Build update fields from validated work entry data
+function buildWorkEntryUpdateFields(value) {
+  const updates = [];
+  const values = [];
+
+  const fields = [
+    { key: 'clientId', column: 'client_id', nullable: false },
+    { key: 'hours', column: 'hours', nullable: false },
+    { key: 'description', column: 'description', nullable: true },
+    { key: 'date', column: 'date', nullable: false }
+  ];
+
+  for (const field of fields) {
+    if (value[field.key] !== undefined) {
+      updates.push(`${field.column} = ?`);
+      values.push(field.nullable ? (value[field.key] || null) : value[field.key]);
+    }
+  }
+
+  updates.push('updated_at = CURRENT_TIMESTAMP');
+  return { updates, values };
+}
+
+// Execute work entry update and return updated entry
+function executeWorkEntryUpdate(db, updates, values, workEntryId, userEmail, res) {
+  values.push(workEntryId, userEmail);
+  const query = `UPDATE work_entries SET ${updates.join(', ')} WHERE id = ? AND user_email = ?`;
+
+  db.run(query, values, function(err) {
+    if (err) {
+      console.error('Database error:', err);
+      return res.status(500).json({ error: 'Failed to update work entry' });
+    }
+
+    db.get(
+      `SELECT we.id, we.client_id, we.hours, we.description, we.date, 
+              we.created_at, we.updated_at, c.name as client_name
+       FROM work_entries we
+       JOIN clients c ON we.client_id = c.id
+       WHERE we.id = ?`,
+      [workEntryId],
+      (err, row) => {
+        if (err) {
+          console.error('Database error:', err);
+          return res.status(500).json({ error: 'Work entry updated but failed to retrieve' });
+        }
+
+        res.json({
+          message: 'Work entry updated successfully',
+          workEntry: row
+        });
+      }
+    );
+  });
+}
+
+// Verify client ownership before work entry update
+function verifyClientAndUpdate(db, value, workEntryId, userEmail, res) {
+  const { updates, values } = buildWorkEntryUpdateFields(value);
+
+  if (value.clientId) {
+    db.get(
+      'SELECT id FROM clients WHERE id = ? AND user_email = ?',
+      [value.clientId, userEmail],
+      (err, clientRow) => {
+        if (err) {
+          console.error('Database error:', err);
+          return res.status(500).json({ error: 'Internal server error' });
+        }
+
+        if (!clientRow) {
+          return res.status(400).json({ error: 'Client not found or does not belong to user' });
+        }
+
+        executeWorkEntryUpdate(db, updates, values, workEntryId, userEmail, res);
+      }
+    );
+  } else {
+    executeWorkEntryUpdate(db, updates, values, workEntryId, userEmail, res);
+  }
+}
+
 // Update work entry
 router.put('/:id', (req, res, next) => {
   try {
@@ -170,86 +252,7 @@ router.put('/:id', (req, res, next) => {
           return res.status(404).json({ error: 'Work entry not found' });
         }
 
-        // If clientId is being updated, verify it belongs to user
-        if (value.clientId) {
-          db.get(
-            'SELECT id FROM clients WHERE id = ? AND user_email = ?',
-            [value.clientId, req.userEmail],
-            (err, clientRow) => {
-              if (err) {
-                console.error('Database error:', err);
-                return res.status(500).json({ error: 'Internal server error' });
-              }
-
-              if (!clientRow) {
-                return res.status(400).json({ error: 'Client not found or does not belong to user' });
-              }
-
-              performUpdate();
-            }
-          );
-        } else {
-          performUpdate();
-        }
-
-        function performUpdate() {
-          // Build update query dynamically
-          const updates = [];
-          const values = [];
-
-          if (value.clientId !== undefined) {
-            updates.push('client_id = ?');
-            values.push(value.clientId);
-          }
-
-          if (value.hours !== undefined) {
-            updates.push('hours = ?');
-            values.push(value.hours);
-          }
-
-          if (value.description !== undefined) {
-            updates.push('description = ?');
-            values.push(value.description || null);
-          }
-
-          if (value.date !== undefined) {
-            updates.push('date = ?');
-            values.push(value.date);
-          }
-
-          updates.push('updated_at = CURRENT_TIMESTAMP');
-          values.push(workEntryId, req.userEmail);
-
-          const query = `UPDATE work_entries SET ${updates.join(', ')} WHERE id = ? AND user_email = ?`;
-
-          db.run(query, values, function(err) {
-            if (err) {
-              console.error('Database error:', err);
-              return res.status(500).json({ error: 'Failed to update work entry' });
-            }
-
-            // Return updated work entry with client name
-            db.get(
-              `SELECT we.id, we.client_id, we.hours, we.description, we.date, 
-                      we.created_at, we.updated_at, c.name as client_name
-               FROM work_entries we
-               JOIN clients c ON we.client_id = c.id
-               WHERE we.id = ?`,
-              [workEntryId],
-              (err, row) => {
-                if (err) {
-                  console.error('Database error:', err);
-                  return res.status(500).json({ error: 'Work entry updated but failed to retrieve' });
-                }
-
-                res.json({
-                  message: 'Work entry updated successfully',
-                  workEntry: row
-                });
-              }
-            );
-          });
-        }
+        verifyClientAndUpdate(db, value, workEntryId, req.userEmail, res);
       }
     );
   } catch (error) {

@@ -97,6 +97,58 @@ router.post('/', (req, res, next) => {
   }
 });
 
+// Build update fields from validated client data
+function buildClientUpdateFields(value) {
+  const updates = [];
+  const values = [];
+
+  const fields = [
+    { key: 'name', nullable: false },
+    { key: 'description', nullable: true },
+    { key: 'department', nullable: true },
+    { key: 'email', nullable: true }
+  ];
+
+  for (const field of fields) {
+    if (value[field.key] !== undefined) {
+      updates.push(`${field.key} = ?`);
+      values.push(field.nullable ? (value[field.key] || null) : value[field.key]);
+    }
+  }
+
+  updates.push('updated_at = CURRENT_TIMESTAMP');
+  return { updates, values };
+}
+
+// Execute client update and return updated client
+function executeClientUpdate(db, updates, values, clientId, userEmail, res) {
+  values.push(clientId, userEmail);
+  const query = `UPDATE clients SET ${updates.join(', ')} WHERE id = ? AND user_email = ?`;
+
+  db.run(query, values, function(err) {
+    if (err) {
+      console.error('Database error:', err);
+      return res.status(500).json({ error: 'Failed to update client' });
+    }
+
+    db.get(
+      'SELECT id, name, description, department, email, created_at, updated_at FROM clients WHERE id = ?',
+      [clientId],
+      (err, row) => {
+        if (err) {
+          console.error('Database error:', err);
+          return res.status(500).json({ error: 'Client updated but failed to retrieve' });
+        }
+
+        res.json({
+          message: 'Client updated successfully',
+          client: row
+        });
+      }
+    );
+  });
+}
+
 // Update client
 router.put('/:id', (req, res, next) => {
   try {
@@ -127,58 +179,8 @@ router.put('/:id', (req, res, next) => {
           return res.status(404).json({ error: 'Client not found' });
         }
 
-        // Build update query dynamically
-        const updates = [];
-        const values = [];
-
-        if (value.name !== undefined) {
-          updates.push('name = ?');
-          values.push(value.name);
-        }
-
-        if (value.description !== undefined) {
-          updates.push('description = ?');
-          values.push(value.description || null);
-        }
-
-        if (value.department !== undefined) {
-          updates.push('department = ?');
-          values.push(value.department || null);
-        }
-
-        if (value.email !== undefined) {
-          updates.push('email = ?');
-          values.push(value.email || null);
-        }
-
-        updates.push('updated_at = CURRENT_TIMESTAMP');
-        values.push(clientId, req.userEmail);
-
-        const query = `UPDATE clients SET ${updates.join(', ')} WHERE id = ? AND user_email = ?`;
-
-        db.run(query, values, function(err) {
-          if (err) {
-            console.error('Database error:', err);
-            return res.status(500).json({ error: 'Failed to update client' });
-          }
-
-          // Return updated client
-          db.get(
-            'SELECT id, name, description, department, email, created_at, updated_at FROM clients WHERE id = ?',
-            [clientId],
-            (err, row) => {
-              if (err) {
-                console.error('Database error:', err);
-                return res.status(500).json({ error: 'Client updated but failed to retrieve' });
-              }
-
-              res.json({
-                message: 'Client updated successfully',
-                client: row
-              });
-            }
-          );
-        });
+        const { updates, values } = buildClientUpdateFields(value);
+        executeClientUpdate(db, updates, values, clientId, req.userEmail, res);
       }
     );
   } catch (error) {
