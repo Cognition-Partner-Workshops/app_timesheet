@@ -1,3 +1,23 @@
+/**
+ * @module routes/reports
+ * @description Reporting and export routes for client time-tracking data.
+ *
+ * Mounted at `/api/reports`. All routes are protected by the
+ * {@link module:middleware/auth~authenticateUser} middleware. Provides three
+ * report formats:
+ * - **JSON** – summary with aggregated hours and individual entries.
+ * - **CSV**  – downloadable spreadsheet generated via `csv-writer`.
+ * - **PDF**  – formatted document streamed via `pdfkit`.
+ *
+ * @requires express
+ * @requires ../database/init
+ * @requires ../middleware/auth
+ * @requires csv-writer
+ * @requires pdfkit
+ * @requires path
+ * @requires fs
+ */
+
 const express = require('express');
 const { getDatabase } = require('../database/init');
 const { authenticateUser } = require('../middleware/auth');
@@ -11,7 +31,21 @@ const router = express.Router();
 // All routes require authentication
 router.use(authenticateUser);
 
-// Get hourly report for specific client
+/**
+ * GET /api/reports/client/:clientId
+ *
+ * Generates a JSON report for a specific client containing all work entries,
+ * a total-hours sum, and an entry count. The client must belong to the
+ * authenticated user.
+ *
+ * @name GetClientReport
+ * @route {GET} /api/reports/client/:clientId
+ * @routeparam {number} clientId - The client's numeric ID.
+ * @returns {object} 200 - `{ client, workEntries[], totalHours, entryCount }`
+ * @returns {object} 400 - Invalid (non-numeric) client ID.
+ * @returns {object} 404 - Client not found or not owned by the user.
+ * @returns {object} 500 - Internal server error on database failure.
+ */
 router.get('/client/:clientId', (req, res) => {
   const clientId = parseInt(req.params.clientId);
   
@@ -63,7 +97,21 @@ router.get('/client/:clientId', (req, res) => {
   );
 });
 
-// Export client report as CSV
+/**
+ * GET /api/reports/export/csv/:clientId
+ *
+ * Exports a client's work-entry data as a downloadable CSV file. The file
+ * contains columns for Date, Hours, Description, and Created At. A temporary
+ * file is written to disk, streamed to the client, then deleted.
+ *
+ * @name ExportClientCSV
+ * @route {GET} /api/reports/export/csv/:clientId
+ * @routeparam {number} clientId - The client's numeric ID.
+ * @returns {file} 200 - A `.csv` file download with Content-Disposition header.
+ * @returns {object} 400 - Invalid (non-numeric) client ID.
+ * @returns {object} 404 - Client not found or not owned by the user.
+ * @returns {object} 500 - Internal server error on database or file-system failure.
+ */
 router.get('/export/csv/:clientId', (req, res) => {
   const clientId = parseInt(req.params.clientId);
   
@@ -146,7 +194,22 @@ router.get('/export/csv/:clientId', (req, res) => {
   );
 });
 
-// Export client report as PDF
+/**
+ * GET /api/reports/export/pdf/:clientId
+ *
+ * Exports a client's work-entry data as a downloadable PDF document. The PDF
+ * includes a title, summary statistics (total hours, entry count, generation
+ * date), and a tabular listing of all work entries. The document is streamed
+ * directly to the response without writing to disk.
+ *
+ * @name ExportClientPDF
+ * @route {GET} /api/reports/export/pdf/:clientId
+ * @routeparam {number} clientId - The client's numeric ID.
+ * @returns {file} 200 - A `.pdf` file download with Content-Disposition header.
+ * @returns {object} 400 - Invalid (non-numeric) client ID.
+ * @returns {object} 404 - Client not found or not owned by the user.
+ * @returns {object} 500 - Internal server error on database failure.
+ */
 router.get('/export/pdf/:clientId', (req, res) => {
   const clientId = parseInt(req.params.clientId);
   

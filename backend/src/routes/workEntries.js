@@ -1,3 +1,18 @@
+/**
+ * @module routes/workEntries
+ * @description CRUD routes for work-entry (time-tracking) management.
+ *
+ * Mounted at `/api/work-entries`. All routes are protected by the
+ * {@link module:middleware/auth~authenticateUser} middleware and scoped to the
+ * authenticated user. Work entries are always associated with a client that
+ * belongs to the same user.
+ *
+ * @requires express
+ * @requires ../database/init
+ * @requires ../middleware/auth
+ * @requires ../validation/schemas
+ */
+
 const express = require('express');
 const { getDatabase } = require('../database/init');
 const { authenticateUser } = require('../middleware/auth');
@@ -8,7 +23,20 @@ const router = express.Router();
 // All routes require authentication
 router.use(authenticateUser);
 
-// Get all work entries for authenticated user (with optional client filter)
+/**
+ * GET /api/work-entries
+ *
+ * Retrieves all work entries for the authenticated user, joined with client
+ * names. Results are ordered by date descending. An optional `clientId` query
+ * parameter narrows the results to a single client.
+ *
+ * @name ListWorkEntries
+ * @route {GET} /api/work-entries
+ * @queryparam {number} [clientId] - Optional client ID to filter entries.
+ * @returns {object} 200 - `{ workEntries: Array<WorkEntry> }`
+ * @returns {object} 400 - Invalid (non-numeric) clientId query parameter.
+ * @returns {object} 500 - Internal server error on database failure.
+ */
 router.get('/', (req, res) => {
   const { clientId } = req.query;
   const db = getDatabase();
@@ -44,7 +72,20 @@ router.get('/', (req, res) => {
   });
 });
 
-// Get specific work entry
+/**
+ * GET /api/work-entries/:id
+ *
+ * Retrieves a single work entry by ID. The entry must belong to the
+ * authenticated user; otherwise a 404 is returned.
+ *
+ * @name GetWorkEntry
+ * @route {GET} /api/work-entries/:id
+ * @routeparam {number} id - The work entry's numeric ID.
+ * @returns {object} 200 - `{ workEntry: WorkEntry }`
+ * @returns {object} 400 - Invalid (non-numeric) work entry ID.
+ * @returns {object} 404 - Work entry not found or not owned by the user.
+ * @returns {object} 500 - Internal server error on database failure.
+ */
 router.get('/:id', (req, res) => {
   const workEntryId = parseInt(req.params.id);
   
@@ -76,7 +117,22 @@ router.get('/:id', (req, res) => {
   );
 });
 
-// Create new work entry
+/**
+ * POST /api/work-entries
+ *
+ * Creates a new work entry for the authenticated user. The referenced client
+ * must exist and belong to the user.
+ *
+ * @name CreateWorkEntry
+ * @route {POST} /api/work-entries
+ * @bodyparam {number} clientId      - ID of the client this entry is for (required).
+ * @bodyparam {number} hours         - Hours worked, 0-24 (required, up to 2 decimal places).
+ * @bodyparam {string} [description] - Optional description (max 1000 chars).
+ * @bodyparam {string} date          - ISO-8601 date string (required).
+ * @returns {object} 201 - `{ message, workEntry: WorkEntry }`
+ * @returns {object} 400 - Joi validation error or client not found.
+ * @returns {object} 500 - Internal server error on database failure.
+ */
 router.post('/', (req, res, next) => {
   try {
     const { error, value } = workEntrySchema.validate(req.body);
@@ -140,7 +196,25 @@ router.post('/', (req, res, next) => {
   }
 });
 
-// Update work entry
+/**
+ * PUT /api/work-entries/:id
+ *
+ * Updates an existing work entry. At least one field must be provided. If
+ * `clientId` is being changed, the new client must exist and belong to the
+ * authenticated user.
+ *
+ * @name UpdateWorkEntry
+ * @route {PUT} /api/work-entries/:id
+ * @routeparam {number} id             - The work entry's numeric ID.
+ * @bodyparam {number} [clientId]      - New client ID.
+ * @bodyparam {number} [hours]         - Updated hours (0-24, up to 2 decimal places).
+ * @bodyparam {string} [description]   - Updated description.
+ * @bodyparam {string} [date]          - Updated ISO-8601 date string.
+ * @returns {object} 200 - `{ message, workEntry: WorkEntry }`
+ * @returns {object} 400 - Invalid ID, validation error, or client not found.
+ * @returns {object} 404 - Work entry not found or not owned by the user.
+ * @returns {object} 500 - Internal server error on database failure.
+ */
 router.put('/:id', (req, res, next) => {
   try {
     const workEntryId = parseInt(req.params.id);
@@ -257,7 +331,20 @@ router.put('/:id', (req, res, next) => {
   }
 });
 
-// Delete work entry
+/**
+ * DELETE /api/work-entries/:id
+ *
+ * Deletes a single work entry by ID. The entry must belong to the
+ * authenticated user.
+ *
+ * @name DeleteWorkEntry
+ * @route {DELETE} /api/work-entries/:id
+ * @routeparam {number} id - The work entry's numeric ID.
+ * @returns {object} 200 - `{ message }`
+ * @returns {object} 400 - Invalid (non-numeric) work entry ID.
+ * @returns {object} 404 - Work entry not found or not owned by the user.
+ * @returns {object} 500 - Internal server error on database failure.
+ */
 router.delete('/:id', (req, res) => {
   const workEntryId = parseInt(req.params.id);
   

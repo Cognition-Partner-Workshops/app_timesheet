@@ -1,3 +1,18 @@
+/**
+ * @module routes/clients
+ * @description CRUD routes for client management.
+ *
+ * Mounted at `/api/clients`. All routes are protected by the
+ * {@link module:middleware/auth~authenticateUser} middleware and scoped to the
+ * authenticated user — a user can only view, create, update, or delete their
+ * own client records.
+ *
+ * @requires express
+ * @requires ../database/init
+ * @requires ../middleware/auth
+ * @requires ../validation/schemas
+ */
+
 const express = require('express');
 const { getDatabase } = require('../database/init');
 const { authenticateUser } = require('../middleware/auth');
@@ -8,7 +23,17 @@ const router = express.Router();
 // All routes require authentication
 router.use(authenticateUser);
 
-// Get all clients for authenticated user
+/**
+ * GET /api/clients
+ *
+ * Retrieves all clients belonging to the authenticated user, ordered
+ * alphabetically by name.
+ *
+ * @name ListClients
+ * @route {GET} /api/clients
+ * @returns {object} 200 - `{ clients: Array<Client> }`
+ * @returns {object} 500 - Internal server error on database failure.
+ */
 router.get('/', (req, res) => {
   const db = getDatabase();
   
@@ -26,7 +51,20 @@ router.get('/', (req, res) => {
   );
 });
 
-// Get specific client
+/**
+ * GET /api/clients/:id
+ *
+ * Retrieves a single client by ID. The client must belong to the authenticated
+ * user; otherwise a 404 is returned.
+ *
+ * @name GetClient
+ * @route {GET} /api/clients/:id
+ * @routeparam {number} id - The client's numeric ID.
+ * @returns {object} 200 - `{ client: Client }`
+ * @returns {object} 400 - Invalid (non-numeric) client ID.
+ * @returns {object} 404 - Client not found or not owned by the user.
+ * @returns {object} 500 - Internal server error on database failure.
+ */
 router.get('/:id', (req, res) => {
   const clientId = parseInt(req.params.id);
   
@@ -54,7 +92,21 @@ router.get('/:id', (req, res) => {
   );
 });
 
-// Create new client
+/**
+ * POST /api/clients
+ *
+ * Creates a new client record for the authenticated user.
+ *
+ * @name CreateClient
+ * @route {POST} /api/clients
+ * @bodyparam {string} name        - Client name (required, 1-255 chars).
+ * @bodyparam {string} [description] - Optional description (max 1000 chars).
+ * @bodyparam {string} [department]  - Optional department (max 255 chars).
+ * @bodyparam {string} [email]       - Optional contact email.
+ * @returns {object} 201 - `{ message, client: Client }`
+ * @returns {object} 400 - Joi validation error.
+ * @returns {object} 500 - Internal server error on database failure.
+ */
 router.post('/', (req, res, next) => {
   try {
     const { error, value } = clientSchema.validate(req.body);
@@ -97,7 +149,24 @@ router.post('/', (req, res, next) => {
   }
 });
 
-// Update client
+/**
+ * PUT /api/clients/:id
+ *
+ * Updates an existing client. At least one field must be provided in the
+ * request body. The client must belong to the authenticated user.
+ *
+ * @name UpdateClient
+ * @route {PUT} /api/clients/:id
+ * @routeparam {number} id           - The client's numeric ID.
+ * @bodyparam {string} [name]        - Updated client name.
+ * @bodyparam {string} [description] - Updated description.
+ * @bodyparam {string} [department]  - Updated department.
+ * @bodyparam {string} [email]       - Updated contact email.
+ * @returns {object} 200 - `{ message, client: Client }`
+ * @returns {object} 400 - Invalid client ID or Joi validation error.
+ * @returns {object} 404 - Client not found or not owned by the user.
+ * @returns {object} 500 - Internal server error on database failure.
+ */
 router.put('/:id', (req, res, next) => {
   try {
     const clientId = parseInt(req.params.id);
@@ -186,7 +255,17 @@ router.put('/:id', (req, res, next) => {
   }
 });
 
-// Delete all clients for authenticated user
+/**
+ * DELETE /api/clients
+ *
+ * Deletes **all** clients belonging to the authenticated user. Associated work
+ * entries are removed automatically via CASCADE foreign-key constraints.
+ *
+ * @name DeleteAllClients
+ * @route {DELETE} /api/clients
+ * @returns {object} 200 - `{ message, deletedCount }`
+ * @returns {object} 500 - Internal server error on database failure.
+ */
 router.delete('/', (req, res) => {
   const db = getDatabase();
   
@@ -207,7 +286,21 @@ router.delete('/', (req, res) => {
   );
 });
 
-// Delete client
+/**
+ * DELETE /api/clients/:id
+ *
+ * Deletes a single client by ID. The client must belong to the authenticated
+ * user. Associated work entries are removed automatically via CASCADE
+ * foreign-key constraints.
+ *
+ * @name DeleteClient
+ * @route {DELETE} /api/clients/:id
+ * @routeparam {number} id - The client's numeric ID.
+ * @returns {object} 200 - `{ message }`
+ * @returns {object} 400 - Invalid (non-numeric) client ID.
+ * @returns {object} 404 - Client not found or not owned by the user.
+ * @returns {object} 500 - Internal server error on database failure.
+ */
 router.delete('/:id', (req, res) => {
   const clientId = parseInt(req.params.id);
   
