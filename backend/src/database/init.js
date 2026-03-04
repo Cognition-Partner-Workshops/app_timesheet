@@ -1,10 +1,42 @@
+/**
+ * @module database/init
+ * @description Database initialization and connection management for the SQLite backend.
+ *
+ * Provides a singleton database connection using an in-memory SQLite database
+ * (development mode). The production override in `docker/overrides/database/init.js`
+ * switches to a file-based SQLite database for persistence across restarts.
+ *
+ * Database schema consists of three tables:
+ * - `users`        - stores registered user emails
+ * - `clients`      - stores client/project records linked to users
+ * - `work_entries` - stores time-tracking entries linked to clients and users
+ *
+ * Foreign keys use CASCADE deletes so removing a user or client automatically
+ * removes all associated child records.
+ */
+
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 
+/** @type {import('sqlite3').Database | null} Singleton database instance */
 let db = null;
+
+/** @type {boolean} Whether a close operation is currently in progress */
 let isClosing = false;
+
+/** @type {boolean} Whether the database connection has been fully closed */
 let isClosed = false;
 
+/**
+ * Returns the singleton SQLite database connection, creating it if it does not
+ * yet exist. On creation the closing/closed state flags are reset.
+ *
+ * In development the database is created in-memory (`:memory:`).
+ * The production Docker override replaces this with a file-based path.
+ *
+ * @returns {import('sqlite3').Database} The active database connection.
+ * @throws {Error} If the underlying SQLite driver fails to open the database.
+ */
 function getDatabase() {
   if (!db) {
     // Reset state when creating a new database connection
@@ -22,6 +54,20 @@ function getDatabase() {
   return db;
 }
 
+/**
+ * Creates all application tables and indexes if they do not already exist.
+ *
+ * Tables created:
+ * - `users`        - User accounts keyed by email (PK: email)
+ * - `clients`      - Client records owned by a user (PK: id, FK: user_email)
+ * - `work_entries` - Time entries linked to a client and user (PK: id, FK: client_id, user_email)
+ *
+ * Indexes are added on foreign-key and frequently-queried columns
+ * (`clients.user_email`, `work_entries.client_id`, `work_entries.user_email`,
+ * `work_entries.date`) to improve read performance.
+ *
+ * @returns {Promise<void>} Resolves once all DDL statements have executed.
+ */
 async function initializeDatabase() {
   const database = getDatabase();
   
@@ -78,6 +124,19 @@ async function initializeDatabase() {
   });
 }
 
+/**
+ * Gracefully closes the database connection.
+ *
+ * The method is idempotent - calling it when the connection is already closed
+ * or while a close is in progress will resolve without error. A polling
+ * mechanism ensures that concurrent callers wait for the in-flight close to
+ * finish rather than attempting a duplicate close.
+ *
+ * After closing, the singleton reference is set to `null` so that a subsequent
+ * call to {@link getDatabase} will open a fresh connection.
+ *
+ * @returns {Promise<void>} Resolves once the connection is closed.
+ */
 function closeDatabase() {
   return new Promise((resolve, reject) => {
     if (isClosed) {
