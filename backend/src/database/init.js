@@ -1,4 +1,7 @@
-const { Pool } = require('pg');
+const { Pool, types } = require('pg');
+
+// Parse NUMERIC/DECIMAL columns as JavaScript floats instead of strings
+types.setTypeParser(1700, (val) => parseFloat(val));
 
 let pool = null;
 

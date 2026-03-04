@@ -9,7 +9,10 @@ jest.mock('pg', () => {
   };
 
   return {
-    Pool: jest.fn(() => mockPool)
+    Pool: jest.fn(() => mockPool),
+    types: {
+      setTypeParser: jest.fn()
+    }
   };
 });
 
