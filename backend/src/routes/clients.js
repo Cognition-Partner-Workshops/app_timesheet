@@ -1,3 +1,28 @@
+/**
+ * @module routes/clients
+ * @description Client CRUD route handlers.
+ *
+ * All routes require authentication via the `x-user-email` header. Clients
+ * are scoped to the authenticated user -- a user can only see, create, update,
+ * and delete their own clients.
+ *
+ * **Endpoints:**
+ *
+ * | Method | Path                 | Description                       |
+ * |--------|----------------------|-----------------------------------|
+ * | GET    | `/api/clients`       | List all clients for the user     |
+ * | GET    | `/api/clients/:id`   | Get a single client by ID         |
+ * | POST   | `/api/clients`       | Create a new client               |
+ * | PUT    | `/api/clients/:id`   | Update an existing client         |
+ * | DELETE | `/api/clients`       | Delete all clients for the user   |
+ * | DELETE | `/api/clients/:id`   | Delete a single client by ID      |
+ *
+ * **Common response shapes:**
+ * - Success list: `{ clients: [ { id, name, description, department, email, created_at, updated_at } ] }`
+ * - Success single: `{ client: { id, name, description, department, email, created_at, updated_at } }`
+ * - Error: `{ error: string }`
+ */
+
 const express = require('express');
 const { getDatabase } = require('../database/init');
 const { authenticateUser } = require('../middleware/auth');
@@ -8,7 +33,17 @@ const router = express.Router();
 // All routes require authentication
 router.use(authenticateUser);
 
-// Get all clients for authenticated user
+/**
+ * GET /api/clients
+ *
+ * Returns all clients belonging to the authenticated user, ordered
+ * alphabetically by name.
+ *
+ * @name GetClients
+ * @route {GET} /api/clients
+ * @returns {object} 200 - `{ clients: ClientRow[] }`
+ * @returns {object} 500 - Database error.
+ */
 router.get('/', (req, res) => {
   const db = getDatabase();
   
@@ -26,7 +61,20 @@ router.get('/', (req, res) => {
   );
 });
 
-// Get specific client
+/**
+ * GET /api/clients/:id
+ *
+ * Returns a single client by its ID, provided it belongs to the
+ * authenticated user.
+ *
+ * @name GetClientById
+ * @route {GET} /api/clients/:id
+ * @routeparam {number} id - Client ID (integer).
+ * @returns {object} 200 - `{ client: ClientRow }`
+ * @returns {object} 400 - Invalid client ID.
+ * @returns {object} 404 - Client not found or not owned by user.
+ * @returns {object} 500 - Database error.
+ */
 router.get('/:id', (req, res) => {
   const clientId = parseInt(req.params.id);
   
@@ -54,7 +102,22 @@ router.get('/:id', (req, res) => {
   );
 });
 
-// Create new client
+/**
+ * POST /api/clients
+ *
+ * Creates a new client for the authenticated user. The request body is
+ * validated against {@link module:validation/schemas.clientSchema}.
+ *
+ * @name CreateClient
+ * @route {POST} /api/clients
+ * @bodyparam {string} name - Client name (required, 1-255 chars).
+ * @bodyparam {string} [description] - Optional description (max 1000 chars).
+ * @bodyparam {string} [department] - Optional department (max 255 chars).
+ * @bodyparam {string} [email] - Optional contact email.
+ * @returns {object} 201 - `{ message, client: ClientRow }`
+ * @returns {object} 400 - Validation error.
+ * @returns {object} 500 - Database error.
+ */
 router.post('/', (req, res, next) => {
   try {
     const { error, value } = clientSchema.validate(req.body);
@@ -97,7 +160,25 @@ router.post('/', (req, res, next) => {
   }
 });
 
-// Update client
+/**
+ * PUT /api/clients/:id
+ *
+ * Partially updates an existing client. At least one field must be provided.
+ * The request body is validated against
+ * {@link module:validation/schemas.updateClientSchema}.
+ *
+ * @name UpdateClient
+ * @route {PUT} /api/clients/:id
+ * @routeparam {number} id - Client ID (integer).
+ * @bodyparam {string} [name] - Updated name.
+ * @bodyparam {string} [description] - Updated description.
+ * @bodyparam {string} [department] - Updated department.
+ * @bodyparam {string} [email] - Updated contact email.
+ * @returns {object} 200 - `{ message, client: ClientRow }`
+ * @returns {object} 400 - Invalid ID or validation error.
+ * @returns {object} 404 - Client not found or not owned by user.
+ * @returns {object} 500 - Database error.
+ */
 router.put('/:id', (req, res, next) => {
   try {
     const clientId = parseInt(req.params.id);
@@ -186,7 +267,17 @@ router.put('/:id', (req, res, next) => {
   }
 });
 
-// Delete all clients for authenticated user
+/**
+ * DELETE /api/clients
+ *
+ * Deletes **all** clients belonging to the authenticated user. Associated
+ * work entries are removed automatically via CASCADE foreign-key constraints.
+ *
+ * @name DeleteAllClients
+ * @route {DELETE} /api/clients
+ * @returns {object} 200 - `{ message, deletedCount: number }`
+ * @returns {object} 500 - Database error.
+ */
 router.delete('/', (req, res) => {
   const db = getDatabase();
   
@@ -207,7 +298,20 @@ router.delete('/', (req, res) => {
   );
 });
 
-// Delete client
+/**
+ * DELETE /api/clients/:id
+ *
+ * Deletes a single client by ID. Associated work entries are removed
+ * automatically via CASCADE foreign-key constraints.
+ *
+ * @name DeleteClient
+ * @route {DELETE} /api/clients/:id
+ * @routeparam {number} id - Client ID (integer).
+ * @returns {object} 200 - `{ message: "Client deleted successfully" }`
+ * @returns {object} 400 - Invalid client ID.
+ * @returns {object} 404 - Client not found or not owned by user.
+ * @returns {object} 500 - Database error.
+ */
 router.delete('/:id', (req, res) => {
   const clientId = parseInt(req.params.id);
   

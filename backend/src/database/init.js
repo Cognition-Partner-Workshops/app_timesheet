@@ -1,10 +1,46 @@
+/**
+ * @module database/init
+ * @description SQLite database initialization and connection management.
+ *
+ * Provides a singleton database connection (in-memory for development) and
+ * handles schema creation for the three core tables: `users`, `clients`, and
+ * `work_entries`. Foreign-key CASCADE deletes ensure referential integrity.
+ *
+ * **Tables created on initialization:**
+ * | Table          | Primary Key | Foreign Keys                                                  |
+ * |----------------|-------------|---------------------------------------------------------------|
+ * | `users`        | `email`     | --                                                            |
+ * | `clients`      | `id`        | `user_email` -> `users(email)`                                |
+ * | `work_entries`  | `id`        | `client_id` -> `clients(id)`, `user_email` -> `users(email)` |
+ *
+ * Performance indexes are created on `clients.user_email`,
+ * `work_entries.client_id`, `work_entries.user_email`, and `work_entries.date`.
+ */
+
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 
+/** @type {import('sqlite3').Database | null} */
 let db = null;
+
+/** @type {boolean} Whether the database is in the process of closing. */
 let isClosing = false;
+
+/** @type {boolean} Whether the database connection has been fully closed. */
 let isClosed = false;
 
+/**
+ * Returns the singleton SQLite database instance, creating a new in-memory
+ * connection if one does not already exist. Resets closing/closed state when
+ * a fresh connection is established.
+ *
+ * @returns {import('sqlite3').Database} The active SQLite database connection.
+ * @throws {Error} If the database connection cannot be opened.
+ *
+ * @example
+ * const db = getDatabase();
+ * db.all('SELECT * FROM users', [], (err, rows) => { ... });
+ */
 function getDatabase() {
   if (!db) {
     // Reset state when creating a new database connection
@@ -22,6 +58,26 @@ function getDatabase() {
   return db;
 }
 
+/**
+ * Initializes the database schema by creating all required tables and indexes
+ * inside a serialized transaction. Safe to call multiple times thanks to
+ * `CREATE TABLE IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS` guards.
+ *
+ * **Created tables:**
+ * - `users` -- stores registered user emails.
+ * - `clients` -- stores client/project records scoped to a user.
+ * - `work_entries` -- stores individual time-tracking entries linked to a
+ *   client and user.
+ *
+ * **Created indexes:**
+ * - `idx_clients_user_email`
+ * - `idx_work_entries_client_id`
+ * - `idx_work_entries_user_email`
+ * - `idx_work_entries_date`
+ *
+ * @returns {Promise<void>} Resolves when all tables and indexes have been created.
+ * @throws {Error} If any DDL statement fails.
+ */
 async function initializeDatabase() {
   const database = getDatabase();
   
@@ -78,6 +134,15 @@ async function initializeDatabase() {
   });
 }
 
+/**
+ * Gracefully closes the singleton database connection.
+ *
+ * - If the connection is already closed, resolves immediately.
+ * - If a close is already in progress, waits for it to complete before resolving.
+ * - Otherwise closes the connection, resets the singleton reference, and resolves.
+ *
+ * @returns {Promise<void>} Resolves once the connection is fully closed.
+ */
 function closeDatabase() {
   return new Promise((resolve, reject) => {
     if (isClosed) {

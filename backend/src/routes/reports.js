@@ -1,3 +1,30 @@
+/**
+ * @module routes/reports
+ * @description Report generation and export route handlers.
+ *
+ * All routes require authentication via the `x-user-email` header. Reports
+ * aggregate work-entry data for a given client and can be retrieved as JSON,
+ * exported as CSV (using `csv-writer`), or exported as PDF (using `pdfkit`).
+ *
+ * **Endpoints:**
+ *
+ * | Method | Path                                | Description                              |
+ * |--------|-------------------------------------|------------------------------------------|
+ * | GET    | `/api/reports/client/:clientId`     | JSON summary with total hours & entries  |
+ * | GET    | `/api/reports/export/csv/:clientId` | Download report as CSV file              |
+ * | GET    | `/api/reports/export/pdf/:clientId` | Download report as PDF file              |
+ *
+ * **JSON report shape (`GET /api/reports/client/:clientId`):**
+ * ```json
+ * {
+ *   "client": { "id": 1, "name": "Acme" },
+ *   "workEntries": [ { "id", "hours", "description", "date", "created_at", "updated_at" } ],
+ *   "totalHours": 42.5,
+ *   "entryCount": 10
+ * }
+ * ```
+ */
+
 const express = require('express');
 const { getDatabase } = require('../database/init');
 const { authenticateUser } = require('../middleware/auth');
@@ -11,7 +38,21 @@ const router = express.Router();
 // All routes require authentication
 router.use(authenticateUser);
 
-// Get hourly report for specific client
+/**
+ * GET /api/reports/client/:clientId
+ *
+ * Generates a JSON report for the specified client, including all work
+ * entries ordered by date descending, the total aggregated hours, and the
+ * entry count.
+ *
+ * @name GetClientReport
+ * @route {GET} /api/reports/client/:clientId
+ * @routeparam {number} clientId - Client ID (integer).
+ * @returns {object} 200 - `{ client, workEntries, totalHours, entryCount }`
+ * @returns {object} 400 - Invalid client ID.
+ * @returns {object} 404 - Client not found or not owned by user.
+ * @returns {object} 500 - Database error.
+ */
 router.get('/client/:clientId', (req, res) => {
   const clientId = parseInt(req.params.clientId);
   
@@ -63,7 +104,22 @@ router.get('/client/:clientId', (req, res) => {
   );
 });
 
-// Export client report as CSV
+/**
+ * GET /api/reports/export/csv/:clientId
+ *
+ * Exports the client's work-entry report as a downloadable CSV file.
+ * The CSV contains columns: Date, Hours, Description, Created At.
+ * A temporary file is written to disk, streamed to the client, and then
+ * cleaned up automatically.
+ *
+ * @name ExportClientCsv
+ * @route {GET} /api/reports/export/csv/:clientId
+ * @routeparam {number} clientId - Client ID (integer).
+ * @returns {file} 200 - CSV file download (`Content-Disposition: attachment`).
+ * @returns {object} 400 - Invalid client ID.
+ * @returns {object} 404 - Client not found or not owned by user.
+ * @returns {object} 500 - Database or file-system error.
+ */
 router.get('/export/csv/:clientId', (req, res) => {
   const clientId = parseInt(req.params.clientId);
   
@@ -146,7 +202,22 @@ router.get('/export/csv/:clientId', (req, res) => {
   );
 });
 
-// Export client report as PDF
+/**
+ * GET /api/reports/export/pdf/:clientId
+ *
+ * Exports the client's work-entry report as a downloadable PDF file.
+ * The PDF includes a title, summary statistics (total hours, entry count,
+ * generation timestamp), and a tabular listing of all work entries. Pages
+ * are added automatically when content overflows.
+ *
+ * @name ExportClientPdf
+ * @route {GET} /api/reports/export/pdf/:clientId
+ * @routeparam {number} clientId - Client ID (integer).
+ * @returns {file} 200 - PDF file download (`Content-Type: application/pdf`).
+ * @returns {object} 400 - Invalid client ID.
+ * @returns {object} 404 - Client not found or not owned by user.
+ * @returns {object} 500 - Database error.
+ */
 router.get('/export/pdf/:clientId', (req, res) => {
   const clientId = parseInt(req.params.clientId);
   
