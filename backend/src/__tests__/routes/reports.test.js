@@ -25,8 +25,10 @@ jest.mock('pdfkit', () => {
     y: 100
   }));
 });
+jest.mock('../../utils/email');
 
 const reportRoutes = require('../../routes/reports');
+const { sendEmailWithAttachment } = require('../../utils/email');
 jest.mock('../../middleware/auth', () => ({
   authenticateUser: (req, res, next) => {
     req.userEmail = 'test@example.com';
@@ -403,6 +405,215 @@ describe('Report Routes', () => {
     });
   });
 
+
+  describe('POST /api/reports/export/email-csv/:clientId', () => {
+    test('should return 400 for invalid client ID', async () => {
+      const response = await request(app).post('/api/reports/export/email-csv/invalid');
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({ error: 'Invalid client ID' });
+    });
+
+    test('should return 404 if client not found', async () => {
+      mockDb.get.mockImplementation((query, params, callback) => {
+        callback(null, null);
+      });
+
+      const response = await request(app).post('/api/reports/export/email-csv/999');
+
+      expect(response.status).toBe(404);
+      expect(response.body).toEqual({ error: 'Client not found' });
+    });
+
+    test('should handle database error when fetching client', async () => {
+      mockDb.get.mockImplementation((query, params, callback) => {
+        callback(new Error('Database error'), null);
+      });
+
+      const response = await request(app).post('/api/reports/export/email-csv/1');
+
+      expect(response.status).toBe(500);
+      expect(response.body).toEqual({ error: 'Internal server error' });
+    });
+
+    test('should handle database error when fetching work entries', async () => {
+      mockDb.get.mockImplementation((query, params, callback) => {
+        callback(null, { id: 1, name: 'Test Client' });
+      });
+
+      mockDb.all.mockImplementation((query, params, callback) => {
+        callback(new Error('Database error'), null);
+      });
+
+      const response = await request(app).post('/api/reports/export/email-csv/1');
+
+      expect(response.status).toBe(500);
+      expect(response.body).toEqual({ error: 'Internal server error' });
+    });
+
+    test('should email CSV report successfully', async () => {
+      const mockClient = { id: 1, name: 'Test Client' };
+      const mockWorkEntries = [
+        { date: '2024-01-01', hours: 5, description: 'Work 1', created_at: '2024-01-01' }
+      ];
+
+      mockDb.get.mockImplementation((query, params, callback) => {
+        callback(null, mockClient);
+      });
+
+      mockDb.all.mockImplementation((query, params, callback) => {
+        callback(null, mockWorkEntries);
+      });
+
+      const csvWriter = require('csv-writer');
+      csvWriter.createObjectCsvWriter.mockReturnValue({
+        writeRecords: jest.fn().mockResolvedValue(undefined)
+      });
+
+      sendEmailWithAttachment.mockResolvedValue({ messageId: '123' });
+
+      const response = await request(app).post('/api/reports/export/email-csv/1');
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        message: 'Report emailed successfully to test@example.com',
+        recipient: 'test@example.com',
+        clientName: 'Test Client'
+      });
+      expect(sendEmailWithAttachment).toHaveBeenCalledWith(
+        'test@example.com',
+        'Time Report for Test Client',
+        expect.stringContaining('Total Hours: 5.00'),
+        expect.stringMatching(/Test_Client_report_.*\.csv/),
+        expect.any(String)
+      );
+    });
+
+    test('should return 503 when SMTP is not configured', async () => {
+      const mockClient = { id: 1, name: 'Test Client' };
+
+      mockDb.get.mockImplementation((query, params, callback) => {
+        callback(null, mockClient);
+      });
+
+      mockDb.all.mockImplementation((query, params, callback) => {
+        callback(null, []);
+      });
+
+      const csvWriter = require('csv-writer');
+      csvWriter.createObjectCsvWriter.mockReturnValue({
+        writeRecords: jest.fn().mockResolvedValue(undefined)
+      });
+
+      sendEmailWithAttachment.mockRejectedValue(
+        new Error('SMTP is not configured. Set SMTP_HOST, SMTP_USER, and SMTP_PASS environment variables.')
+      );
+
+      const response = await request(app).post('/api/reports/export/email-csv/1');
+
+      expect(response.status).toBe(503);
+      expect(response.body.error).toContain('Email service is not configured');
+    });
+
+    test('should return 500 when email sending fails', async () => {
+      const mockClient = { id: 1, name: 'Test Client' };
+
+      mockDb.get.mockImplementation((query, params, callback) => {
+        callback(null, mockClient);
+      });
+
+      mockDb.all.mockImplementation((query, params, callback) => {
+        callback(null, []);
+      });
+
+      const csvWriter = require('csv-writer');
+      csvWriter.createObjectCsvWriter.mockReturnValue({
+        writeRecords: jest.fn().mockResolvedValue(undefined)
+      });
+
+      sendEmailWithAttachment.mockRejectedValue(new Error('SMTP connection refused'));
+
+      const response = await request(app).post('/api/reports/export/email-csv/1');
+
+      expect(response.status).toBe(500);
+      expect(response.body).toEqual({ error: 'Failed to generate or email CSV report' });
+    });
+
+    test('should handle CSV write error', async () => {
+      const mockClient = { id: 1, name: 'Test Client' };
+
+      mockDb.get.mockImplementation((query, params, callback) => {
+        callback(null, mockClient);
+      });
+
+      mockDb.all.mockImplementation((query, params, callback) => {
+        callback(null, []);
+      });
+
+      const csvWriter = require('csv-writer');
+      csvWriter.createObjectCsvWriter.mockReturnValue({
+        writeRecords: jest.fn().mockRejectedValue(new Error('Write failed'))
+      });
+
+      const response = await request(app).post('/api/reports/export/email-csv/1');
+
+      expect(response.status).toBe(500);
+      expect(response.body).toEqual({ error: 'Failed to generate or email CSV report' });
+    });
+
+    test('should clean up temp file after successful email', async () => {
+      const mockClient = { id: 1, name: 'Test Client' };
+
+      mockDb.get.mockImplementation((query, params, callback) => {
+        callback(null, mockClient);
+      });
+
+      mockDb.all.mockImplementation((query, params, callback) => {
+        callback(null, []);
+      });
+
+      const csvWriter = require('csv-writer');
+      csvWriter.createObjectCsvWriter.mockReturnValue({
+        writeRecords: jest.fn().mockResolvedValue(undefined)
+      });
+
+      sendEmailWithAttachment.mockResolvedValue({ messageId: '123' });
+
+      await request(app).post('/api/reports/export/email-csv/1');
+
+      expect(fs.unlink).toHaveBeenCalled();
+    });
+
+    test('should include correct summary in email body', async () => {
+      const mockClient = { id: 1, name: 'Acme Corp' };
+      const mockWorkEntries = [
+        { date: '2024-01-01', hours: 5.5, description: 'Dev work', created_at: '2024-01-01' },
+        { date: '2024-01-02', hours: 3.25, description: 'Testing', created_at: '2024-01-02' }
+      ];
+
+      mockDb.get.mockImplementation((query, params, callback) => {
+        callback(null, mockClient);
+      });
+
+      mockDb.all.mockImplementation((query, params, callback) => {
+        callback(null, mockWorkEntries);
+      });
+
+      const csvWriter = require('csv-writer');
+      csvWriter.createObjectCsvWriter.mockReturnValue({
+        writeRecords: jest.fn().mockResolvedValue(undefined)
+      });
+
+      sendEmailWithAttachment.mockResolvedValue({ messageId: '456' });
+
+      await request(app).post('/api/reports/export/email-csv/1');
+
+      const emailBody = sendEmailWithAttachment.mock.calls[0][2];
+      expect(emailBody).toContain('Total Hours: 8.75');
+      expect(emailBody).toContain('Total Entries: 2');
+      expect(emailBody).toContain('Acme Corp');
+    });
+  });
 
   describe('PDF Export Success Path', () => {
     test('should handle database error when fetching work entries for PDF', async () => {

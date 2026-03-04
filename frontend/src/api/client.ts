@@ -126,6 +126,11 @@ class ApiClient {
     return response.data;
   }
 
+  async emailClientReportCsv(clientId: number) {
+    const response = await this.client.post(`/api/reports/export/email-csv/${clientId}`);
+    return response.data;
+  }
+
   async exportClientReportPdf(clientId: number) {
     const response = await this.client.get(`/api/reports/export/pdf/${clientId}`, {
       responseType: 'blob',

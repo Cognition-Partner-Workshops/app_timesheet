@@ -26,6 +26,7 @@ import {
 import {
   PictureAsPdf as PdfIcon,
   Description as CsvIcon,
+  Email as EmailIcon,
 } from '@mui/icons-material';
 import { useQuery } from '@tanstack/react-query';
 import apiClient from '../api/client';
@@ -34,6 +35,8 @@ import { type ClientReport } from '../types/api';
 const ReportsPage: React.FC = () => {
   const [selectedClientId, setSelectedClientId] = useState<number>(0);
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
+  const [emailSending, setEmailSending] = useState(false);
 
   const { data: clientsData, isLoading: clientsLoading } = useQuery({
     queryKey: ['clients'],
@@ -66,6 +69,26 @@ const ReportsPage: React.FC = () => {
     } catch (err: unknown) {
       setError('Failed to export CSV report');
       console.error('Export error:', err);
+    }
+  };
+
+  const handleEmailCsv = async () => {
+    if (!selectedClientId) return;
+
+    setEmailSending(true);
+    setError('');
+    setSuccessMessage('');
+
+    try {
+      const result = await apiClient.emailClientReportCsv(selectedClientId);
+      setSuccessMessage(result.message || 'Report emailed successfully!');
+    } catch (err: unknown) {
+      const error = err as { response?: { data?: { error?: string } } };
+      const message = error.response?.data?.error || 'Failed to email CSV report';
+      setError(message);
+      console.error('Email export error:', err);
+    } finally {
+      setEmailSending(false);
     }
   };
 
@@ -111,6 +134,12 @@ const ReportsPage: React.FC = () => {
         </Alert>
       )}
 
+      {successMessage && (
+        <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccessMessage('')}>
+          {successMessage}
+        </Alert>
+      )}
+
       {clients.length === 0 ? (
         <Paper sx={{ p: 3, textAlign: 'center' }}>
           <Typography color="text.secondary" sx={{ mb: 2 }}>
@@ -151,6 +180,16 @@ const ReportsPage: React.FC = () => {
                       size="large"
                     >
                       <CsvIcon />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Email CSV Report">
+                    <IconButton
+                      onClick={handleEmailCsv}
+                      disabled={!selectedClientId || reportLoading || emailSending}
+                      color="success"
+                      size="large"
+                    >
+                      {emailSending ? <CircularProgress size={24} /> : <EmailIcon />}
                     </IconButton>
                   </Tooltip>
                   <Tooltip title="Export as PDF">

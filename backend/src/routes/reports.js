@@ -5,6 +5,7 @@ const createCsvWriter = require('csv-writer').createObjectCsvWriter;
 const PDFDocument = require('pdfkit');
 const path = require('path');
 const fs = require('fs');
+const { sendEmailWithAttachment } = require('../utils/email');
 
 const router = express.Router();
 
@@ -238,6 +239,111 @@ router.get('/export/pdf/:clientId', (req, res) => {
           
           // Finalize PDF
           doc.end();
+        }
+      );
+    }
+  );
+});
+
+// Export client report as CSV and email to logged-in user
+router.post('/export/email-csv/:clientId', (req, res) => {
+  const clientId = parseInt(req.params.clientId);
+  
+  if (isNaN(clientId)) {
+    return res.status(400).json({ error: 'Invalid client ID' });
+  }
+  
+  const db = getDatabase();
+  
+  // Verify client belongs to user and get data
+  db.get(
+    'SELECT id, name FROM clients WHERE id = ? AND user_email = ?',
+    [clientId, req.userEmail],
+    (err, client) => {
+      if (err) {
+        console.error('Database error:', err);
+        return res.status(500).json({ error: 'Internal server error' });
+      }
+      
+      if (!client) {
+        return res.status(404).json({ error: 'Client not found' });
+      }
+      
+      // Get work entries
+      db.all(
+        `SELECT hours, description, date, created_at
+         FROM work_entries 
+         WHERE client_id = ? AND user_email = ? 
+         ORDER BY date DESC`,
+        [clientId, req.userEmail],
+        (err, workEntries) => {
+          if (err) {
+            console.error('Database error:', err);
+            return res.status(500).json({ error: 'Internal server error' });
+          }
+          
+          // Create temporary CSV file
+          const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+          const filename = `${client.name.replace(/[^a-zA-Z0-9]/g, '_')}_report_${timestamp}.csv`;
+          const tempPath = path.join(__dirname, '../../temp', filename);
+          
+          // Ensure temp directory exists
+          const tempDir = path.dirname(tempPath);
+          if (!fs.existsSync(tempDir)) {
+            fs.mkdirSync(tempDir, { recursive: true });
+          }
+          
+          const csvWriter = createCsvWriter({
+            path: tempPath,
+            header: [
+              { id: 'date', title: 'Date' },
+              { id: 'hours', title: 'Hours' },
+              { id: 'description', title: 'Description' },
+              { id: 'created_at', title: 'Created At' }
+            ]
+          });
+          
+          const totalHours = workEntries.reduce((sum, entry) => sum + parseFloat(entry.hours), 0);
+          
+          csvWriter.writeRecords(workEntries)
+            .then(() => {
+              const subject = `Time Report for ${client.name}`;
+              const body = `Hi,\n\nPlease find attached the time report for ${client.name}.\n\nSummary:\n- Total Hours: ${totalHours.toFixed(2)}\n- Total Entries: ${workEntries.length}\n- Generated: ${new Date().toLocaleString()}\n\nBest regards,\nTime Tracker`;
+              
+              return sendEmailWithAttachment(
+                req.userEmail,
+                subject,
+                body,
+                filename,
+                tempPath
+              );
+            })
+            .then(() => {
+              // Clean up temp file after sending
+              fs.unlink(tempPath, (unlinkErr) => {
+                if (unlinkErr) {
+                  console.error('Error deleting temp file:', unlinkErr);
+                }
+              });
+              
+              res.json({ 
+                message: `Report emailed successfully to ${req.userEmail}`,
+                recipient: req.userEmail,
+                clientName: client.name
+              });
+            })
+            .catch((error) => {
+              // Clean up temp file on error
+              fs.unlink(tempPath, () => {});
+              
+              console.error('Error generating or emailing CSV:', error);
+              
+              if (error.message && error.message.includes('SMTP is not configured')) {
+                return res.status(503).json({ error: 'Email service is not configured. Please contact your administrator to set up SMTP settings.' });
+              }
+              
+              res.status(500).json({ error: 'Failed to generate or email CSV report' });
+            });
         }
       );
     }
