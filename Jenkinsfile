@@ -7,10 +7,13 @@
  *      - 'acr-credentials'       : Username/Password for Azure Container Registry
  *      - 'aks-kubeconfig'        : Kubeconfig file (Secret file) for the target AKS cluster
  *      - 'jwt-secret'            : Secret text – production JWT_SECRET value
+ *      - 'azure-sql-server'      : Secret text – Azure SQL server hostname (e.g. myserver.database.windows.net)
+ *      - 'azure-sql-database'    : Secret text – Azure SQL database name
+ *      - 'azure-sql-user'        : Secret text – Azure SQL username
+ *      - 'azure-sql-password'    : Secret text – Azure SQL password
  *   3. An Azure Container Registry (ACR) already provisioned
  *   4. An AKS cluster with:
  *      - NGINX Ingress Controller installed
- *      - managed-csi StorageClass available (default on AKS)
  *   5. Node.js 20 available on the Jenkins agent (or use a Docker agent)
  */
 
@@ -139,7 +142,11 @@ pipeline {
             steps {
                 withCredentials([
                     file(credentialsId: 'aks-kubeconfig', variable: 'KUBECONFIG'),
-                    string(credentialsId: 'jwt-secret', variable: 'JWT_SECRET_VALUE')
+                    string(credentialsId: 'jwt-secret', variable: 'JWT_SECRET_VALUE'),
+                    string(credentialsId: 'azure-sql-server', variable: 'AZURE_SQL_SERVER'),
+                    string(credentialsId: 'azure-sql-database', variable: 'AZURE_SQL_DATABASE'),
+                    string(credentialsId: 'azure-sql-user', variable: 'AZURE_SQL_USER'),
+                    string(credentialsId: 'azure-sql-password', variable: 'AZURE_SQL_PASSWORD')
                 ]) {
                     script {
                         // 6a. Create / ensure namespace
@@ -148,34 +155,35 @@ pipeline {
                         // 6b. Apply ConfigMap
                         sh "kubectl apply -f k8s/configmap.yaml"
 
-                        // 6c. Create or update the Secret with the real JWT value
+                        // 6c. Create or update the Secret with JWT and Azure SQL credentials
                         sh """
                             kubectl create secret generic timesheet-app-secret \\
                                 --namespace=${K8S_NAMESPACE} \\
                                 --from-literal=JWT_SECRET="\${JWT_SECRET_VALUE}" \\
+                                --from-literal=AZURE_SQL_SERVER="\${AZURE_SQL_SERVER}" \\
+                                --from-literal=AZURE_SQL_DATABASE="\${AZURE_SQL_DATABASE}" \\
+                                --from-literal=AZURE_SQL_USER="\${AZURE_SQL_USER}" \\
+                                --from-literal=AZURE_SQL_PASSWORD="\${AZURE_SQL_PASSWORD}" \\
                                 --dry-run=client -o yaml | kubectl apply -f -
                         """
 
-                        // 6d. Apply PVC (idempotent)
-                        sh "kubectl apply -f k8s/pvc.yaml"
-
-                        // 6e. Substitute image placeholders and apply Deployment
+                        // 6d. Substitute image placeholders and apply Deployment
                         sh """
                             sed -e 's|__ACR_LOGIN_SERVER__|${ACR_LOGIN_SERVER}|g' \\
                                 -e 's|__IMAGE_TAG__|${IMAGE_TAG}|g' \\
                                 k8s/deployment.yaml | kubectl apply -f -
                         """
 
-                        // 6f. Apply Service
+                        // 6e. Apply Service
                         sh "kubectl apply -f k8s/service.yaml"
 
-                        // 6g. Substitute ingress host and apply Ingress
+                        // 6f. Substitute ingress host and apply Ingress
                         sh """
                             sed 's|__INGRESS_HOST__|${INGRESS_HOST}|g' \\
                                 k8s/ingress.yaml | kubectl apply -f -
                         """
 
-                        // 6h. Wait for rollout to complete
+                        // 6g. Wait for rollout to complete
                         sh """
                             kubectl rollout status deployment/timesheet-app \\
                                 --namespace=${K8S_NAMESPACE} \\

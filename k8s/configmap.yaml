@@ -9,4 +9,6 @@ metadata:
 data:
   NODE_ENV: "production"
   PORT: "3001"
-  DATABASE_PATH: "/app/data/timesheet.db"
+  AZURE_SQL_PORT: "1433"
+  AZURE_SQL_ENCRYPT: "true"
+  AZURE_SQL_TRUST_CERT: "false"

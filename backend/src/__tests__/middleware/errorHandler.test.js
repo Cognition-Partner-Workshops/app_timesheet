@@ -54,7 +54,7 @@ describe('Error Handler Middleware', () => {
     });
   });
 
-  describe('SQLite Errors', () => {
+  describe('Database Errors', () => {
     test('should handle SQLITE_CONSTRAINT error', () => {
       const sqliteError = {
         code: 'SQLITE_CONSTRAINT',
@@ -70,13 +70,14 @@ describe('Error Handler Middleware', () => {
       });
     });
 
-    test('should handle SQLITE_ERROR', () => {
-      const sqliteError = {
-        code: 'SQLITE_ERROR',
-        message: 'SQL error'
+    test('should handle Azure SQL error', () => {
+      const azureSqlError = {
+        code: 'EREQUEST',
+        number: 2627,
+        message: 'Violation of UNIQUE KEY constraint'
       };
 
-      errorHandler(sqliteError, req, res, next);
+      errorHandler(azureSqlError, req, res, next);
 
       expect(res.status).toHaveBeenCalledWith(500);
       expect(res.json).toHaveBeenCalledWith({

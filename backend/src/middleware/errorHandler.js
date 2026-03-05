@@ -9,8 +9,8 @@ function errorHandler(err, req, res, next) {
     });
   }
 
-  // SQLite errors
-  if (err.code && err.code.startsWith('SQLITE_')) {
+  // Azure SQL / database errors
+  if (err.code && (err.code.startsWith('SQLITE_') || err.code.startsWith('E') && err.number)) {
     return res.status(500).json({
       error: 'Database error',
       message: 'An error occurred while processing your request'

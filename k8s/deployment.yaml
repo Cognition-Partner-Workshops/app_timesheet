@@ -7,11 +7,12 @@ metadata:
     app.kubernetes.io/name: timesheet-app
     app.kubernetes.io/component: server
 spec:
-  replicas: 1
-  # Single replica because SQLite does not support concurrent writers.
-  # Scale horizontally only after migrating to a networked database.
+  replicas: 2
   strategy:
-    type: Recreate
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app.kubernetes.io/name: timesheet-app
@@ -21,8 +22,6 @@ spec:
         app.kubernetes.io/name: timesheet-app
         app.kubernetes.io/component: server
     spec:
-      securityContext:
-        fsGroup: 1001
       containers:
         - name: timesheet-app
           image: __ACR_LOGIN_SERVER__/timesheet-app:__IMAGE_TAG__
@@ -36,9 +35,6 @@ spec:
                 name: timesheet-app-config
             - secretRef:
                 name: timesheet-app-secret
-          volumeMounts:
-            - name: data
-              mountPath: /app/data
           resources:
             requests:
               cpu: 100m
@@ -62,7 +58,3 @@ spec:
             periodSeconds: 10
             timeoutSeconds: 3
             failureThreshold: 3
-      volumes:
-        - name: data
-          persistentVolumeClaim:
-            claimName: timesheet-app-data
