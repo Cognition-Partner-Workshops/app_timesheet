@@ -6,6 +6,7 @@ const API_BASE_URL = '';
 
 class ApiClient {
   private client: AxiosInstance;
+  private token: string | null = null;
 
   constructor() {
     this.client = axios.create({
@@ -16,12 +17,11 @@ class ApiClient {
       },
     });
 
-    // Request interceptor to add email header
+    // Request interceptor to add JWT Bearer token
     this.client.interceptors.request.use(
       (config) => {
-        const userEmail = localStorage.getItem('userEmail');
-        if (userEmail) {
-          config.headers['x-user-email'] = userEmail;
+        if (this.token) {
+          config.headers['Authorization'] = `Bearer ${this.token}`;
         }
         return config;
       },
@@ -35,8 +35,7 @@ class ApiClient {
       (response: AxiosResponse) => response,
       (error) => {
         if (error.response?.status === 401) {
-          // Clear stored email on auth error
-          localStorage.removeItem('userEmail');
+          this.token = null;
           window.location.href = '/login';
         }
         return Promise.reject(error);
@@ -44,9 +43,28 @@ class ApiClient {
     );
   }
 
+  setToken(token: string | null) {
+    this.token = token;
+  }
+
+  getToken(): string | null {
+    return this.token;
+  }
+
   // Auth endpoints
   async login(email: string) {
     const response = await this.client.post('/api/auth/login', { email });
+    if (response.data.token) {
+      this.token = response.data.token;
+    }
+    return response.data;
+  }
+
+  async register(email: string) {
+    const response = await this.client.post('/api/auth/register', { email });
+    if (response.data.token) {
+      this.token = response.data.token;
+    }
     return response.data;
   }
 

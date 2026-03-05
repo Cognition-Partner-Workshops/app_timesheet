@@ -13,11 +13,11 @@ import {
 import { useAuth } from '../hooks/useAuth';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
 
-const LoginPage: React.FC = () => {
+const RegisterPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { login } = useAuth();
+  const { register } = useAuth();
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -26,11 +26,11 @@ const LoginPage: React.FC = () => {
     setIsLoading(true);
 
     try {
-      await login(email);
+      await register(email);
       navigate('/dashboard');
     } catch (err: unknown) {
       const error = err as { response?: { data?: { error?: string } } };
-      setError(error.response?.data?.error || 'Login failed. Please try again.');
+      setError(error.response?.data?.error || 'Registration failed. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -52,7 +52,7 @@ const LoginPage: React.FC = () => {
           Time Tracker
         </Typography>
         <Typography variant="body2" align="center" color="text.secondary" sx={{ mb: 2 }}>
-          Enter your email to log in
+          Create a new account
         </Typography>
         
         {error && (
@@ -82,13 +82,13 @@ const LoginPage: React.FC = () => {
             sx={{ mt: 2, mb: 1 }}
             disabled={isLoading || !email}
           >
-            {isLoading ? <CircularProgress size={24} /> : 'Log In'}
+            {isLoading ? <CircularProgress size={24} /> : 'Register'}
           </Button>
           <Box textAlign="center" sx={{ mt: 1 }}>
             <Typography variant="body2">
-              Don't have an account?{' '}
-              <Link component={RouterLink} to="/register">
-                Register here
+              Already have an account?{' '}
+              <Link component={RouterLink} to="/login">
+                Log in here
               </Link>
             </Typography>
           </Box>
@@ -99,4 +99,4 @@ const LoginPage: React.FC = () => {
   );
 };
 
-export default LoginPage;
+export default RegisterPage;
