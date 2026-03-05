@@ -42,7 +42,7 @@ const AppContent: React.FC = () => {
   return (
     <Router>
       <Routes>
-        <Route path="/login" element={<LoginPage />} />
+        <Route path="/login" element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <LoginPage />} />
         <Route
           path="/*"
           element={

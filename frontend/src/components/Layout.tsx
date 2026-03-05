@@ -24,6 +24,7 @@ import {
   Logout as LogoutIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../hooks/useAuth';
 
 const drawerWidth = 240;
@@ -36,6 +37,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
+  const queryClient = useQueryClient();
   const [mobileOpen, setMobileOpen] = React.useState(false);
 
   const handleDrawerToggle = () => {
@@ -103,7 +105,10 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <Button
               color="inherit"
               startIcon={<LogoutIcon />}
-              onClick={logout}
+              onClick={() => {
+                queryClient.clear();
+                logout();
+              }}
               size="small"
             >
               Logout

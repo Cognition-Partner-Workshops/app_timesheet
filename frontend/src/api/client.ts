@@ -37,7 +37,11 @@ class ApiClient {
         if (error.response?.status === 401) {
           // Clear stored email on auth error
           localStorage.removeItem('userEmail');
-          window.location.href = '/login';
+          // Only hard-redirect if not already on the login page
+          // to avoid interrupting an in-progress login attempt
+          if (window.location.pathname !== '/login') {
+            window.location.href = '/login';
+          }
         }
         return Promise.reject(error);
       }
