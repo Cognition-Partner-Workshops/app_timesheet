@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: timesheet-app-config
+  namespace: timesheet-app
+  labels:
+    app.kubernetes.io/name: timesheet-app
+    app.kubernetes.io/component: config
+data:
+  NODE_ENV: "production"
+  PORT: "3001"
+  DATABASE_PATH: "/app/data/timesheet.db"
