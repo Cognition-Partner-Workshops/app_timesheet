@@ -1,5 +1,6 @@
 export interface User {
   email: string;
+  mobile?: string;
   createdAt: string;
 }
 
@@ -68,6 +69,26 @@ export interface LoginRequest {
 }
 
 export interface LoginResponse {
+  message: string;
+  user: User;
+}
+
+export interface SendOtpRequest {
+  mobile: string;
+}
+
+export interface SendOtpResponse {
+  message: string;
+  mobile: string;
+  otpCode?: string; // Only in dev mode
+}
+
+export interface VerifyOtpRequest {
+  mobile: string;
+  otpCode: string;
+}
+
+export interface VerifyOtpResponse {
   message: string;
   user: User;
 }

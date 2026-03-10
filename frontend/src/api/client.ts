@@ -55,6 +55,16 @@ class ApiClient {
     return response.data;
   }
 
+  async sendOtp(mobile: string) {
+    const response = await this.client.post('/api/auth/send-otp', { mobile });
+    return response.data;
+  }
+
+  async verifyOtp(mobile: string, otpCode: string) {
+    const response = await this.client.post('/api/auth/verify-otp', { mobile, otpCode });
+    return response.data;
+  }
+
   // Client endpoints
   async getClients() {
     const response = await this.client.get('/api/clients');
