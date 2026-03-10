@@ -52,11 +52,13 @@ async function initializeDatabase() {
 
       // Add mobile column to users table (for OTP login)
       database.run(`
-        ALTER TABLE users ADD COLUMN mobile TEXT UNIQUE
+        ALTER TABLE users ADD COLUMN mobile TEXT
       `, [], function(err) {
-        // Ignore error if column already exists
-        if (err && !err.message.includes('duplicate column')) {
-          // Column already exists, that's fine
+        if (err) {
+          // Ignore "duplicate column name" error - column already exists
+          if (!err.message.includes('duplicate column')) {
+            console.error('Error adding mobile column:', err);
+          }
         }
       });
 
