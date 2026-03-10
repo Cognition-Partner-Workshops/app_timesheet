@@ -72,6 +72,26 @@ export interface LoginResponse {
   user: User;
 }
 
+export interface SendOtpRequest {
+  phone: string;
+}
+
+export interface SendOtpResponse {
+  message: string;
+  phone: string;
+  demo_otp?: string;
+}
+
+export interface VerifyOtpRequest {
+  phone: string;
+  otp: string;
+}
+
+export interface VerifyOtpResponse {
+  message: string;
+  user: User;
+}
+
 export interface ApiResponse<T> {
   data?: T;
   error?: string;
