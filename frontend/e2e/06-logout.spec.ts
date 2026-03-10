@@ -1,17 +1,14 @@
 import { test, expect } from '@playwright/test';
+import { loginViaApi } from './helpers';
 
 const TEST_EMAIL = 'e2e-logout-test@timetracker.com';
 
 test.describe('Logout Flow', () => {
   test('should logout successfully and redirect to login page', async ({ page }) => {
-    // Login first
+    // Login via API
     await page.goto('/login');
-    await page.evaluate(() => localStorage.clear());
-    await page.goto('/login');
-    await page.getByLabel('Email Address').fill(TEST_EMAIL);
-    await page.getByRole('button', { name: 'Log In' }).click();
-    await expect(page).toHaveURL(/\/dashboard/, { timeout: 10000 });
-    await expect(page.getByText('Dashboard')).toBeVisible();
+    await loginViaApi(page, TEST_EMAIL);
+    await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
 
     // Click logout
     await page.getByRole('button', { name: 'Logout' }).click();
@@ -22,13 +19,9 @@ test.describe('Logout Flow', () => {
   });
 
   test('should not be able to access dashboard after logout', async ({ page }) => {
-    // Login
+    // Login via API
     await page.goto('/login');
-    await page.evaluate(() => localStorage.clear());
-    await page.goto('/login');
-    await page.getByLabel('Email Address').fill(TEST_EMAIL);
-    await page.getByRole('button', { name: 'Log In' }).click();
-    await expect(page).toHaveURL(/\/dashboard/, { timeout: 10000 });
+    await loginViaApi(page, TEST_EMAIL);
 
     // Logout
     await page.getByRole('button', { name: 'Logout' }).click();
@@ -40,13 +33,9 @@ test.describe('Logout Flow', () => {
   });
 
   test('should be able to login again after logout', async ({ page }) => {
-    // Login
+    // Login via API
     await page.goto('/login');
-    await page.evaluate(() => localStorage.clear());
-    await page.goto('/login');
-    await page.getByLabel('Email Address').fill(TEST_EMAIL);
-    await page.getByRole('button', { name: 'Log In' }).click();
-    await expect(page).toHaveURL(/\/dashboard/, { timeout: 10000 });
+    await loginViaApi(page, TEST_EMAIL);
 
     // Logout
     await page.getByRole('button', { name: 'Logout' }).click();
@@ -56,6 +45,6 @@ test.describe('Logout Flow', () => {
     await page.getByLabel('Email Address').fill(TEST_EMAIL);
     await page.getByRole('button', { name: 'Log In' }).click();
     await expect(page).toHaveURL(/\/dashboard/, { timeout: 10000 });
-    await expect(page.getByText('Dashboard')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
   });
 });

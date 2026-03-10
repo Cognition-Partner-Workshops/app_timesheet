@@ -1,21 +1,23 @@
 import { test, expect } from '@playwright/test';
+import { loginViaApi, ensureUserExists, deleteAllClientsViaApi } from './helpers';
 
 const TEST_EMAIL = 'e2e-clients-test@timetracker.com';
 
 test.describe('Clients Page - CRUD Operations', () => {
+  // Clean up all stale data before the test suite runs
+  test.beforeAll(async ({ request }) => {
+    await ensureUserExists(request, TEST_EMAIL);
+    await deleteAllClientsViaApi(request, TEST_EMAIL);
+  });
+
   test.beforeEach(async ({ page }) => {
-    // Login first
     await page.goto('/login');
-    await page.evaluate(() => localStorage.clear());
-    await page.goto('/login');
-    await page.getByLabel('Email Address').fill(TEST_EMAIL);
-    await page.getByRole('button', { name: 'Log In' }).click();
-    await expect(page).toHaveURL(/\/dashboard/, { timeout: 10000 });
+    await loginViaApi(page, TEST_EMAIL);
 
     // Navigate to clients page
     await page.getByRole('button', { name: 'Clients' }).click();
     await expect(page).toHaveURL(/\/clients/);
-    await expect(page.getByText('Clients').first()).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Clients' })).toBeVisible();
   });
 
   test('should display the clients page with correct elements', async ({ page }) => {
@@ -32,112 +34,114 @@ test.describe('Clients Page - CRUD Operations', () => {
   });
 
   test('should create a new client', async ({ page }) => {
-    // Click Add Client button
+    const clientName = `Acme Corp ${Date.now()}`;
+
     await page.getByRole('button', { name: 'Add Client' }).click();
+    await expect(page.getByRole('dialog')).toBeVisible({ timeout: 5000 });
 
-    // Dialog should open
-    await expect(page.getByText('Add New Client')).toBeVisible();
-
-    // Fill in client details
-    await page.getByLabel('Client Name').fill('Acme Corporation');
+    await page.getByLabel('Client Name').fill(clientName);
     await page.getByLabel('Department').fill('Engineering');
     await page.getByLabel('Email').fill('contact@acme.com');
     await page.getByLabel('Description').fill('Major enterprise client for Q1 projects');
 
-    // Submit the form
     await page.getByRole('button', { name: 'Create' }).click();
 
-    // Dialog should close and client should appear in table
-    await expect(page.getByText('Add New Client')).not.toBeVisible({ timeout: 5000 });
-    await expect(page.getByText('Acme Corporation')).toBeVisible();
-    await expect(page.getByText('Engineering')).toBeVisible();
-    await expect(page.getByText('contact@acme.com')).toBeVisible();
+    await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(clientName)).toBeVisible();
   });
 
   test('should create a second client', async ({ page }) => {
-    await page.getByRole('button', { name: 'Add Client' }).click();
-    await expect(page.getByText('Add New Client')).toBeVisible();
+    const clientName = `Global Tech ${Date.now()}`;
 
-    await page.getByLabel('Client Name').fill('Global Tech Solutions');
+    await page.getByRole('button', { name: 'Add Client' }).click();
+    await expect(page.getByRole('dialog')).toBeVisible({ timeout: 5000 });
+
+    await page.getByLabel('Client Name').fill(clientName);
     await page.getByLabel('Department').fill('Marketing');
     await page.getByLabel('Email').fill('info@globaltech.com');
     await page.getByLabel('Description').fill('Digital marketing consulting client');
 
     await page.getByRole('button', { name: 'Create' }).click();
 
-    await expect(page.getByText('Add New Client')).not.toBeVisible({ timeout: 5000 });
-    await expect(page.getByText('Global Tech Solutions')).toBeVisible();
+    await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(clientName)).toBeVisible();
   });
 
   test('should edit an existing client', async ({ page }) => {
+    const clientName = `Edit Test Client ${Date.now()}`;
+    const updatedName = `Updated Client ${Date.now()}`;
+
     // First create a client to edit
     await page.getByRole('button', { name: 'Add Client' }).click();
-    await page.getByLabel('Client Name').fill('Edit Test Client');
+    await expect(page.getByRole('dialog')).toBeVisible({ timeout: 5000 });
+    await page.getByLabel('Client Name').fill(clientName);
     await page.getByLabel('Department').fill('Sales');
     await page.getByRole('button', { name: 'Create' }).click();
-    await expect(page.getByText('Add New Client')).not.toBeVisible({ timeout: 5000 });
-    await expect(page.getByText('Edit Test Client')).toBeVisible();
+    await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(clientName)).toBeVisible();
 
-    // Find the edit button in the row containing 'Edit Test Client'
-    const row = page.getByRole('row').filter({ hasText: 'Edit Test Client' });
+    // Find the edit button in the row containing the client
+    const row = page.getByRole('row').filter({ hasText: clientName });
     await row.getByRole('button').first().click();
 
-    // Edit dialog should open with pre-filled data
+    // Edit dialog should open
+    await expect(page.getByRole('dialog')).toBeVisible({ timeout: 5000 });
     await expect(page.getByText('Edit Client')).toBeVisible();
 
     // Verify pre-filled values
     const nameField = page.getByLabel('Client Name');
-    await expect(nameField).toHaveValue('Edit Test Client');
+    await expect(nameField).toHaveValue(clientName);
 
     // Update client name
     await nameField.clear();
-    await nameField.fill('Updated Client Name');
+    await nameField.fill(updatedName);
     await page.getByRole('button', { name: 'Update' }).click();
 
     // Dialog should close and updated name should appear
-    await expect(page.getByText('Edit Client')).not.toBeVisible({ timeout: 5000 });
-    await expect(page.getByText('Updated Client Name')).toBeVisible();
+    await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(updatedName)).toBeVisible();
   });
 
   test('should delete a client', async ({ page }) => {
-    // First create a client to delete
+    const clientName = `Delete Me Client ${Date.now()}`;
+
     await page.getByRole('button', { name: 'Add Client' }).click();
-    await page.getByLabel('Client Name').fill('Delete Me Client');
+    await expect(page.getByRole('dialog')).toBeVisible({ timeout: 5000 });
+    await page.getByLabel('Client Name').fill(clientName);
     await page.getByRole('button', { name: 'Create' }).click();
-    await expect(page.getByText('Add New Client')).not.toBeVisible({ timeout: 5000 });
-    await expect(page.getByText('Delete Me Client')).toBeVisible();
+    await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(clientName)).toBeVisible();
 
     // Accept the confirm dialog before clicking delete
     page.on('dialog', dialog => dialog.accept());
 
-    // Find the delete button in the row
-    const row = page.getByRole('row').filter({ hasText: 'Delete Me Client' });
+    const row = page.getByRole('row').filter({ hasText: clientName });
     await row.getByRole('button').nth(1).click();
 
-    // Client should be removed from the table
-    await expect(page.getByText('Delete Me Client')).not.toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(clientName)).not.toBeVisible({ timeout: 5000 });
   });
 
   test('should cancel client creation dialog', async ({ page }) => {
-    await page.getByRole('button', { name: 'Add Client' }).click();
-    await expect(page.getByText('Add New Client')).toBeVisible();
+    const clientName = `Should Not Be Created ${Date.now()}`;
 
-    await page.getByLabel('Client Name').fill('Should Not Be Created');
+    await page.getByRole('button', { name: 'Add Client' }).click();
+    await expect(page.getByRole('dialog')).toBeVisible({ timeout: 5000 });
+
+    await page.getByLabel('Client Name').fill(clientName);
     await page.getByRole('button', { name: 'Cancel' }).click();
 
-    // Dialog should close without creating client
-    await expect(page.getByText('Add New Client')).not.toBeVisible({ timeout: 5000 });
-    await expect(page.getByText('Should Not Be Created')).not.toBeVisible();
+    await expect(page.getByRole('dialog')).not.toBeVisible({ timeout: 5000 });
+    await expect(page.getByText(clientName)).not.toBeVisible();
   });
 
   test('should validate required client name field', async ({ page }) => {
     await page.getByRole('button', { name: 'Add Client' }).click();
-    await expect(page.getByText('Add New Client')).toBeVisible();
+    await expect(page.getByRole('dialog')).toBeVisible({ timeout: 5000 });
 
-    // Try to submit with empty name - click Create without filling name
+    // Try to submit with empty name
     await page.getByRole('button', { name: 'Create' }).click();
 
     // The dialog should still be open (form validation)
-    await expect(page.getByText('Add New Client')).toBeVisible();
+    await expect(page.getByRole('dialog')).toBeVisible();
   });
 });

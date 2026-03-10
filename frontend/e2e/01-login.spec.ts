@@ -35,7 +35,7 @@ test.describe('Login Page', () => {
 
     // Wait for redirect to dashboard
     await expect(page).toHaveURL(/\/dashboard/, { timeout: 10000 });
-    await expect(page.getByText('Dashboard')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
 
     // User email should be displayed in the top bar
     await expect(page.getByText(TEST_EMAIL)).toBeVisible();

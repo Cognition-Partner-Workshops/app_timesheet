@@ -1,20 +1,17 @@
 import { test, expect } from '@playwright/test';
+import { loginViaApi } from './helpers';
 
 const TEST_EMAIL = 'e2e-dashboard-test@timetracker.com';
 
 test.describe('Dashboard Page', () => {
   test.beforeEach(async ({ page }) => {
-    // Login first
+    // Login via API to avoid rate limiting
     await page.goto('/login');
-    await page.evaluate(() => localStorage.clear());
-    await page.goto('/login');
-    await page.getByLabel('Email Address').fill(TEST_EMAIL);
-    await page.getByRole('button', { name: 'Log In' }).click();
-    await expect(page).toHaveURL(/\/dashboard/, { timeout: 10000 });
+    await loginViaApi(page, TEST_EMAIL);
   });
 
   test('should display dashboard with stats cards', async ({ page }) => {
-    await expect(page.getByText('Dashboard')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
 
     // Stats cards
     await expect(page.getByText('Total Clients')).toBeVisible();

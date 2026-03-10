@@ -1,82 +1,56 @@
 import { test, expect } from '@playwright/test';
+import { loginViaApi, ensureUserExists, createClientViaApi, createWorkEntryViaApi } from './helpers';
 
 const TEST_EMAIL = 'e2e-reports-test@timetracker.com';
 
 test.describe('Reports Page', () => {
   test.beforeEach(async ({ page }) => {
-    // Login first
+    // Login via localStorage to avoid rate limiting
     await page.goto('/login');
-    await page.evaluate(() => localStorage.clear());
-    await page.goto('/login');
-    await page.getByLabel('Email Address').fill(TEST_EMAIL);
-    await page.getByRole('button', { name: 'Log In' }).click();
-    await expect(page).toHaveURL(/\/dashboard/, { timeout: 10000 });
+    await loginViaApi(page, TEST_EMAIL);
   });
 
-  test('should show message when no clients exist', async ({ page }) => {
-    await page.getByRole('button', { name: 'Reports' }).click();
+  test('should display reports page with heading and prompt', async ({ page }) => {
+    await page.getByRole('button', { name: 'Reports', exact: true }).click();
     await expect(page).toHaveURL(/\/reports/);
     await expect(page.getByRole('heading', { name: 'Reports' })).toBeVisible();
 
-    // Either "no clients" message or client selector should be visible
-    const noClientsMsg = page.getByText('You need to create at least one client');
-    const clientSelector = page.getByLabel('Select Client');
-    const hasNoClients = await noClientsMsg.isVisible().catch(() => false);
-    const hasSelector = await clientSelector.isVisible().catch(() => false);
-    expect(hasNoClients || hasSelector).toBeTruthy();
+    // Wait for page to fully load, then check for either state
+    await page.waitForTimeout(2000);
+    const pageContent = await page.textContent('body');
+    const hasNoClients = pageContent?.includes('You need to create at least one client') ?? false;
+    const hasSelectPrompt = pageContent?.includes('Select a client to view their time report') ?? false;
+    expect(hasNoClients || hasSelectPrompt).toBeTruthy();
   });
 
-  test('should display reports page with client selector', async ({ page }) => {
-    // Create a client with work entry first
-    await page.getByRole('button', { name: 'Clients' }).click();
-    await page.getByRole('button', { name: 'Add Client' }).click();
-    await page.getByLabel('Client Name').fill('Reports Test Client');
-    await page.getByRole('button', { name: 'Create' }).click();
-    await expect(page.getByText('Add New Client')).not.toBeVisible({ timeout: 5000 });
-
-    // Add a work entry for this client
-    await page.getByRole('button', { name: 'Work Entries' }).click();
-    await page.getByRole('button', { name: 'Add Work Entry' }).click();
-    await page.getByLabel('Client').click();
-    await page.getByRole('option', { name: 'Reports Test Client' }).click();
-    await page.getByLabel('Hours').fill('6');
-    await page.getByLabel('Description').fill('Report testing work entry');
-    await page.getByRole('button', { name: 'Create' }).click();
-    await expect(page.getByText('Add New Work Entry')).not.toBeVisible({ timeout: 5000 });
+  test('should display reports page with client selector', async ({ page, request }) => {
+    // Create test data via API to avoid UI flakiness
+    const email = await ensureUserExists(request, TEST_EMAIL);
+    const clientId = await createClientViaApi(request, email, `Reports Selector Client ${Date.now()}`);
+    await createWorkEntryViaApi(request, email, clientId, 6, 'Report testing work entry');
 
     // Navigate to reports
-    await page.getByRole('button', { name: 'Reports' }).click();
+    await page.getByRole('button', { name: 'Reports', exact: true }).click();
     await expect(page).toHaveURL(/\/reports/);
 
     // Client selector should be available
-    await expect(page.getByLabel('Select Client')).toBeVisible();
-    await expect(page.getByText('Select a client to view their time report')).toBeVisible();
+    await expect(page.getByRole('combobox')).toBeVisible();
+    await expect(page.getByText('Select a client to view their time report.')).toBeVisible();
   });
 
-  test('should generate report when client is selected', async ({ page }) => {
-    // Create a client with work entries
-    await page.getByRole('button', { name: 'Clients' }).click();
-    await page.getByRole('button', { name: 'Add Client' }).click();
-    await page.getByLabel('Client Name').fill('Report Detail Client');
-    await page.getByRole('button', { name: 'Create' }).click();
-    await expect(page.getByText('Add New Client')).not.toBeVisible({ timeout: 5000 });
-
-    // Add work entry
-    await page.getByRole('button', { name: 'Work Entries' }).click();
-    await page.getByRole('button', { name: 'Add Work Entry' }).click();
-    await page.getByLabel('Client').click();
-    await page.getByRole('option', { name: 'Report Detail Client' }).click();
-    await page.getByLabel('Hours').fill('8');
-    await page.getByLabel('Description').fill('Full day of development');
-    await page.getByRole('button', { name: 'Create' }).click();
-    await expect(page.getByText('Add New Work Entry')).not.toBeVisible({ timeout: 5000 });
+  test('should generate report when client is selected', async ({ page, request }) => {
+    // Create test data via API
+    const email = await ensureUserExists(request, TEST_EMAIL);
+    const clientName = `Report Detail Client ${Date.now()}`;
+    const clientId = await createClientViaApi(request, email, clientName);
+    await createWorkEntryViaApi(request, email, clientId, 8, 'Full day of development');
 
     // Navigate to reports and select client
-    await page.getByRole('button', { name: 'Reports' }).click();
+    await page.getByRole('button', { name: 'Reports', exact: true }).click();
 
     // Open client selector dropdown and pick the client
-    await page.getByLabel('Select Client').click();
-    await page.getByRole('option', { name: 'Report Detail Client' }).click();
+    await page.getByRole('combobox').click();
+    await page.getByRole('option', { name: clientName }).click();
 
     // Report should display with stats
     await expect(page.getByText('Total Hours')).toBeVisible({ timeout: 10000 });
@@ -88,26 +62,17 @@ test.describe('Reports Page', () => {
     await expect(page.getByText('Full day of development')).toBeVisible();
   });
 
-  test('should have export buttons for CSV and PDF', async ({ page }) => {
-    // Create client and entry
-    await page.getByRole('button', { name: 'Clients' }).click();
-    await page.getByRole('button', { name: 'Add Client' }).click();
-    await page.getByLabel('Client Name').fill('Export Test Client');
-    await page.getByRole('button', { name: 'Create' }).click();
-    await expect(page.getByText('Add New Client')).not.toBeVisible({ timeout: 5000 });
-
-    await page.getByRole('button', { name: 'Work Entries' }).click();
-    await page.getByRole('button', { name: 'Add Work Entry' }).click();
-    await page.getByLabel('Client').click();
-    await page.getByRole('option', { name: 'Export Test Client' }).click();
-    await page.getByLabel('Hours').fill('3');
-    await page.getByRole('button', { name: 'Create' }).click();
-    await expect(page.getByText('Add New Work Entry')).not.toBeVisible({ timeout: 5000 });
+  test('should have export buttons for CSV and PDF', async ({ page, request }) => {
+    // Create test data via API
+    const email = await ensureUserExists(request, TEST_EMAIL);
+    const clientName = `Export Test Client ${Date.now()}`;
+    const clientId = await createClientViaApi(request, email, clientName);
+    await createWorkEntryViaApi(request, email, clientId, 3, 'Export test entry');
 
     // Navigate to reports and select client
-    await page.getByRole('button', { name: 'Reports' }).click();
-    await page.getByLabel('Select Client').click();
-    await page.getByRole('option', { name: 'Export Test Client' }).click();
+    await page.getByRole('button', { name: 'Reports', exact: true }).click();
+    await page.getByRole('combobox').click();
+    await page.getByRole('option', { name: clientName }).click();
 
     // Wait for report to load
     await expect(page.getByText('Total Hours')).toBeVisible({ timeout: 10000 });
@@ -117,26 +82,17 @@ test.describe('Reports Page', () => {
     await expect(page.getByRole('button', { name: 'Export as PDF' })).toBeVisible();
   });
 
-  test('should trigger CSV export download', async ({ page }) => {
-    // Create client and entry
-    await page.getByRole('button', { name: 'Clients' }).click();
-    await page.getByRole('button', { name: 'Add Client' }).click();
-    await page.getByLabel('Client Name').fill('CSV Export Client');
-    await page.getByRole('button', { name: 'Create' }).click();
-    await expect(page.getByText('Add New Client')).not.toBeVisible({ timeout: 5000 });
-
-    await page.getByRole('button', { name: 'Work Entries' }).click();
-    await page.getByRole('button', { name: 'Add Work Entry' }).click();
-    await page.getByLabel('Client').click();
-    await page.getByRole('option', { name: 'CSV Export Client' }).click();
-    await page.getByLabel('Hours').fill('5');
-    await page.getByRole('button', { name: 'Create' }).click();
-    await expect(page.getByText('Add New Work Entry')).not.toBeVisible({ timeout: 5000 });
+  test('should trigger CSV export download', async ({ page, request }) => {
+    // Create test data via API
+    const email = await ensureUserExists(request, TEST_EMAIL);
+    const clientName = `CSV Export Client ${Date.now()}`;
+    const clientId = await createClientViaApi(request, email, clientName);
+    await createWorkEntryViaApi(request, email, clientId, 5, 'CSV export test entry');
 
     // Navigate to reports and select client
-    await page.getByRole('button', { name: 'Reports' }).click();
-    await page.getByLabel('Select Client').click();
-    await page.getByRole('option', { name: 'CSV Export Client' }).click();
+    await page.getByRole('button', { name: 'Reports', exact: true }).click();
+    await page.getByRole('combobox').click();
+    await page.getByRole('option', { name: clientName }).click();
     await expect(page.getByText('Total Hours')).toBeVisible({ timeout: 10000 });
 
     // Listen for download event
@@ -148,26 +104,17 @@ test.describe('Reports Page', () => {
     expect(download.suggestedFilename()).toContain('.csv');
   });
 
-  test('should trigger PDF export download', async ({ page }) => {
-    // Create client and entry
-    await page.getByRole('button', { name: 'Clients' }).click();
-    await page.getByRole('button', { name: 'Add Client' }).click();
-    await page.getByLabel('Client Name').fill('PDF Export Client');
-    await page.getByRole('button', { name: 'Create' }).click();
-    await expect(page.getByText('Add New Client')).not.toBeVisible({ timeout: 5000 });
-
-    await page.getByRole('button', { name: 'Work Entries' }).click();
-    await page.getByRole('button', { name: 'Add Work Entry' }).click();
-    await page.getByLabel('Client').click();
-    await page.getByRole('option', { name: 'PDF Export Client' }).click();
-    await page.getByLabel('Hours').fill('7');
-    await page.getByRole('button', { name: 'Create' }).click();
-    await expect(page.getByText('Add New Work Entry')).not.toBeVisible({ timeout: 5000 });
+  test('should trigger PDF export download', async ({ page, request }) => {
+    // Create test data via API
+    const email = await ensureUserExists(request, TEST_EMAIL);
+    const clientName = `PDF Export Client ${Date.now()}`;
+    const clientId = await createClientViaApi(request, email, clientName);
+    await createWorkEntryViaApi(request, email, clientId, 7, 'PDF export test entry');
 
     // Navigate to reports and select client
-    await page.getByRole('button', { name: 'Reports' }).click();
-    await page.getByLabel('Select Client').click();
-    await page.getByRole('option', { name: 'PDF Export Client' }).click();
+    await page.getByRole('button', { name: 'Reports', exact: true }).click();
+    await page.getByRole('combobox').click();
+    await page.getByRole('option', { name: clientName }).click();
     await expect(page.getByText('Total Hours')).toBeVisible({ timeout: 10000 });
 
     // Listen for download event

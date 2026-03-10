@@ -22,7 +22,7 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: 'npm run dev',
+      command: 'RATE_LIMIT_MAX=10000 npm run dev',
       cwd: '../backend',
       port: 3001,
       reuseExistingServer: true,
