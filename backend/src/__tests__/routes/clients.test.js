@@ -55,7 +55,7 @@ describe('Client Routes', () => {
       expect(response.body).toEqual({ clients: mockClients });
       expect(mockDb.all).toHaveBeenCalledWith(
         expect.stringContaining('SELECT id, name, description'),
-        ['test@example.com'],
+        [],
         expect.any(Function)
       );
     });
@@ -124,6 +124,21 @@ describe('Client Routes', () => {
 
       expect(response.status).toBe(500);
       expect(response.body).toEqual({ error: 'Internal server error' });
+    });
+
+    test('should not filter by user email', async () => {
+      mockDb.get.mockImplementation((query, params, callback) => {
+        expect(query).not.toContain('user_email');
+        callback(null, { id: 1, name: 'Client A' });
+      });
+
+      await request(app).get('/api/clients/1');
+
+      expect(mockDb.get).toHaveBeenCalledWith(
+        expect.not.stringContaining('user_email'),
+        [1],
+        expect.any(Function)
+      );
     });
   });
 
