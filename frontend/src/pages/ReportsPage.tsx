@@ -101,7 +101,7 @@ const ReportsPage: React.FC = () => {
 
   return (
     <Box>
-      <Typography variant="h4" gutterBottom>
+      <Typography variant="h4" component="h1" gutterBottom>
         Reports
       </Typography>
 
@@ -126,8 +126,9 @@ const ReportsPage: React.FC = () => {
             <Grid container spacing={3} alignItems="center">
               <Grid size={{ xs: 12, md: 6 }}>
                 <FormControl fullWidth>
-                  <InputLabel>Select Client</InputLabel>
+                  <InputLabel id="report-client-select-label">Select Client</InputLabel>
                   <Select
+                    labelId="report-client-select-label"
                     value={selectedClientId}
                     onChange={(e) => setSelectedClientId(Number(e.target.value))}
                     label="Select Client"
@@ -144,24 +145,30 @@ const ReportsPage: React.FC = () => {
               <Grid size={{ xs: 12, md: 6 }}>
                 <Box display="flex" gap={2}>
                   <Tooltip title="Export as CSV">
-                    <IconButton
-                      onClick={handleExportCsv}
-                      disabled={!selectedClientId || reportLoading}
-                      color="primary"
-                      size="large"
-                    >
-                      <CsvIcon />
-                    </IconButton>
+                    <span>
+                      <IconButton
+                        onClick={handleExportCsv}
+                        disabled={!selectedClientId || reportLoading}
+                        color="primary"
+                        size="large"
+                        aria-label="Export report as CSV"
+                      >
+                        <CsvIcon />
+                      </IconButton>
+                    </span>
                   </Tooltip>
                   <Tooltip title="Export as PDF">
-                    <IconButton
-                      onClick={handleExportPdf}
-                      disabled={!selectedClientId || reportLoading}
-                      color="error"
-                      size="large"
-                    >
-                      <PdfIcon />
-                    </IconButton>
+                    <span>
+                      <IconButton
+                        onClick={handleExportPdf}
+                        disabled={!selectedClientId || reportLoading}
+                        color="error"
+                        size="large"
+                        aria-label="Export report as PDF"
+                      >
+                        <PdfIcon />
+                      </IconButton>
+                    </span>
                   </Tooltip>
                 </Box>
               </Grid>
