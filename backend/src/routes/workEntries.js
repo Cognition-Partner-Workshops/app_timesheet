@@ -1,3 +1,13 @@
+/**
+ * @module routes/workEntries
+ * @description Work-entry management route handlers.
+ *
+ * Mounted at `/api/work-entries`. All routes require the `x-user-email`
+ * header (enforced by {@link module:middleware/auth~authenticateUser} at
+ * router level). Work entries are scoped to the authenticated user and
+ * linked to a client that the user owns.
+ */
+
 const express = require('express');
 const { getDatabase } = require('../database/init');
 const { authenticateUser } = require('../middleware/auth');
@@ -8,7 +18,28 @@ const router = express.Router();
 // All routes require authentication
 router.use(authenticateUser);
 
-// Get all work entries for authenticated user (with optional client filter)
+/**
+ * GET /api/work-entries?clientId=<id>
+ *
+ * Returns all work entries for the authenticated user. Results include the
+ * associated client name and are ordered by date descending.
+ *
+ * Query params (optional):
+ *  - `clientId` (integer) — filter entries to a specific client.
+ *
+ * Success response (200):
+ * ```json
+ * {
+ *   "workEntries": [
+ *     { "id": 1, "client_id": 2, "hours": 3.5, "description": "...",
+ *       "date": "2024-01-15", "client_name": "Acme Corp", ... }
+ *   ]
+ * }
+ * ```
+ *
+ * Error responses:
+ *  - `400` — invalid (non-numeric) `clientId` query param.
+ */
 router.get('/', (req, res) => {
   const { clientId } = req.query;
   const db = getDatabase();
@@ -44,7 +75,24 @@ router.get('/', (req, res) => {
   });
 });
 
-// Get specific work entry
+/**
+ * GET /api/work-entries/:id
+ *
+ * Returns a single work entry by ID. The entry must belong to the
+ * authenticated user.
+ *
+ * Path params:
+ *  - `id` (integer) — work entry ID.
+ *
+ * Success response (200):
+ * ```json
+ * { "workEntry": { "id": 1, "client_id": 2, "hours": 3.5, ... } }
+ * ```
+ *
+ * Error responses:
+ *  - `400` — invalid (non-numeric) ID.
+ *  - `404` — work entry not found or not owned by the user.
+ */
 router.get('/:id', (req, res) => {
   const workEntryId = parseInt(req.params.id);
   
@@ -76,7 +124,25 @@ router.get('/:id', (req, res) => {
   );
 });
 
-// Create new work entry
+/**
+ * POST /api/work-entries
+ *
+ * Creates a new work entry for the authenticated user. The referenced
+ * client must exist and belong to the user.
+ *
+ * Request body — validated by {@link module:validation/schemas~workEntrySchema}:
+ * ```json
+ * { "clientId": 2, "hours": 3.5, "description": "API integration", "date": "2024-01-15" }
+ * ```
+ *
+ * Success response (201):
+ * ```json
+ * { "message": "Work entry created successfully", "workEntry": { ... } }
+ * ```
+ *
+ * Error responses:
+ *  - `400` — validation error or client not found / not owned by user.
+ */
 router.post('/', (req, res, next) => {
   try {
     const { error, value } = workEntrySchema.validate(req.body);
@@ -140,7 +206,31 @@ router.post('/', (req, res, next) => {
   }
 });
 
-// Update work entry
+/**
+ * PUT /api/work-entries/:id
+ *
+ * Partially updates a work entry. Only the supplied fields are changed;
+ * omitted fields remain as-is. If `clientId` is changed, the new client
+ * must also belong to the user. The `updated_at` timestamp is refreshed
+ * automatically.
+ *
+ * Path params:
+ *  - `id` (integer) — work entry ID.
+ *
+ * Request body — validated by {@link module:validation/schemas~updateWorkEntrySchema}:
+ * ```json
+ * { "hours": 4.0 }
+ * ```
+ *
+ * Success response (200):
+ * ```json
+ * { "message": "Work entry updated successfully", "workEntry": { ... } }
+ * ```
+ *
+ * Error responses:
+ *  - `400` — invalid ID, validation error, or target client not owned by user.
+ *  - `404` — work entry not found or not owned by the user.
+ */
 router.put('/:id', (req, res, next) => {
   try {
     const workEntryId = parseInt(req.params.id);
@@ -257,7 +347,24 @@ router.put('/:id', (req, res, next) => {
   }
 });
 
-// Delete work entry
+/**
+ * DELETE /api/work-entries/:id
+ *
+ * Deletes a single work entry. The entry must belong to the authenticated
+ * user.
+ *
+ * Path params:
+ *  - `id` (integer) — work entry ID.
+ *
+ * Success response (200):
+ * ```json
+ * { "message": "Work entry deleted successfully" }
+ * ```
+ *
+ * Error responses:
+ *  - `400` — invalid (non-numeric) ID.
+ *  - `404` — work entry not found or not owned by the user.
+ */
 router.delete('/:id', (req, res) => {
   const workEntryId = parseInt(req.params.id);
   

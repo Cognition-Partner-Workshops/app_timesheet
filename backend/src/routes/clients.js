@@ -1,3 +1,13 @@
+/**
+ * @module routes/clients
+ * @description Client management route handlers.
+ *
+ * Mounted at `/api/clients`. All routes require the `x-user-email` header
+ * (enforced by the {@link module:middleware/auth~authenticateUser} middleware
+ * applied at router level). Clients are scoped to the authenticated user —
+ * users can only see and modify their own clients.
+ */
+
 const express = require('express');
 const { getDatabase } = require('../database/init');
 const { authenticateUser } = require('../middleware/auth');
@@ -8,7 +18,22 @@ const router = express.Router();
 // All routes require authentication
 router.use(authenticateUser);
 
-// Get all clients for authenticated user
+/**
+ * GET /api/clients
+ *
+ * Returns every client belonging to the authenticated user, ordered
+ * alphabetically by name.
+ *
+ * Success response (200):
+ * ```json
+ * {
+ *   "clients": [
+ *     { "id": 1, "name": "Acme Corp", "description": "...", "department": "...",
+ *       "email": "contact@acme.com", "created_at": "...", "updated_at": "..." }
+ *   ]
+ * }
+ * ```
+ */
 router.get('/', (req, res) => {
   const db = getDatabase();
   
@@ -26,7 +51,24 @@ router.get('/', (req, res) => {
   );
 });
 
-// Get specific client
+/**
+ * GET /api/clients/:id
+ *
+ * Returns a single client by ID. The client must belong to the
+ * authenticated user.
+ *
+ * Path params:
+ *  - `id` (integer) — client ID.
+ *
+ * Success response (200):
+ * ```json
+ * { "client": { "id": 1, "name": "Acme Corp", ... } }
+ * ```
+ *
+ * Error responses:
+ *  - `400` — invalid (non-numeric) ID.
+ *  - `404` — client not found or not owned by the user.
+ */
 router.get('/:id', (req, res) => {
   const clientId = parseInt(req.params.id);
   
@@ -54,7 +96,24 @@ router.get('/:id', (req, res) => {
   );
 });
 
-// Create new client
+/**
+ * POST /api/clients
+ *
+ * Creates a new client for the authenticated user.
+ *
+ * Request body — validated by {@link module:validation/schemas~clientSchema}:
+ * ```json
+ * { "name": "Acme Corp", "description": "Consulting", "department": "IT", "email": "a@acme.com" }
+ * ```
+ *
+ * Success response (201):
+ * ```json
+ * { "message": "Client created successfully", "client": { ... } }
+ * ```
+ *
+ * Error responses:
+ *  - `400` — validation error.
+ */
 router.post('/', (req, res, next) => {
   try {
     const { error, value } = clientSchema.validate(req.body);
@@ -97,7 +156,30 @@ router.post('/', (req, res, next) => {
   }
 });
 
-// Update client
+/**
+ * PUT /api/clients/:id
+ *
+ * Partially updates a client. Only the supplied fields are changed;
+ * omitted fields remain as-is. The `updated_at` timestamp is refreshed
+ * automatically.
+ *
+ * Path params:
+ *  - `id` (integer) — client ID.
+ *
+ * Request body — validated by {@link module:validation/schemas~updateClientSchema}:
+ * ```json
+ * { "name": "Acme Corp Updated" }
+ * ```
+ *
+ * Success response (200):
+ * ```json
+ * { "message": "Client updated successfully", "client": { ... } }
+ * ```
+ *
+ * Error responses:
+ *  - `400` — invalid ID or validation error.
+ *  - `404` — client not found or not owned by the user.
+ */
 router.put('/:id', (req, res, next) => {
   try {
     const clientId = parseInt(req.params.id);
@@ -186,7 +268,18 @@ router.put('/:id', (req, res, next) => {
   }
 });
 
-// Delete all clients for authenticated user
+/**
+ * DELETE /api/clients
+ *
+ * Deletes **all** clients belonging to the authenticated user.
+ * Associated work entries are removed via the CASCADE foreign-key
+ * constraint.
+ *
+ * Success response (200):
+ * ```json
+ * { "message": "All clients deleted successfully", "deletedCount": 3 }
+ * ```
+ */
 router.delete('/', (req, res) => {
   const db = getDatabase();
   
@@ -207,7 +300,24 @@ router.delete('/', (req, res) => {
   );
 });
 
-// Delete client
+/**
+ * DELETE /api/clients/:id
+ *
+ * Deletes a single client. Associated work entries are removed via the
+ * CASCADE foreign-key constraint.
+ *
+ * Path params:
+ *  - `id` (integer) — client ID.
+ *
+ * Success response (200):
+ * ```json
+ * { "message": "Client deleted successfully" }
+ * ```
+ *
+ * Error responses:
+ *  - `400` — invalid (non-numeric) ID.
+ *  - `404` — client not found or not owned by the user.
+ */
 router.delete('/:id', (req, res) => {
   const clientId = parseInt(req.params.id);
   
