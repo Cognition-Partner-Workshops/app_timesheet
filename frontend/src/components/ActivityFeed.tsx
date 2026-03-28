@@ -14,6 +14,7 @@ import {
   AccessTime as AccessTimeIcon,
 } from '@mui/icons-material';
 import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 
 export interface ActivityItem {
   id: number;
@@ -68,7 +69,7 @@ export function calculateTrend(items: ActivityItem[]): { direction: 'up' | 'down
 }
 
 export function renderMarkdownDescription(description: string): string {
-  return marked.parse(description) as string;
+  return DOMPurify.sanitize(marked.parse(description) as string);
 }
 
 function getTypeColor(type: ActivityItem['type']): 'success' | 'warning' | 'error' {

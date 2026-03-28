@@ -131,6 +131,11 @@ describe('ActivityFeed', () => {
       const html = renderMarkdownDescription('[link](http://example.com)');
       expect(html).toContain('href="http://example.com"');
     });
+
+    it('sanitizes script tags from markdown output', () => {
+      const html = renderMarkdownDescription('<script>alert("xss")</script>');
+      expect(html).not.toContain('<script>');
+    });
   });
 
   // ─── ActivityFeed component ──────────────────────────────────
