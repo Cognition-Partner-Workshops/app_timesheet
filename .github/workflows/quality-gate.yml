@@ -62,7 +62,7 @@ jobs:
           fi
 
       - name: Comment findings on PR
-        if: failure() && steps.coverage.outputs.coverage_failed == 'true'
+        if: steps.coverage.outcome == 'failure' && steps.coverage.outputs.coverage_failed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -115,3 +115,9 @@ jobs:
               echo "All coverage thresholds met."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail if coverage below threshold
+        if: steps.coverage.outputs.coverage_failed == 'true'
+        run: |
+          echo "Failing job: test coverage is below the required 80% threshold."
+          exit 1

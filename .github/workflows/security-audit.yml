@@ -65,7 +65,7 @@ jobs:
           fi
 
       - name: Comment findings on PR
-        if: failure() && steps.audit.outputs.has_vulnerabilities == 'true'
+        if: steps.audit.outcome == 'failure' && steps.audit.outputs.has_vulnerabilities == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -104,3 +104,9 @@ jobs:
               echo "No high/critical vulnerabilities found."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Fail if vulnerabilities found
+        if: steps.audit.outputs.has_vulnerabilities == 'true'
+        run: |
+          echo "Failing job: ${{ steps.audit.outputs.total_severe }} high/critical vulnerabilities found."
+          exit 1
