@@ -61,86 +61,38 @@ jobs:
             echo "All coverage thresholds met."
           fi
 
-      - name: Trigger Devin to fix coverage
+      - name: Comment findings on PR
         if: failure() && steps.coverage.outputs.coverage_failed == 'true'
         env:
-          DEVIN_API_KEY: ${{ secrets.DEVIN_API_KEY }}
-          DEVIN_ORG_ID: ${{ secrets.DEVIN_ORG_ID }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
-          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           COVERAGE_FAILURES=$(cat /tmp/coverage-failures.txt)
           COVERAGE_TABLE=$(cat /tmp/coverage-table.txt)
 
-          PROMPT=$(cat <<'PROMPT_BOUNDARY'
-          You are a software engineer. The unit test coverage check has failed for PR #PR_NUMBER_PLACEHOLDER in repository REPO_PLACEHOLDER on branch 'BRANCH_PLACEHOLDER'.
+          COMMENT=$(cat <<EOF
+          ## Quality Gate Failed – Test Coverage
 
-          Coverage failures:
-          COVERAGE_FAILURES_PLACEHOLDER
+          Unit test coverage is below the required **80% threshold** for \`frontend/src/components/\`.
 
-          Coverage report:
-          COVERAGE_TABLE_PLACEHOLDER
+          ### Coverage Failures
 
-          The coverage thresholds are configured in frontend/vite.config.ts under test.coverage.thresholds (80% for branches, functions, lines, and statements). Coverage is scoped to src/components/**/*.{ts,tsx}.
+          \`\`\`
+          ${COVERAGE_FAILURES}
+          \`\`\`
 
-          Instructions:
-          1. Clone the repository REPO_PLACEHOLDER and checkout branch 'BRANCH_PLACEHOLDER'.
-          2. Review the coverage report to identify which files and lines are uncovered.
-          3. Write meaningful unit tests in frontend/src/components/__tests__/ to bring coverage above the 80% threshold.
-          4. Use vitest with @testing-library/react for component tests. The test setup is in frontend/src/test/setup.ts.
-          5. Run `cd frontend && npm run test:coverage` to verify coverage meets thresholds.
-          6. Ensure all tests pass and the coverage gate is green.
-          7. IMPORTANT: Do NOT modify the source components to reduce complexity. Only add tests.
-          8. IMPORTANT: Do NOT change the coverage thresholds in vite.config.ts.
-          9. Commit with message: "test: add unit tests to meet coverage thresholds"
-          10. Push to branch 'BRANCH_PLACEHOLDER'.
+          ### Coverage Report
 
-          Constraints:
-          - Only add or modify test files. Do not change any source code.
-          - Tests must be meaningful — not just snapshot tests or empty assertions.
-          - Verify that the original UI feature (ActivityFeed component on the Dashboard) still renders correctly after your changes by including a render test for it.
-          PROMPT_BOUNDARY
+          \`\`\`
+          ${COVERAGE_TABLE}
+          \`\`\`
+
+          ### Recommended Fix
+
+          Add unit tests in \`frontend/src/components/__tests__/\` to bring coverage above 80% for branches, functions, lines, and statements. Use vitest with \`@testing-library/react\`. Do not modify source components or lower the thresholds in \`vite.config.ts\`.
+          EOF
           )
 
-          PROMPT="${PROMPT//PR_NUMBER_PLACEHOLDER/$PR_NUMBER}"
-          PROMPT="${PROMPT//REPO_PLACEHOLDER/$REPO}"
-          PROMPT="${PROMPT//BRANCH_PLACEHOLDER/$PR_BRANCH}"
-          PROMPT="${PROMPT//COVERAGE_FAILURES_PLACEHOLDER/$COVERAGE_FAILURES}"
-          PROMPT="${PROMPT//COVERAGE_TABLE_PLACEHOLDER/$COVERAGE_TABLE}"
-
-          ESCAPED_PROMPT=$(echo "$PROMPT" | jq -Rs .)
-
-          REQUEST_BODY=$(jq -n \
-            --argjson prompt "$ESCAPED_PROMPT" \
-            --arg title "Fix test coverage on PR #${PR_NUMBER}" \
-            --arg repo "$REPO" \
-            '{
-              prompt: $prompt,
-              title: $title,
-              repos: [$repo],
-              tags: ["coverage-fix", "automated", "quality-gate"]
-            }')
-
-          HTTP_RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -X POST \
-            -H "Authorization: Bearer ${DEVIN_API_KEY}" \
-            -H "Content-Type: application/json" \
-            -d "$REQUEST_BODY" \
-            "https://api.devin.ai/v3/organizations/${DEVIN_ORG_ID}/sessions")
-
-          HTTP_BODY=$(echo "$HTTP_RESPONSE" | sed '/^HTTP_STATUS:/d')
-          HTTP_CODE=$(echo "$HTTP_RESPONSE" | grep '^HTTP_STATUS:' | cut -d: -f2)
-
-          if [ "$HTTP_CODE" -eq 200 ]; then
-            SESSION_URL=$(echo "$HTTP_BODY" | jq -r '.url')
-            SESSION_ID=$(echo "$HTTP_BODY" | jq -r '.session_id')
-            echo "Devin session created: ${SESSION_URL}"
-            echo "Session ID: ${SESSION_ID}"
-          else
-            echo "::error::Failed to create Devin session (HTTP ${HTTP_CODE})"
-            echo "$HTTP_BODY"
-            exit 1
-          fi
+          gh pr comment ${{ github.event.pull_request.number }} --body "$COMMENT"
 
       - name: Summary
         if: always()
@@ -149,7 +101,7 @@ jobs:
             echo "## Quality Gate – Test Coverage"
             echo ""
             if [ "${{ steps.coverage.outputs.coverage_failed }}" = "true" ]; then
-              echo "**Coverage thresholds not met.** A Devin session has been triggered to add tests."
+              echo "**Coverage thresholds not met.**"
               echo ""
               echo '```'
               cat /tmp/coverage-failures.txt 2>/dev/null || echo "Details unavailable"
