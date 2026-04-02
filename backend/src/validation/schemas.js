@@ -32,10 +32,16 @@ const emailSchema = Joi.object({
   email: Joi.string().email().required()
 });
 
+const otpVerifySchema = Joi.object({
+  email: Joi.string().email().required(),
+  otp: Joi.string().length(6).pattern(/^\d+$/).required()
+});
+
 module.exports = {
   clientSchema,
   workEntrySchema,
   updateWorkEntrySchema,
   updateClientSchema,
-  emailSchema
+  emailSchema,
+  otpVerifySchema
 };

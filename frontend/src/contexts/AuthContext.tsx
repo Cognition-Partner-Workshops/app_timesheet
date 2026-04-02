@@ -41,6 +41,27 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  const requestOtp = async (email: string) => {
+    try {
+      const response = await apiClient.requestOtp(email);
+      return response;
+    } catch (error) {
+      console.error('OTP request failed:', error);
+      throw error;
+    }
+  };
+
+  const verifyOtp = async (email: string, otp: string) => {
+    try {
+      const response = await apiClient.verifyOtp(email, otp);
+      setUser(response.user);
+      localStorage.setItem('userEmail', email);
+    } catch (error) {
+      console.error('OTP verification failed:', error);
+      throw error;
+    }
+  };
+
   const logout = () => {
     setUser(null);
     localStorage.removeItem('userEmail');
@@ -49,6 +70,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const value: AuthContextType = {
     user,
     login,
+    requestOtp,
+    verifyOtp,
     logout,
     isLoading,
     isAuthenticated: !!user,

@@ -25,6 +25,7 @@ import {
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import MrCooperLogo from './MrCooperLogo';
 
 const drawerWidth = 240;
 
@@ -51,10 +52,8 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   const drawer = (
     <div>
-      <Toolbar>
-        <Typography variant="h6" noWrap component="div">
-          Time Tracker
-        </Typography>
+      <Toolbar sx={{ justifyContent: 'center', py: 1 }}>
+        <MrCooperLogo width={130} height={53} />
       </Toolbar>
       <List>
         {menuItems.map((item) => (

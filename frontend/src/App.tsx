@@ -15,10 +15,13 @@ import ReportsPage from './pages/ReportsPage';
 const theme = createTheme({
   palette: {
     primary: {
-      main: '#1976d2',
+      main: '#009FC7',
     },
     secondary: {
-      main: '#dc004e',
+      main: '#DE3341',
+    },
+    text: {
+      primary: '#111111',
     },
   },
 });
