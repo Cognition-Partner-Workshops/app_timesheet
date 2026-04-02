@@ -9,8 +9,8 @@ initialize: |
 
 # Install project dependencies (runs every session)
 maintenance: |
-  cd backend && npm install
-  cd frontend && npm install
+  (cd backend && npm install)
+  (cd frontend && npm install)
 
 knowledge:
   - name: project-overview
