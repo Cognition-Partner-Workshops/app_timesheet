@@ -1,0 +1,44 @@
+# https://docs.devin.ai/onboard-devin/environment-yaml
+# Commands run from the repo root.
+
+# One-time setup: create .env files from examples
+initialize: |
+  cp backend/.env.example backend/.env
+  sed -i 's|FRONTEND_URL=http://localhost:3000|FRONTEND_URL=http://localhost:5173|' backend/.env
+  cp frontend/.env.example frontend/.env
+
+# Install project dependencies (runs every session)
+maintenance: |
+  (cd backend && npm install)
+  (cd frontend && npm install)
+
+knowledge:
+  - name: project-overview
+    contents: |
+      Full-stack employee time tracking app: React/TypeScript frontend (Vite, MUI) + Node.js/Express backend (SQLite in-memory, JWT auth).
+      Backend runs on port 3001, frontend on port 5173.
+
+  - name: test
+    contents: |
+      Backend tests (Jest, 161 tests):
+        cd backend && npm test
+        cd backend && npm run test:coverage
+      No frontend tests configured.
+
+  - name: lint
+    contents: |
+      Frontend lint:
+        cd frontend && npm run lint
+
+  - name: build
+    contents: |
+      Frontend build (TypeScript + Vite):
+        cd frontend && npm run build
+
+  - name: run-app
+    contents: |
+      Start backend: cd backend && npm run dev
+      Start frontend: cd frontend && npm run dev
+      Backend: http://localhost:3001
+      Frontend: http://localhost:5173
+      Login with any email (no password required).
