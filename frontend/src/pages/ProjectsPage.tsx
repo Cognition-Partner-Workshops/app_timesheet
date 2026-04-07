@@ -177,7 +177,7 @@ const ProjectsPage: React.FC = () => {
       name: formData.name,
       description: formData.description || undefined,
       clientId: formData.clientId,
-      startDate: formData.startDate.toISOString().split('T')[0],
+      startDate: `${formData.startDate.getFullYear()}-${String(formData.startDate.getMonth() + 1).padStart(2, '0')}-${String(formData.startDate.getDate()).padStart(2, '0')}`,
       status: formData.status,
     };
 
@@ -377,6 +377,7 @@ const ProjectsPage: React.FC = () => {
               <FormControl fullWidth margin="dense" required>
                 <InputLabel>Client</InputLabel>
                 <Select
+                  label="Client"
                   value={formData.clientId}
                   onChange={(e) => setFormData({ ...formData, clientId: Number(e.target.value) })}
                   disabled={createMutation.isPending || updateMutation.isPending}
@@ -406,6 +407,7 @@ const ProjectsPage: React.FC = () => {
               <FormControl fullWidth margin="dense" required>
                 <InputLabel>Status</InputLabel>
                 <Select
+                  label="Status"
                   value={formData.status}
                   onChange={(e) => setFormData({ ...formData, status: e.target.value })}
                   disabled={createMutation.isPending || updateMutation.isPending}
