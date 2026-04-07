@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Music } from 'lucide-react';
-import { login } from '../api';
+import { register } from '../api';
 import { useAuthStore } from '../store/authStore';
 
-const LoginPage: React.FC = () => {
+const RegisterPage: React.FC = () => {
   const navigate = useNavigate();
   const { setAuth } = useAuthStore();
   const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -17,12 +18,12 @@ const LoginPage: React.FC = () => {
     setError('');
     setLoading(true);
     try {
-      const res = await login(email, password);
+      const res = await register(email, password, username);
       setAuth(res.data.user, res.data.token);
       navigate('/');
     } catch (err: unknown) {
       const error = err as { response?: { data?: { error?: string } } };
-      setError(error.response?.data?.error || 'Login failed');
+      setError(error.response?.data?.error || 'Registration failed');
     } finally {
       setLoading(false);
     }
@@ -38,7 +39,7 @@ const LoginPage: React.FC = () => {
             </div>
           </div>
           <h1 className="text-2xl font-bold text-[#1d1d1f] mb-1">Apple Music</h1>
-          <p className="text-[#86868b]">Log in to continue</p>
+          <p className="text-[#86868b]">Create your account</p>
         </div>
 
         <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-8 space-y-6 shadow-sm border border-[#e8e8ed]">
@@ -47,6 +48,18 @@ const LoginPage: React.FC = () => {
               {error}
             </div>
           )}
+
+          <div>
+            <label className="block text-sm font-medium text-[#1d1d1f] mb-2">Username</label>
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="Your username"
+              className="w-full bg-[#f5f5f7] text-[#1d1d1f] px-4 py-3 rounded-xl outline-none border border-[#d2d2d7] focus:border-[#fc3c44] focus:ring-2 focus:ring-[#fc3c44]/20 placeholder-[#86868b]"
+              required
+            />
+          </div>
 
           <div>
             <label className="block text-sm font-medium text-[#1d1d1f] mb-2">Email</label>
@@ -66,9 +79,10 @@ const LoginPage: React.FC = () => {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Password"
+              placeholder="Create a password"
               className="w-full bg-[#f5f5f7] text-[#1d1d1f] px-4 py-3 rounded-xl outline-none border border-[#d2d2d7] focus:border-[#fc3c44] focus:ring-2 focus:ring-[#fc3c44]/20 placeholder-[#86868b]"
               required
+              minLength={6}
             />
           </div>
 
@@ -77,23 +91,19 @@ const LoginPage: React.FC = () => {
             disabled={loading}
             className="w-full bg-[#fc3c44] text-white font-semibold py-3 rounded-full hover:bg-[#e8384f] transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
           >
-            {loading ? 'Logging in...' : 'Log In'}
+            {loading ? 'Creating account...' : 'Sign Up'}
           </button>
 
           <div className="text-center">
-            <span className="text-[#86868b] text-sm">Don&apos;t have an account? </span>
-            <Link to="/register" className="text-[#fc3c44] text-sm font-semibold hover:underline">
-              Sign up
+            <span className="text-[#86868b] text-sm">Already have an account? </span>
+            <Link to="/login" className="text-[#fc3c44] text-sm font-semibold hover:underline">
+              Log in
             </Link>
           </div>
         </form>
-
-        <div className="mt-6 text-center text-xs text-[#86868b]">
-          <p>Demo: demo@musicplayer.com / demo123</p>
-        </div>
       </div>
     </div>
   );
 };
 
-export default LoginPage;
+export default RegisterPage;
