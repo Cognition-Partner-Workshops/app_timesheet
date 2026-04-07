@@ -11,8 +11,9 @@ from flask import Flask, render_template, request, jsonify, send_from_directory
 from flask_socketio import SocketIO, emit
 
 from recognition import SpeechRecognizer
-from translation import Translator
+from translation import TranslationManager
 from tts_module import TTSEngine
+from speaker_diarization import SpeakerDiarizer
 
 # Configure logging
 logging.basicConfig(
@@ -37,8 +38,11 @@ socketio = SocketIO(
 logger.info("Initializing speech recognizer...")
 recognizer = SpeechRecognizer(model_size="base", device="cpu", compute_type="int8")
 
-logger.info("Initializing translator...")
-translator = Translator(max_workers=4)
+logger.info("Initializing translation manager...")
+translator = TranslationManager(max_workers=4)
+
+logger.info("Initializing speaker diarizer...")
+diarizer = SpeakerDiarizer(similarity_threshold=0.82)
 
 logger.info("Initializing TTS engine...")
 tts_engine = TTSEngine(
@@ -60,19 +64,29 @@ def index():
 
 @app.route("/api/languages")
 def get_languages():
-    """Get supported languages."""
+    """Get supported languages and translation engines."""
     return jsonify(
         {
             "recognition": [
-                {"code": "auto", "label": "自动检测 / Auto Detect"},
+                {"code": "auto", "label": "自动検出 / Auto Detect"},
                 {"code": "ja", "label": "日本語"},
                 {"code": "en", "label": "English"},
                 {"code": "zh", "label": "中文"},
             ],
             "translation": translator.get_supported_languages(),
             "tts_voices": tts_engine.get_voice_options(),
+            "translation_engines": translator.get_available_engines(),
         }
     )
+
+
+@app.route("/api/init-ai-translator", methods=["POST"])
+def init_ai_translator():
+    """Initialize the AI translator (lazy loading)."""
+    translator.init_ai_translator(max_workers=2)
+    return jsonify({
+        "engines": translator.get_available_engines(),
+    })
 
 
 @app.route("/api/model-info")
@@ -115,7 +129,9 @@ def handle_audio_data(data):
         "language": "auto",      # Recognition language
         "target_lang": "zh",     # Translation target language
         "enable_tts": true,      # Whether to generate TTS
-        "tts_voice": null        # Custom TTS voice (optional)
+        "tts_voice": null,       # Custom TTS voice (optional)
+        "translation_mode": "google",  # Translation engine
+        "enable_diarization": true     # Speaker diarization toggle
     }
     """
     try:
@@ -124,12 +140,19 @@ def handle_audio_data(data):
         target_lang = data.get("target_lang", "zh")
         enable_tts = data.get("enable_tts", True)
         tts_voice = data.get("tts_voice")
+        translation_mode = data.get("translation_mode", "google")
+        enable_diarization = data.get("enable_diarization", True)
 
         if not audio_bytes:
             return
 
         # Capture sid while still in request context
         sid = request.sid
+
+        # Speaker diarization
+        speaker_info = None
+        if enable_diarization:
+            speaker_info = diarizer.identify_speaker(audio_bytes)
 
         # Step 1: Speech Recognition
         lang_param = None if language == "auto" else language
@@ -138,23 +161,27 @@ def handle_audio_data(data):
         if not result["text"]:
             return
 
+        # Build recognition result with speaker info
+        rec_data = {
+            "text": result["text"],
+            "language": result["language"],
+            "language_name": result.get("language_name", ""),
+            "confidence": result.get("language_probability", 0),
+            "segments": result.get("segments", []),
+        }
+        if speaker_info:
+            rec_data["speaker"] = speaker_info
+
         # Emit recognition result immediately
-        emit(
-            "recognition_result",
-            {
-                "text": result["text"],
-                "language": result["language"],
-                "language_name": result.get("language_name", ""),
-                "confidence": result.get("language_probability", 0),
-                "segments": result.get("segments", []),
-            },
-        )
+        emit("recognition_result", rec_data)
 
         # Step 2: Translation (async, does not block recognition)
         detected_lang = result["language"]
 
         def on_translation_done(trans_result):
             """Callback when translation is complete."""
+            if speaker_info:
+                trans_result["speaker"] = speaker_info
             socketio.emit(
                 "translation_result",
                 trans_result,
@@ -187,6 +214,7 @@ def handle_audio_data(data):
             result["text"],
             source_lang=detected_lang,
             target_lang=target_lang,
+            mode=translation_mode,
             callback=on_translation_done,
         )
 
@@ -244,6 +272,13 @@ def handle_tts_request(data):
     except Exception as e:
         logger.error("Error processing TTS request: %s", e)
         emit("error", {"message": str(e)})
+
+
+@socketio.on("reset_speakers")
+def handle_reset_speakers():
+    """Reset speaker diarization profiles."""
+    diarizer.reset()
+    emit("status", {"message": "说话人已重置 / Speakers reset", "type": "info"})
 
 
 @socketio.on("cleanup")

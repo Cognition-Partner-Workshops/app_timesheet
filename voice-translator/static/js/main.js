@@ -18,6 +18,7 @@
         ttsQueue: [],
         isPlayingTTS: false,
         resultCounter: 0,
+        translationMode: "google",
     };
 
     // ==================== DOM Elements ====================
@@ -28,14 +29,17 @@
         recognitionLang: document.getElementById("recognitionLang"),
         targetLang: document.getElementById("targetLang"),
         enableTTS: document.getElementById("enableTTS"),
+        enableDiarization: document.getElementById("enableDiarization"),
         ttsVoice: document.getElementById("ttsVoice"),
         recognitionResults: document.getElementById("recognitionResults"),
         translationResults: document.getElementById("translationResults"),
         detectedLang: document.getElementById("detectedLang"),
         clearBtn: document.getElementById("clearBtn"),
+        resetSpeakersBtn: document.getElementById("resetSpeakersBtn"),
         ttsPlayer: document.getElementById("ttsPlayer"),
         audioVisualizer: document.getElementById("audioVisualizer"),
         visualizerCanvas: document.getElementById("visualizerCanvas"),
+        translationEngine: document.getElementById("translationEngine"),
     };
 
     // ==================== Socket.IO Connection ====================
@@ -249,6 +253,8 @@
             target_lang: elements.targetLang.value,
             enable_tts: elements.enableTTS.checked,
             tts_voice: elements.ttsVoice.value || null,
+            translation_mode: state.translationMode,
+            enable_diarization: elements.enableDiarization.checked,
         });
     }
 
@@ -328,11 +334,32 @@
         item.id = id;
         item.setAttribute("data-text", data.text);
 
+        // Speaker info
+        var speakerHtml = "";
+        if (data.speaker && data.speaker.speaker_id !== "unknown") {
+            var color = data.speaker.speaker_color || "#64748b";
+            speakerHtml =
+                '<span class="speaker-badge" style="background:' +
+                color +
+                '20;color:' +
+                color +
+                ';border-color:' +
+                color +
+                '">' +
+                '<span class="speaker-dot" style="background:' +
+                color +
+                '"></span>' +
+                escapeHtml(data.speaker.speaker_label) +
+                "</span>";
+            item.style.borderLeftColor = color;
+        }
+
         var confidence = data.confidence
             ? " (" + Math.round(data.confidence * 100) + "%)"
             : "";
 
         item.innerHTML =
+            (speakerHtml ? '<div class="result-speaker">' + speakerHtml + "</div>" : "") +
             '<div class="result-text">' +
             escapeHtml(data.text) +
             "</div>" +
@@ -370,18 +397,51 @@
         var item = document.createElement("div");
         item.className = "result-item translation";
 
+        // Speaker info
+        var speakerHtml = "";
+        if (data.speaker && data.speaker.speaker_id !== "unknown") {
+            var color = data.speaker.speaker_color || "#64748b";
+            speakerHtml =
+                '<span class="speaker-badge" style="background:' +
+                color +
+                '20;color:' +
+                color +
+                ';border-color:' +
+                color +
+                '">' +
+                '<span class="speaker-dot" style="background:' +
+                color +
+                '"></span>' +
+                escapeHtml(data.speaker.speaker_label) +
+                "</span>";
+            item.style.borderLeftColor = color;
+        }
+
         var langInfo =
             (data.source_label || data.source_lang || "") +
             " → " +
             (data.target_label || data.target_lang || "");
 
+        var engineBadge = "";
+        if (data.engine) {
+            var engineLabel = data.engine === "ai" ? "AI" : "Google";
+            engineBadge =
+                '<span class="engine-badge engine-' +
+                data.engine +
+                '">' +
+                engineLabel +
+                "</span>";
+        }
+
         item.innerHTML =
+            (speakerHtml ? '<div class="result-speaker">' + speakerHtml + "</div>" : "") +
             '<div class="result-text">' +
             escapeHtml(data.translated) +
             "</div>" +
             '<div class="result-meta">' +
             "<span>" +
             langInfo +
+            engineBadge +
             "</span>" +
             '<button class="tts-btn" onclick="window.VT.playText(\'' +
             escapeAttr(data.translated) +
@@ -557,6 +617,57 @@
         // Clear button
         elements.clearBtn.addEventListener("click", clearResults);
 
+        // Reset speakers button
+        if (elements.resetSpeakersBtn) {
+            elements.resetSpeakersBtn.addEventListener("click", function () {
+                if (state.socket && state.isConnected) {
+                    state.socket.emit("reset_speakers");
+                }
+            });
+        }
+
+        // Translation engine toggle
+        if (elements.translationEngine) {
+            var btns = elements.translationEngine.querySelectorAll(".engine-btn");
+            btns.forEach(function (btn) {
+                btn.addEventListener("click", function () {
+                    var engine = btn.getAttribute("data-engine");
+
+                    // If switching to AI, trigger lazy init
+                    if (engine === "ai") {
+                        btn.textContent = "AI 加载中...";
+                        fetch("/api/init-ai-translator", { method: "POST" })
+                            .then(function (res) { return res.json(); })
+                            .then(function (data) {
+                                var aiEngine = data.engines.find(
+                                    function (e) { return e.id === "ai"; }
+                                );
+                                if (aiEngine && aiEngine.available) {
+                                    btn.textContent = "AI 模型";
+                                    showToast("AI翻译已就绪", "success");
+                                } else {
+                                    btn.textContent = "AI 模型";
+                                    showToast(
+                                        "AI翻译初始化中，请稍后再试",
+                                        "info"
+                                    );
+                                }
+                            })
+                            .catch(function () {
+                                btn.textContent = "AI 模型";
+                                showToast("AI翻译初始化失败", "error");
+                            });
+                    }
+
+                    state.translationMode = engine;
+                    btns.forEach(function (b) {
+                        b.classList.remove("active");
+                    });
+                    btn.classList.add("active");
+                });
+            });
+        }
+
         // Target language change - update voice options
         elements.targetLang.addEventListener("change", function () {
             loadVoiceOptions();
@@ -567,7 +678,7 @@
             // Space to toggle recording
             if (
                 e.code === "Space" &&
-                !e.target.matches("input, select, textarea")
+                !e.target.matches("input, select, textarea, button")
             ) {
                 e.preventDefault();
                 elements.recordBtn.click();
