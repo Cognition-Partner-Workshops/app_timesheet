@@ -128,17 +128,24 @@ describe('Project Routes', () => {
   });
 
   describe('POST /api/projects', () => {
-    test('should create new project with valid data', async () => {
+    test('should create new project with valid data including clientId', async () => {
       const newProject = { name: 'New Project', description: 'New Description', clientId: 1, startDate: '2024-06-01', status: 'active' };
       const createdProject = { id: 1, name: 'New Project', description: 'New Description', client_id: 1, start_date: '2024-06-01', status: 'active', client_name: 'Client A', created_at: '2024-01-01', updated_at: '2024-01-01' };
+
+      mockDb.get
+        .mockImplementationOnce((query, params, callback) => {
+          callback(null, null); // No duplicate name
+        })
+        .mockImplementationOnce((query, params, callback) => {
+          callback(null, { id: 1 }); // Client exists
+        })
+        .mockImplementationOnce((query, params, callback) => {
+          callback(null, createdProject); // Return created project
+        });
 
       mockDb.run.mockImplementation(function(query, params, callback) {
         this.lastID = 1;
         callback.call(this, null);
-      });
-
-      mockDb.get.mockImplementation((query, params, callback) => {
-        callback(null, createdProject);
       });
 
       const response = await request(app)
@@ -150,17 +157,21 @@ describe('Project Routes', () => {
       expect(response.body.project).toEqual(createdProject);
     });
 
-    test('should create project with only name', async () => {
+    test('should create project with only name (no clientId)', async () => {
       const newProject = { name: 'Minimal Project' };
       const createdProject = { id: 1, name: 'Minimal Project', description: null, client_id: null, start_date: null, status: 'active' };
+
+      mockDb.get
+        .mockImplementationOnce((query, params, callback) => {
+          callback(null, null); // No duplicate name
+        })
+        .mockImplementationOnce((query, params, callback) => {
+          callback(null, createdProject); // Return created project
+        });
 
       mockDb.run.mockImplementation(function(query, params, callback) {
         this.lastID = 1;
         callback.call(this, null);
-      });
-
-      mockDb.get.mockImplementation((query, params, callback) => {
-        callback(null, createdProject);
       });
 
       const response = await request(app)
@@ -194,7 +205,71 @@ describe('Project Routes', () => {
       expect(response.status).toBe(400);
     });
 
+    test('should return 400 for duplicate project name', async () => {
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, { id: 5 }); // Duplicate name exists
+      });
+
+      const response = await request(app)
+        .post('/api/projects')
+        .send({ name: 'Existing Project' });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({ error: 'A project with this name already exists' });
+    });
+
+    test('should return 400 when clientId does not exist', async () => {
+      mockDb.get
+        .mockImplementationOnce((query, params, callback) => {
+          callback(null, null); // No duplicate name
+        })
+        .mockImplementationOnce((query, params, callback) => {
+          callback(null, null); // Client not found
+        });
+
+      const response = await request(app)
+        .post('/api/projects')
+        .send({ name: 'Test Project', clientId: 999 });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({ error: 'Client not found or does not belong to user' });
+    });
+
+    test('should handle database error when checking duplicate name', async () => {
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(new Error('Database error'), null);
+      });
+
+      const response = await request(app)
+        .post('/api/projects')
+        .send({ name: 'Test Project' });
+
+      expect(response.status).toBe(500);
+      expect(response.body).toEqual({ error: 'Internal server error' });
+    });
+
+    test('should handle database error when verifying client', async () => {
+      mockDb.get
+        .mockImplementationOnce((query, params, callback) => {
+          callback(null, null); // No duplicate name
+        })
+        .mockImplementationOnce((query, params, callback) => {
+          callback(new Error('Database error'), null);
+        });
+
+      const response = await request(app)
+        .post('/api/projects')
+        .send({ name: 'Test Project', clientId: 1 });
+
+      expect(response.status).toBe(500);
+      expect(response.body).toEqual({ error: 'Internal server error' });
+    });
+
     test('should handle database insert error', async () => {
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, null); // No duplicate name
+      });
+
       mockDb.run.mockImplementation((query, params, callback) => {
         callback(new Error('Insert failed'));
       });
@@ -208,13 +283,17 @@ describe('Project Routes', () => {
     });
 
     test('should handle error retrieving project after creation', async () => {
+      mockDb.get
+        .mockImplementationOnce((query, params, callback) => {
+          callback(null, null); // No duplicate name
+        })
+        .mockImplementationOnce((query, params, callback) => {
+          callback(new Error('Retrieval failed'), null);
+        });
+
       mockDb.run.mockImplementation(function(query, params, callback) {
         this.lastID = 1;
         callback.call(this, null);
-      });
-
-      mockDb.get.mockImplementation((query, params, callback) => {
-        callback(new Error('Retrieval failed'), null);
       });
 
       const response = await request(app)
@@ -224,22 +303,71 @@ describe('Project Routes', () => {
       expect(response.status).toBe(500);
       expect(response.body).toEqual({ error: 'Project created but failed to retrieve' });
     });
+
+    test('should handle null startDate correctly', async () => {
+      const createdProject = { id: 1, name: 'No Date Project', start_date: null, status: 'active' };
+
+      mockDb.get
+        .mockImplementationOnce((query, params, callback) => {
+          callback(null, null);
+        })
+        .mockImplementationOnce((query, params, callback) => {
+          callback(null, createdProject);
+        });
+
+      mockDb.run.mockImplementation(function(query, params, callback) {
+        this.lastID = 1;
+        callback.call(this, null);
+      });
+
+      const response = await request(app)
+        .post('/api/projects')
+        .send({ name: 'No Date Project', startDate: null });
+
+      expect(response.status).toBe(201);
+    });
+
+    test('should handle empty string startDate correctly', async () => {
+      const createdProject = { id: 1, name: 'Empty Date Project', start_date: null, status: 'active' };
+
+      mockDb.get
+        .mockImplementationOnce((query, params, callback) => {
+          callback(null, null);
+        })
+        .mockImplementationOnce((query, params, callback) => {
+          callback(null, createdProject);
+        });
+
+      mockDb.run.mockImplementation(function(query, params, callback) {
+        this.lastID = 1;
+        callback.call(this, null);
+      });
+
+      const response = await request(app)
+        .post('/api/projects')
+        .send({ name: 'Empty Date Project', startDate: '' });
+
+      expect(response.status).toBe(201);
+    });
   });
 
   describe('PUT /api/projects/:id', () => {
     test('should update project name', async () => {
       const updatedProject = { id: 1, name: 'Updated Name', description: 'Old Desc', status: 'active' };
 
-      mockDb.get.mockImplementationOnce((query, params, callback) => {
-        callback(null, { id: 1 }); // Project exists
-      });
+      mockDb.get
+        .mockImplementationOnce((query, params, callback) => {
+          callback(null, { id: 1 }); // Project exists
+        })
+        .mockImplementationOnce((query, params, callback) => {
+          callback(null, null); // No duplicate name
+        })
+        .mockImplementationOnce((query, params, callback) => {
+          callback(null, updatedProject);
+        });
 
       mockDb.run.mockImplementation((query, params, callback) => {
         callback(null);
-      });
-
-      mockDb.get.mockImplementationOnce((query, params, callback) => {
-        callback(null, updatedProject);
       });
 
       const response = await request(app)
@@ -251,17 +379,17 @@ describe('Project Routes', () => {
       expect(response.body.project).toEqual(updatedProject);
     });
 
-    test('should update project status', async () => {
-      mockDb.get.mockImplementationOnce((query, params, callback) => {
-        callback(null, { id: 1 });
-      });
+    test('should update project status (no name/client check needed)', async () => {
+      mockDb.get
+        .mockImplementationOnce((query, params, callback) => {
+          callback(null, { id: 1 });
+        })
+        .mockImplementationOnce((query, params, callback) => {
+          callback(null, { id: 1, name: 'Project', status: 'completed' });
+        });
 
       mockDb.run.mockImplementation((query, params, callback) => {
         callback(null);
-      });
-
-      mockDb.get.mockImplementationOnce((query, params, callback) => {
-        callback(null, { id: 1, name: 'Project', status: 'completed' });
       });
 
       const response = await request(app)
@@ -271,17 +399,20 @@ describe('Project Routes', () => {
       expect(response.status).toBe(200);
     });
 
-    test('should update project client assignment', async () => {
-      mockDb.get.mockImplementationOnce((query, params, callback) => {
-        callback(null, { id: 1 });
-      });
+    test('should update project client assignment with valid clientId', async () => {
+      mockDb.get
+        .mockImplementationOnce((query, params, callback) => {
+          callback(null, { id: 1 }); // Project exists
+        })
+        .mockImplementationOnce((query, params, callback) => {
+          callback(null, { id: 2 }); // Client exists
+        })
+        .mockImplementationOnce((query, params, callback) => {
+          callback(null, { id: 1, name: 'Project', client_id: 2, client_name: 'Client B' });
+        });
 
       mockDb.run.mockImplementation((query, params, callback) => {
         callback(null);
-      });
-
-      mockDb.get.mockImplementationOnce((query, params, callback) => {
-        callback(null, { id: 1, name: 'Project', client_id: 2, client_name: 'Client B' });
       });
 
       const response = await request(app)
@@ -291,19 +422,56 @@ describe('Project Routes', () => {
       expect(response.status).toBe(200);
     });
 
+    test('should return 400 when updating with invalid clientId', async () => {
+      mockDb.get
+        .mockImplementationOnce((query, params, callback) => {
+          callback(null, { id: 1 });
+        })
+        .mockImplementationOnce((query, params, callback) => {
+          callback(null, null); // Client not found
+        });
+
+      const response = await request(app)
+        .put('/api/projects/1')
+        .send({ clientId: 999 });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({ error: 'Client not found or does not belong to user' });
+    });
+
+    test('should return 400 for duplicate project name on update', async () => {
+      mockDb.get
+        .mockImplementationOnce((query, params, callback) => {
+          callback(null, { id: 1 });
+        })
+        .mockImplementationOnce((query, params, callback) => {
+          callback(null, { id: 2 }); // Another project with same name
+        });
+
+      const response = await request(app)
+        .put('/api/projects/1')
+        .send({ name: 'Duplicate Name' });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({ error: 'A project with this name already exists' });
+    });
+
     test('should update multiple fields at once', async () => {
       const updatedProject = { id: 1, name: 'New Name', description: 'New Description', status: 'on-hold' };
 
-      mockDb.get.mockImplementationOnce((query, params, callback) => {
-        callback(null, { id: 1 });
-      });
+      mockDb.get
+        .mockImplementationOnce((query, params, callback) => {
+          callback(null, { id: 1 });
+        })
+        .mockImplementationOnce((query, params, callback) => {
+          callback(null, null); // No duplicate name
+        })
+        .mockImplementationOnce((query, params, callback) => {
+          callback(null, updatedProject);
+        });
 
       mockDb.run.mockImplementation((query, params, callback) => {
         callback(null);
-      });
-
-      mockDb.get.mockImplementationOnce((query, params, callback) => {
-        callback(null, updatedProject);
       });
 
       const response = await request(app)
@@ -365,6 +533,40 @@ describe('Project Routes', () => {
       expect(response.body).toEqual({ error: 'Internal server error' });
     });
 
+    test('should handle database error when checking duplicate name on update', async () => {
+      mockDb.get
+        .mockImplementationOnce((query, params, callback) => {
+          callback(null, { id: 1 });
+        })
+        .mockImplementationOnce((query, params, callback) => {
+          callback(new Error('Database error'), null);
+        });
+
+      const response = await request(app)
+        .put('/api/projects/1')
+        .send({ name: 'Updated Name' });
+
+      expect(response.status).toBe(500);
+      expect(response.body).toEqual({ error: 'Internal server error' });
+    });
+
+    test('should handle database error when verifying client on update', async () => {
+      mockDb.get
+        .mockImplementationOnce((query, params, callback) => {
+          callback(null, { id: 1 });
+        })
+        .mockImplementationOnce((query, params, callback) => {
+          callback(new Error('Database error'), null);
+        });
+
+      const response = await request(app)
+        .put('/api/projects/1')
+        .send({ clientId: 1 });
+
+      expect(response.status).toBe(500);
+      expect(response.body).toEqual({ error: 'Internal server error' });
+    });
+
     test('should handle database error during update', async () => {
       mockDb.get.mockImplementationOnce((query, params, callback) => {
         callback(null, { id: 1 });
@@ -376,31 +578,60 @@ describe('Project Routes', () => {
 
       const response = await request(app)
         .put('/api/projects/1')
-        .send({ name: 'Updated Name' });
+        .send({ status: 'completed' });
 
       expect(response.status).toBe(500);
       expect(response.body).toEqual({ error: 'Failed to update project' });
     });
 
     test('should handle error retrieving project after update', async () => {
-      mockDb.get.mockImplementationOnce((query, params, callback) => {
-        callback(null, { id: 1 });
-      });
+      mockDb.get
+        .mockImplementationOnce((query, params, callback) => {
+          callback(null, { id: 1 });
+        })
+        .mockImplementationOnce((query, params, callback) => {
+          callback(new Error('Retrieval failed'), null);
+        });
 
       mockDb.run.mockImplementation((query, params, callback) => {
         callback(null);
       });
 
-      mockDb.get.mockImplementationOnce((query, params, callback) => {
-        callback(new Error('Retrieval failed'), null);
+      const response = await request(app)
+        .put('/api/projects/1')
+        .send({ status: 'completed' });
+
+      expect(response.status).toBe(500);
+      expect(response.body).toEqual({ error: 'Project updated but failed to retrieve' });
+    });
+
+    test('should update name and clientId with both validations', async () => {
+      const updatedProject = { id: 1, name: 'New Name', client_id: 2, client_name: 'Client B' };
+
+      mockDb.get
+        .mockImplementationOnce((query, params, callback) => {
+          callback(null, { id: 1 }); // Project exists
+        })
+        .mockImplementationOnce((query, params, callback) => {
+          callback(null, null); // No duplicate name
+        })
+        .mockImplementationOnce((query, params, callback) => {
+          callback(null, { id: 2 }); // Client exists
+        })
+        .mockImplementationOnce((query, params, callback) => {
+          callback(null, updatedProject);
+        });
+
+      mockDb.run.mockImplementation((query, params, callback) => {
+        callback(null);
       });
 
       const response = await request(app)
         .put('/api/projects/1')
-        .send({ name: 'Updated Name' });
+        .send({ name: 'New Name', clientId: 2 });
 
-      expect(response.status).toBe(500);
-      expect(response.body).toEqual({ error: 'Project updated but failed to retrieve' });
+      expect(response.status).toBe(200);
+      expect(response.body.project).toEqual(updatedProject);
     });
   });
 
