@@ -443,14 +443,11 @@
     function playText(text, lang) {
         if (!state.socket || !state.isConnected) return;
 
-        // Request TTS from server
-        state.socket.emit("audio_data", {
-            audio: null,
+        // Request TTS from server via dedicated tts_request event
+        state.socket.emit("tts_request", {
+            text: text,
             language: lang,
-            target_lang: lang,
-            enable_tts: true,
-            tts_voice: elements.ttsVoice.value || null,
-            text_only: text,
+            voice: elements.ttsVoice.value || null,
         });
     }
 
@@ -541,7 +538,7 @@
         return str
             .replace(/\\/g, "\\\\")
             .replace(/'/g, "\\'")
-            .replace(/"/g, '\\"')
+            .replace(/"/g, '&quot;')
             .replace(/\n/g, "\\n");
     }
 

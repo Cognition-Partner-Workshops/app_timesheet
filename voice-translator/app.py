@@ -128,6 +128,9 @@ def handle_audio_data(data):
         if not audio_bytes:
             return
 
+        # Capture sid while still in request context
+        sid = request.sid
+
         # Step 1: Speech Recognition
         lang_param = None if language == "auto" else language
         result = recognizer.transcribe(audio_bytes, language=lang_param)
@@ -155,7 +158,7 @@ def handle_audio_data(data):
             socketio.emit(
                 "translation_result",
                 trans_result,
-                room=request.sid,
+                room=sid,
             )
 
             # Step 3: TTS (async, if enabled)
@@ -170,7 +173,7 @@ def handle_audio_data(data):
                                 "text": trans_result["translated"],
                                 "language": target_lang,
                             },
-                            room=request.sid,
+                            room=sid,
                         )
 
                 tts_engine.synthesize_async(
@@ -203,6 +206,44 @@ def handle_set_voice(data):
             "status",
             {"message": f"语音已设置 / Voice updated: {voice_id}", "type": "info"},
         )
+
+
+@socketio.on("tts_request")
+def handle_tts_request(data):
+    """Handle direct TTS request for previously translated text."""
+    try:
+        text = data.get("text", "")
+        language = data.get("language", "zh")
+        voice = data.get("voice")
+
+        if not text or not text.strip():
+            return
+
+        sid = request.sid
+
+        def on_tts_done(tts_result):
+            """Callback when TTS is complete."""
+            if tts_result.get("audio_url"):
+                socketio.emit(
+                    "tts_result",
+                    {
+                        "audio_url": tts_result["audio_url"],
+                        "text": text,
+                        "language": language,
+                    },
+                    room=sid,
+                )
+
+        tts_engine.synthesize_async(
+            text,
+            language=language,
+            voice=voice,
+            callback=on_tts_done,
+        )
+
+    except Exception as e:
+        logger.error("Error processing TTS request: %s", e)
+        emit("error", {"message": str(e)})
 
 
 @socketio.on("cleanup")
