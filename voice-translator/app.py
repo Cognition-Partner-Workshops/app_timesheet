@@ -6,7 +6,7 @@ Supports Japanese, English, and Chinese.
 
 import logging
 import os
-from concurrent.futures import ThreadPoolExecutor
+import threading
 
 from flask import Flask, render_template, request, jsonify, send_from_directory
 from flask_socketio import SocketIO, emit
@@ -27,11 +27,11 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.urandom(24).hex()
 
-# Initialize SocketIO
+# Initialize SocketIO (threading mode for native thread compatibility)
 socketio = SocketIO(
     app,
     cors_allowed_origins="*",
-    async_mode="eventlet",
+    async_mode="threading",
     max_http_buffer_size=10 * 1024 * 1024,  # 10MB max for audio data
 )
 
@@ -53,8 +53,8 @@ tts_engine = TTSEngine(
 
 logger.info("All modules initialized successfully!")
 
-# Thread pool for background tasks (diarization)
-bg_executor = ThreadPoolExecutor(max_workers=2)
+# Lock for thread-safe access to recognizer
+recognizer_lock = threading.Lock()
 
 
 # ==================== HTTP Routes ====================
@@ -153,27 +153,21 @@ def handle_audio_data(data):
         # Capture sid while still in request context
         sid = request.sid
 
-        # Run speaker diarization in background (non-blocking)
-        diarization_future = None
+        # Step 1: Speaker diarization (fast, run first)
+        speaker_info = None
         if enable_diarization:
-            diarization_future = bg_executor.submit(
-                diarizer.identify_speaker, audio_bytes
-            )
+            try:
+                speaker_info = diarizer.identify_speaker(audio_bytes)
+            except Exception as e:
+                logger.warning("Speaker diarization error: %s", e)
 
-        # Step 1: Speech Recognition (priority - do this first)
+        # Step 2: Speech Recognition (thread-safe with lock)
         lang_param = None if language == "auto" else language
-        result = recognizer.transcribe(audio_bytes, language=lang_param)
+        with recognizer_lock:
+            result = recognizer.transcribe(audio_bytes, language=lang_param)
 
         if not result["text"]:
             return
-
-        # Get speaker info (should be done by now since recognition takes longer)
-        speaker_info = None
-        if diarization_future:
-            try:
-                speaker_info = diarization_future.result(timeout=1.0)
-            except Exception as e:
-                logger.warning("Speaker diarization error: %s", e)
 
         # Build recognition result with speaker info
         rec_data = {
@@ -189,24 +183,29 @@ def handle_audio_data(data):
         # Emit recognition result immediately
         emit("recognition_result", rec_data)
 
-        # Step 2: Translation (async, does not block recognition)
+        # Step 3: Translation (synchronous for immediate result)
         detected_lang = result["language"]
+        trans_result = translator.translate(
+            result["text"],
+            source_lang=detected_lang,
+            target_lang=target_lang,
+            mode=translation_mode,
+        )
 
-        def on_translation_done(trans_result):
-            """Callback when translation is complete."""
-            if speaker_info:
-                trans_result["speaker"] = speaker_info
-            socketio.emit(
-                "translation_result",
-                trans_result,
-                room=sid,
-            )
+        if speaker_info:
+            trans_result["speaker"] = speaker_info
+        emit("translation_result", trans_result)
 
-            # Step 3: TTS (async, if enabled)
-            if enable_tts and trans_result.get("translated"):
-                def on_tts_done(tts_result):
-                    """Callback when TTS is complete."""
-                    if tts_result.get("audio_url"):
+        # Step 4: TTS (background, non-blocking)
+        if enable_tts and trans_result.get("translated"):
+            def run_tts():
+                try:
+                    tts_result = tts_engine.synthesize(
+                        trans_result["translated"],
+                        language=target_lang,
+                        voice=tts_voice,
+                    )
+                    if tts_result and tts_result.get("audio_url"):
                         socketio.emit(
                             "tts_result",
                             {
@@ -216,21 +215,10 @@ def handle_audio_data(data):
                             },
                             room=sid,
                         )
+                except Exception as tts_err:
+                    logger.warning("TTS error: %s", tts_err)
 
-                tts_engine.synthesize_async(
-                    trans_result["translated"],
-                    language=target_lang,
-                    voice=tts_voice,
-                    callback=on_tts_done,
-                )
-
-        translator.translate_async(
-            result["text"],
-            source_lang=detected_lang,
-            target_lang=target_lang,
-            mode=translation_mode,
-            callback=on_translation_done,
-        )
+            socketio.start_background_task(run_tts)
 
     except Exception as e:
         logger.error("Error processing audio: %s", e)
@@ -261,27 +249,21 @@ def handle_tts_request(data):
         if not text or not text.strip():
             return
 
-        sid = request.sid
-
-        def on_tts_done(tts_result):
-            """Callback when TTS is complete."""
-            if tts_result.get("audio_url"):
-                socketio.emit(
-                    "tts_result",
-                    {
-                        "audio_url": tts_result["audio_url"],
-                        "text": text,
-                        "language": language,
-                    },
-                    room=sid,
-                )
-
-        tts_engine.synthesize_async(
+        tts_result = tts_engine.synthesize(
             text,
             language=language,
             voice=voice,
-            callback=on_tts_done,
         )
+
+        if tts_result.get("audio_url"):
+            emit(
+                "tts_result",
+                {
+                    "audio_url": tts_result["audio_url"],
+                    "text": text,
+                    "language": language,
+                },
+            )
 
     except Exception as e:
         logger.error("Error processing TTS request: %s", e)
