@@ -182,11 +182,13 @@ class AITranslator:
                     (lang for lang in installed_langs if lang.code == from_code),
                     None,
                 )
-                if from_lang:
-                    translations = from_lang.get_translation(installed_langs)
-                    pair_exists = any(
-                        t.to_language.code == to_code for t in translations
-                    )
+                to_lang = next(
+                    (lang for lang in installed_langs if lang.code == to_code),
+                    None,
+                )
+                if from_lang and to_lang:
+                    translation = from_lang.get_translation(to_lang)
+                    pair_exists = translation is not None
 
                 if pair_exists:
                     self._installed_pairs.add((from_code, to_code))
