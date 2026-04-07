@@ -131,11 +131,20 @@ const ProjectsPage: React.FC = () => {
   const handleOpen = (project?: Project) => {
     if (project) {
       setEditingProject(project);
+      let startDateStr = '';
+      if (project.start_date) {
+        const d = new Date(project.start_date);
+        if (!isNaN(d.getTime())) {
+          startDateStr = d.toISOString().split('T')[0];
+        } else {
+          startDateStr = String(project.start_date);
+        }
+      }
       setFormData({
         name: project.name,
         description: project.description || '',
         clientId: project.client_id ? String(project.client_id) : '',
-        startDate: project.start_date || '',
+        startDate: startDateStr,
         status: project.status,
       });
     } else {

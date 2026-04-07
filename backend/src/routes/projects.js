@@ -71,10 +71,11 @@ router.post('/', (req, res, next) => {
 
     const { name, description, clientId, startDate, status } = value;
     const db = getDatabase();
+    const formattedStartDate = startDate ? new Date(startDate).toISOString().split('T')[0] : null;
 
     db.run(
       'INSERT INTO projects (name, description, client_id, start_date, status, user_email) VALUES (?, ?, ?, ?, ?, ?)',
-      [name, description || null, clientId || null, startDate || null, status || 'active', req.userEmail],
+      [name, description || null, clientId || null, formattedStartDate, status || 'active', req.userEmail],
       function(err) {
         if (err) {
           console.error('Database error:', err);
@@ -158,7 +159,7 @@ router.put('/:id', (req, res, next) => {
 
         if (value.startDate !== undefined) {
           updates.push('start_date = ?');
-          values.push(value.startDate || null);
+          values.push(value.startDate ? new Date(value.startDate).toISOString().split('T')[0] : null);
         }
 
         if (value.status !== undefined) {
