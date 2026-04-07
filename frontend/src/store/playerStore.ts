@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { Song, getStreamUrl } from '../api';
+import { getStreamUrl } from '../api';
+import type { Song } from '../api';
 
 interface PlayerState {
   currentSong: Song | null;

@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Home, Search, Library, Plus, LogOut, Music } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
-import { getPlaylists, createPlaylist, Playlist } from '../api';
+import { getPlaylists, createPlaylist } from '../api';
+import type { Playlist } from '../api';
 
 const Sidebar: React.FC = () => {
   const navigate = useNavigate();

@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Play, Trash2, Music, Clock } from 'lucide-react';
-import { getPlaylist, deletePlaylist, removeSongFromPlaylist, Playlist, Song } from '../api';
+import { getPlaylist, deletePlaylist, removeSongFromPlaylist } from '../api';
+import type { Playlist, Song } from '../api';
 import { usePlayerStore } from '../store/playerStore';
 import SongRow from '../components/SongRow';
 

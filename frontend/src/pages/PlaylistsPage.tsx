@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Music, Plus } from 'lucide-react';
-import { getPlaylists, createPlaylist, Playlist } from '../api';
+import { getPlaylists, createPlaylist } from '../api';
+import type { Playlist } from '../api';
 
 const PlaylistsPage: React.FC = () => {
   const navigate = useNavigate();

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Play, Pause, Plus, Music } from 'lucide-react';
-import { Song, Playlist, addSongToPlaylist, getPlaylists } from '../api';
+import { addSongToPlaylist, getPlaylists } from '../api';
+import type { Song, Playlist } from '../api';
 import { usePlayerStore } from '../store/playerStore';
 
 interface SongRowProps {

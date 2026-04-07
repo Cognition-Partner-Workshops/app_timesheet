@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, Music } from 'lucide-react';
-import { getSongs, Song } from '../api';
+import { getSongs } from '../api';
+import type { Song } from '../api';
 import SongRow from '../components/SongRow';
 
 const SearchPage: React.FC = () => {

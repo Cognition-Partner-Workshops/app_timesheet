@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Clock, Music } from 'lucide-react';
-import { getSongs, Song } from '../api';
+import { getSongs } from '../api';
+import type { Song } from '../api';
 import SongRow from '../components/SongRow';
 
 const HomePage: React.FC = () => {
