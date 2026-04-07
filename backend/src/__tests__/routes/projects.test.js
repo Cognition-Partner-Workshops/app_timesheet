@@ -106,9 +106,16 @@ describe('Project Routes', () => {
       expect(response.status).toBe(200);
       expect(mockDb.all).toHaveBeenCalledWith(
         expect.stringContaining('AND p.client_id = ?'),
-        ['test@example.com', '1'],
+        ['test@example.com', 1],
         expect.any(Function)
       );
+    });
+
+    test('should return 400 for invalid clientId', async () => {
+      const response = await request(app).get('/api/projects?clientId=abc');
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({ error: 'Invalid client ID' });
     });
   });
 

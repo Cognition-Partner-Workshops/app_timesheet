@@ -21,8 +21,12 @@ router.get('/', (req, res) => {
   }
 
   if (req.query.clientId) {
+    const clientIdNum = parseInt(req.query.clientId);
+    if (isNaN(clientIdNum)) {
+      return res.status(400).json({ error: 'Invalid client ID' });
+    }
     query += ' AND p.client_id = ?';
-    params.push(req.query.clientId);
+    params.push(clientIdNum);
   }
 
   query += ' ORDER BY p.created_at DESC';
