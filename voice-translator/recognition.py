@@ -92,15 +92,16 @@ class SpeechRecognizer:
             # Resolve language parameter
             lang = LANGUAGE_MAP.get(language, language)
 
-            # Run transcription
+            # Run transcription (optimized for low latency)
             segments, info = self.model.transcribe(
                 audio_np,
                 language=lang,
-                beam_size=5,
+                beam_size=1,
+                best_of=1,
                 vad_filter=True,
                 vad_parameters=dict(
-                    min_silence_duration_ms=500,
-                    speech_pad_ms=300,
+                    min_silence_duration_ms=300,
+                    speech_pad_ms=200,
                 ),
             )
 

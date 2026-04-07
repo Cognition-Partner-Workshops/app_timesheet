@@ -147,9 +147,22 @@
             );
 
             var audioChunks = [];
-            var chunkDuration = 3; // seconds per chunk
-            var samplesPerChunk = 16000 * chunkDuration;
             var collectedSamples = 0;
+
+            // VAD (Voice Activity Detection) parameters
+            var vadSpeechThreshold = 0.015; // Energy threshold to detect speech
+            var vadSilenceThreshold = 0.008; // Energy threshold for silence
+            var isSpeaking = false;
+            var silenceFrames = 0;
+            var speechFrames = 0;
+            // Send after ~0.4s of silence following speech (7 frames * 4096/16000)
+            var silenceFramesNeeded = 7;
+            // Minimum speech frames before considering it valid (~0.25s)
+            var minSpeechFrames = 4;
+            // Maximum chunk duration: force send after 3s to avoid long waits
+            var maxSamplesPerChunk = 16000 * 3;
+            // Minimum audio to send (~0.5s)
+            var minSamplesToSend = 16000 * 0.5;
 
             state.processor.onaudioprocess = function (e) {
                 if (!state.isRecording) return;
@@ -162,14 +175,49 @@
                     int16Data[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
                 }
 
+                // Calculate RMS energy for VAD
+                var sumSquares = 0;
+                for (var j = 0; j < inputData.length; j++) {
+                    sumSquares += inputData[j] * inputData[j];
+                }
+                var rms = Math.sqrt(sumSquares / inputData.length);
+
                 audioChunks.push(int16Data);
                 collectedSamples += inputData.length;
 
-                // Send when we have enough data
-                if (collectedSamples >= samplesPerChunk) {
+                if (rms > vadSpeechThreshold) {
+                    // Speech detected
+                    isSpeaking = true;
+                    speechFrames++;
+                    silenceFrames = 0;
+                } else if (isSpeaking && rms < vadSilenceThreshold) {
+                    // Silence after speech
+                    silenceFrames++;
+                }
+
+                // Send conditions:
+                // 1. Speech ended (silence after valid speech)
+                // 2. Max duration reached during speech (force send)
+                var shouldSend = false;
+
+                if (isSpeaking && silenceFrames >= silenceFramesNeeded &&
+                    speechFrames >= minSpeechFrames &&
+                    collectedSamples >= minSamplesToSend) {
+                    // Speech ended - send immediately
+                    shouldSend = true;
+                } else if (collectedSamples >= maxSamplesPerChunk &&
+                           speechFrames >= minSpeechFrames) {
+                    // Max duration reached - force send
+                    shouldSend = true;
+                }
+
+                if (shouldSend) {
                     sendAudioData(audioChunks);
                     audioChunks = [];
                     collectedSamples = 0;
+                    isSpeaking = false;
+                    silenceFrames = 0;
+                    speechFrames = 0;
                 }
             };
 

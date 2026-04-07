@@ -6,6 +6,7 @@ Supports Japanese, English, and Chinese.
 
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor
 
 from flask import Flask, render_template, request, jsonify, send_from_directory
 from flask_socketio import SocketIO, emit
@@ -51,6 +52,9 @@ tts_engine = TTSEngine(
 )
 
 logger.info("All modules initialized successfully!")
+
+# Thread pool for background tasks (diarization)
+bg_executor = ThreadPoolExecutor(max_workers=2)
 
 
 # ==================== HTTP Routes ====================
@@ -149,17 +153,27 @@ def handle_audio_data(data):
         # Capture sid while still in request context
         sid = request.sid
 
-        # Speaker diarization
-        speaker_info = None
+        # Run speaker diarization in background (non-blocking)
+        diarization_future = None
         if enable_diarization:
-            speaker_info = diarizer.identify_speaker(audio_bytes)
+            diarization_future = bg_executor.submit(
+                diarizer.identify_speaker, audio_bytes
+            )
 
-        # Step 1: Speech Recognition
+        # Step 1: Speech Recognition (priority - do this first)
         lang_param = None if language == "auto" else language
         result = recognizer.transcribe(audio_bytes, language=lang_param)
 
         if not result["text"]:
             return
+
+        # Get speaker info (should be done by now since recognition takes longer)
+        speaker_info = None
+        if diarization_future:
+            try:
+                speaker_info = diarization_future.result(timeout=1.0)
+            except Exception as e:
+                logger.warning("Speaker diarization error: %s", e)
 
         # Build recognition result with speaker info
         rec_data = {
