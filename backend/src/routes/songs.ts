@@ -6,6 +6,14 @@ import { authMiddleware } from '../middleware/auth';
 import { upload } from '../middleware/upload';
 import { AuthRequest } from '../types';
 
+const MIME_TYPES: Record<string, string> = {
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.ogg': 'audio/ogg',
+  '.flac': 'audio/flac',
+  '.m4a': 'audio/mp4',
+};
+
 const router = Router();
 
 // GET /api/songs - Get songs with search and pagination
@@ -75,18 +83,24 @@ router.get('/:id/stream', async (req: Request, res: Response): Promise<void> => 
       const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
       const chunkSize = end - start + 1;
 
+      const ext = path.extname(filePath).toLowerCase();
+      const contentType = MIME_TYPES[ext] || 'audio/mpeg';
+
       const file = fs.createReadStream(filePath, { start, end });
       res.writeHead(206, {
         'Content-Range': `bytes ${start}-${end}/${fileSize}`,
         'Accept-Ranges': 'bytes',
         'Content-Length': chunkSize,
-        'Content-Type': 'audio/mpeg',
+        'Content-Type': contentType,
       });
       file.pipe(res);
     } else {
+      const ext = path.extname(filePath).toLowerCase();
+      const contentType = MIME_TYPES[ext] || 'audio/mpeg';
+
       res.writeHead(200, {
         'Content-Length': fileSize,
-        'Content-Type': 'audio/mpeg',
+        'Content-Type': contentType,
       });
       fs.createReadStream(filePath).pipe(res);
     }

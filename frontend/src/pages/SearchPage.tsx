@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Search, Music } from 'lucide-react';
 import { getSongs, Song } from '../api';
 import SongRow from '../components/SongRow';
@@ -9,30 +9,37 @@ const SearchPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
 
-  const handleSearch = useCallback(async (searchQuery: string) => {
-    if (!searchQuery.trim()) {
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+
+    if (!query.trim()) {
       setSongs([]);
       setSearched(false);
       return;
     }
-    setLoading(true);
-    setSearched(true);
-    try {
-      const res = await getSongs({ search: searchQuery, limit: 50 });
-      setSongs(res.data.songs);
-    } catch (err) {
-      console.error('Search failed:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+
+    timerRef.current = setTimeout(async () => {
+      setLoading(true);
+      setSearched(true);
+      try {
+        const res = await getSongs({ search: query, limit: 50 });
+        setSongs(res.data.songs);
+      } catch (err) {
+        console.error('Search failed:', err);
+      } finally {
+        setLoading(false);
+      }
+    }, 300);
+
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, [query]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    setQuery(value);
-    // Debounce search
-    const timer = setTimeout(() => handleSearch(value), 300);
-    return () => clearTimeout(timer);
+    setQuery(e.target.value);
   };
 
   return (
