@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Music } from 'lucide-react';
-import { login } from '../api';
+import { register } from '../api';
 import { useAuthStore } from '../store/authStore';
 
-const LoginPage: React.FC = () => {
+const RegisterPage: React.FC = () => {
   const navigate = useNavigate();
   const { setAuth } = useAuthStore();
   const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -17,12 +18,12 @@ const LoginPage: React.FC = () => {
     setError('');
     setLoading(true);
     try {
-      const res = await login(email, password);
+      const res = await register(email, password, username);
       setAuth(res.data.user, res.data.token);
       navigate('/');
     } catch (err: unknown) {
       const error = err as { response?: { data?: { error?: string } } };
-      setError(error.response?.data?.error || 'Login failed');
+      setError(error.response?.data?.error || 'Registration failed');
     } finally {
       setLoading(false);
     }
@@ -36,7 +37,7 @@ const LoginPage: React.FC = () => {
             <Music className="w-10 h-10 text-green-500" />
             <span className="text-3xl font-bold text-white">MusicPlayer</span>
           </div>
-          <p className="text-[#b3b3b3]">Log in to continue</p>
+          <p className="text-[#b3b3b3]">Create your account</p>
         </div>
 
         <form onSubmit={handleSubmit} className="bg-[#282828] rounded-lg p-8 space-y-6">
@@ -45,6 +46,18 @@ const LoginPage: React.FC = () => {
               {error}
             </div>
           )}
+
+          <div>
+            <label className="block text-sm font-semibold text-white mb-2">Username</label>
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="Your username"
+              className="w-full bg-[#3E3E3E] text-white px-4 py-3 rounded-md outline-none focus:ring-2 focus:ring-green-500 placeholder-[#727272]"
+              required
+            />
+          </div>
 
           <div>
             <label className="block text-sm font-semibold text-white mb-2">Email</label>
@@ -64,9 +77,10 @@ const LoginPage: React.FC = () => {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Password"
+              placeholder="Create a password"
               className="w-full bg-[#3E3E3E] text-white px-4 py-3 rounded-md outline-none focus:ring-2 focus:ring-green-500 placeholder-[#727272]"
               required
+              minLength={6}
             />
           </div>
 
@@ -75,23 +89,19 @@ const LoginPage: React.FC = () => {
             disabled={loading}
             className="w-full bg-green-500 text-black font-bold py-3 rounded-full hover:bg-green-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? 'Logging in...' : 'Log In'}
+            {loading ? 'Creating account...' : 'Sign Up'}
           </button>
 
           <div className="text-center">
-            <span className="text-[#b3b3b3] text-sm">Don't have an account? </span>
-            <Link to="/register" className="text-white text-sm font-semibold hover:underline">
-              Sign up
+            <span className="text-[#b3b3b3] text-sm">Already have an account? </span>
+            <Link to="/login" className="text-white text-sm font-semibold hover:underline">
+              Log in
             </Link>
           </div>
         </form>
-
-        <div className="mt-6 text-center text-xs text-[#727272]">
-          <p>Demo: demo@musicplayer.com / demo123</p>
-        </div>
       </div>
     </div>
   );
 };
 
-export default LoginPage;
+export default RegisterPage;

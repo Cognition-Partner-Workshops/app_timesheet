@@ -1,82 +1,60 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ThemeProvider, createTheme } from '@mui/material/styles';
-import CssBaseline from '@mui/material/CssBaseline';
-import { AuthProvider } from './contexts/AuthContext';
-import { useAuth } from './hooks/useAuth';
-import Layout from './components/Layout';
+import React, { useEffect } from 'react';
+import { Routes, Route, Navigate } from 'react-router-dom';
+import { useAuthStore } from './store/authStore';
+import Sidebar from './components/Sidebar';
+import Player from './components/Player';
 import LoginPage from './pages/LoginPage';
-import DashboardPage from './pages/DashboardPage';
-import ClientsPage from './pages/ClientsPage';
-import WorkEntriesPage from './pages/WorkEntriesPage';
-import ReportsPage from './pages/ReportsPage';
+import RegisterPage from './pages/RegisterPage';
+import HomePage from './pages/HomePage';
+import SearchPage from './pages/SearchPage';
+import PlaylistPage from './pages/PlaylistPage';
+import PlaylistsPage from './pages/PlaylistsPage';
 
-const theme = createTheme({
-  palette: {
-    primary: {
-      main: '#1976d2',
-    },
-    secondary: {
-      main: '#dc004e',
-    },
-  },
-});
+const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { isAuthenticated } = useAuthStore();
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  return <>{children}</>;
+};
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: 1,
-      refetchOnWindowFocus: false,
-    },
-  },
-});
-
-const AppContent: React.FC = () => {
-  const { isAuthenticated, isLoading } = useAuth();
-  
-  if (isLoading) {
-    return <div>Loading...</div>;
-  }
-  
+const AppLayout: React.FC = () => {
   return (
-    <Router>
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route
-          path="/*"
-          element={
-            isAuthenticated ? (
-              <Layout>
-                <Routes>
-                  <Route path="/dashboard" element={<DashboardPage />} />
-                  <Route path="/clients" element={<ClientsPage />} />
-                  <Route path="/work-entries" element={<WorkEntriesPage />} />
-                  <Route path="/reports" element={<ReportsPage />} />
-                  <Route path="/" element={<Navigate to="/dashboard" replace />} />
-                  <Route path="*" element={<Navigate to="/dashboard" replace />} />
-                </Routes>
-              </Layout>
-            ) : (
-              <Navigate to="/login" replace />
-            )
-          }
-        />
-      </Routes>
-    </Router>
+    <div className="flex flex-col h-screen">
+      <div className="flex flex-1 min-h-0">
+        <Sidebar />
+        <main className="flex-1 min-h-0 flex flex-col">
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/search" element={<SearchPage />} />
+            <Route path="/playlists" element={<PlaylistsPage />} />
+            <Route path="/playlists/:id" element={<PlaylistPage />} />
+          </Routes>
+        </main>
+      </div>
+      <Player />
+    </div>
   );
 };
 
 const App: React.FC = () => {
+  const { loadFromStorage } = useAuthStore();
+
+  useEffect(() => {
+    loadFromStorage();
+  }, [loadFromStorage]);
+
   return (
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        <AuthProvider>
-          <AppContent />
-        </AuthProvider>
-      </ThemeProvider>
-    </QueryClientProvider>
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<RegisterPage />} />
+      <Route
+        path="/*"
+        element={
+          <ProtectedRoute>
+            <AppLayout />
+          </ProtectedRoute>
+        }
+      />
+    </Routes>
   );
 };
 
