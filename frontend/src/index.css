@@ -7,11 +7,13 @@
 }
 
 body {
-  background-color: #191414;
-  color: #ffffff;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #fafafa;
+  color: #1d1d1f;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', Helvetica, Arial, sans-serif;
   overflow: hidden;
   height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 #root {
@@ -21,24 +23,24 @@ body {
 }
 
 ::-webkit-scrollbar {
-  width: 8px;
+  width: 6px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #535353;
-  border-radius: 4px;
+  background: #c7c7cc;
+  border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #737373;
+  background: #a1a1a6;
 }
 
 input[type="range"] {
   -webkit-appearance: none;
   appearance: none;
   height: 4px;
-  background: #535353;
+  background: #d1d1d6;
   border-radius: 2px;
   outline: none;
   cursor: pointer;
@@ -49,11 +51,16 @@ input[type="range"]::-webkit-slider-thumb {
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: #fff;
+  background: #fc3c44;
   cursor: pointer;
   opacity: 0;
   transition: opacity 0.2s;
 }
 input[type="range"]:hover::-webkit-slider-thumb {
   opacity: 1;
+}
+
+.glass {
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
 }

@@ -30,55 +30,57 @@ const RegisterPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[#1a1a1a] to-[#191414] flex items-center justify-center px-4">
+    <div className="min-h-screen bg-[#fafafa] flex items-center justify-center px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <div className="flex items-center justify-center gap-2 mb-4">
-            <Music className="w-10 h-10 text-green-500" />
-            <span className="text-3xl font-bold text-white">MusicPlayer</span>
+            <div className="w-12 h-12 bg-gradient-to-br from-[#fc3c44] to-[#e8384f] rounded-2xl flex items-center justify-center shadow-lg">
+              <Music className="w-7 h-7 text-white" />
+            </div>
           </div>
-          <p className="text-[#b3b3b3]">Create your account</p>
+          <h1 className="text-2xl font-bold text-[#1d1d1f] mb-1">Apple Music</h1>
+          <p className="text-[#86868b]">Create your account</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="bg-[#282828] rounded-lg p-8 space-y-6">
+        <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-8 space-y-6 shadow-sm border border-[#e8e8ed]">
           {error && (
-            <div className="bg-red-500/20 border border-red-500/50 text-red-300 px-4 py-3 rounded-md text-sm">
+            <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl text-sm">
               {error}
             </div>
           )}
 
           <div>
-            <label className="block text-sm font-semibold text-white mb-2">Username</label>
+            <label className="block text-sm font-medium text-[#1d1d1f] mb-2">Username</label>
             <input
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               placeholder="Your username"
-              className="w-full bg-[#3E3E3E] text-white px-4 py-3 rounded-md outline-none focus:ring-2 focus:ring-green-500 placeholder-[#727272]"
+              className="w-full bg-[#f5f5f7] text-[#1d1d1f] px-4 py-3 rounded-xl outline-none border border-[#d2d2d7] focus:border-[#fc3c44] focus:ring-2 focus:ring-[#fc3c44]/20 placeholder-[#86868b]"
               required
             />
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-white mb-2">Email</label>
+            <label className="block text-sm font-medium text-[#1d1d1f] mb-2">Email</label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="your@email.com"
-              className="w-full bg-[#3E3E3E] text-white px-4 py-3 rounded-md outline-none focus:ring-2 focus:ring-green-500 placeholder-[#727272]"
+              className="w-full bg-[#f5f5f7] text-[#1d1d1f] px-4 py-3 rounded-xl outline-none border border-[#d2d2d7] focus:border-[#fc3c44] focus:ring-2 focus:ring-[#fc3c44]/20 placeholder-[#86868b]"
               required
             />
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-white mb-2">Password</label>
+            <label className="block text-sm font-medium text-[#1d1d1f] mb-2">Password</label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="Create a password"
-              className="w-full bg-[#3E3E3E] text-white px-4 py-3 rounded-md outline-none focus:ring-2 focus:ring-green-500 placeholder-[#727272]"
+              className="w-full bg-[#f5f5f7] text-[#1d1d1f] px-4 py-3 rounded-xl outline-none border border-[#d2d2d7] focus:border-[#fc3c44] focus:ring-2 focus:ring-[#fc3c44]/20 placeholder-[#86868b]"
               required
               minLength={6}
             />
@@ -87,14 +89,14 @@ const RegisterPage: React.FC = () => {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-green-500 text-black font-bold py-3 rounded-full hover:bg-green-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full bg-[#fc3c44] text-white font-semibold py-3 rounded-full hover:bg-[#e8384f] transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
           >
             {loading ? 'Creating account...' : 'Sign Up'}
           </button>
 
           <div className="text-center">
-            <span className="text-[#b3b3b3] text-sm">Already have an account? </span>
-            <Link to="/login" className="text-white text-sm font-semibold hover:underline">
+            <span className="text-[#86868b] text-sm">Already have an account? </span>
+            <Link to="/login" className="text-[#fc3c44] text-sm font-semibold hover:underline">
               Log in
             </Link>
           </div>

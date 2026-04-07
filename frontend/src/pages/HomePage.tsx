@@ -24,19 +24,19 @@ const HomePage: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto bg-gradient-to-b from-[#1a3a2a] to-[#121212] p-6">
+    <div className="flex-1 overflow-y-auto bg-[#fafafa] p-6">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-4xl font-bold text-white mb-2">Good {getGreeting()}</h1>
-        <p className="text-[#b3b3b3]">Discover and play your favorite music</p>
+        <h1 className="text-3xl font-bold text-[#1d1d1f] mb-1">Good {getGreeting()}</h1>
+        <p className="text-[#86868b]">Discover and play your favorite music</p>
       </div>
 
       {/* All songs */}
-      <div>
-        <h2 className="text-2xl font-bold text-white mb-4">All Songs</h2>
+      <div className="bg-white rounded-2xl shadow-sm border border-[#e8e8ed] p-4">
+        <h2 className="text-xl font-bold text-[#1d1d1f] mb-4 px-2">All Songs</h2>
 
         {/* Header row */}
-        <div className="flex items-center gap-4 px-4 py-2 border-b border-[#333] text-[#b3b3b3] text-sm mb-2">
+        <div className="flex items-center gap-4 px-4 py-2 border-b border-[#e8e8ed] text-[#86868b] text-xs font-medium uppercase tracking-wider mb-1">
           <div className="w-8 text-center">#</div>
           <div className="flex-1">Title</div>
           <div className="hidden md:block w-48">Album</div>
@@ -48,12 +48,12 @@ const HomePage: React.FC = () => {
 
         {loading ? (
           <div className="flex items-center justify-center py-20">
-            <Music className="w-8 h-8 text-[#535353] animate-pulse" />
+            <Music className="w-8 h-8 text-[#d1d1d6] animate-pulse" />
           </div>
         ) : songs.length === 0 ? (
           <div className="text-center py-20">
-            <Music className="w-12 h-12 text-[#535353] mx-auto mb-4" />
-            <p className="text-[#b3b3b3]">No songs found</p>
+            <Music className="w-12 h-12 text-[#d1d1d6] mx-auto mb-4" />
+            <p className="text-[#86868b]">No songs found</p>
           </div>
         ) : (
           <div className="space-y-0.5">

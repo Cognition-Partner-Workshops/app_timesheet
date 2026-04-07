@@ -58,16 +58,16 @@ const PlaylistPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-[#121212]">
-        <Music className="w-8 h-8 text-[#535353] animate-pulse" />
+      <div className="flex-1 flex items-center justify-center bg-[#fafafa]">
+        <Music className="w-8 h-8 text-[#d1d1d6] animate-pulse" />
       </div>
     );
   }
 
   if (!playlist) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-[#121212]">
-        <p className="text-[#b3b3b3]">Playlist not found</p>
+      <div className="flex-1 flex items-center justify-center bg-[#fafafa]">
+        <p className="text-[#86868b]">Playlist not found</p>
       </div>
     );
   }
@@ -75,16 +75,16 @@ const PlaylistPage: React.FC = () => {
   const songs: Song[] = playlist.songs || [];
 
   return (
-    <div className="flex-1 overflow-y-auto bg-gradient-to-b from-[#3a2870] to-[#121212]">
+    <div className="flex-1 overflow-y-auto bg-[#fafafa]">
       {/* Playlist header */}
       <div className="p-6 pb-4 flex items-end gap-6">
-        <div className="w-48 h-48 bg-[#282828] rounded-md shadow-2xl flex items-center justify-center flex-shrink-0">
-          <Music className="w-16 h-16 text-[#535353]" />
+        <div className="w-48 h-48 bg-gradient-to-br from-[#fc3c44]/20 to-[#ff6b6b]/20 rounded-2xl shadow-lg flex items-center justify-center flex-shrink-0">
+          <Music className="w-16 h-16 text-[#fc3c44]/40" />
         </div>
         <div>
-          <p className="text-xs font-bold uppercase text-white mb-2">Playlist</p>
-          <h1 className="text-5xl font-bold text-white mb-4">{playlist.name}</h1>
-          <p className="text-[#b3b3b3] text-sm">{songs.length} songs</p>
+          <p className="text-xs font-semibold uppercase text-[#86868b] mb-2 tracking-wider">Playlist</p>
+          <h1 className="text-4xl font-bold text-[#1d1d1f] mb-3">{playlist.name}</h1>
+          <p className="text-[#86868b] text-sm">{songs.length} songs</p>
         </div>
       </div>
 
@@ -93,15 +93,15 @@ const PlaylistPage: React.FC = () => {
         <button
           onClick={handlePlayAll}
           disabled={songs.length === 0}
-          className="w-14 h-14 rounded-full bg-green-500 flex items-center justify-center hover:bg-green-400 hover:scale-105 transition-all disabled:opacity-50"
+          className="w-12 h-12 rounded-full bg-[#fc3c44] flex items-center justify-center hover:bg-[#e8384f] hover:scale-105 transition-all disabled:opacity-50 shadow-md"
         >
-          <Play size={24} className="text-black ml-1" fill="black" />
+          <Play size={22} className="text-white ml-0.5" fill="white" />
         </button>
         <button
           onClick={handleDelete}
-          className="text-[#b3b3b3] hover:text-white transition-colors"
+          className="text-[#86868b] hover:text-[#fc3c44] transition-colors"
         >
-          <Trash2 size={22} />
+          <Trash2 size={20} />
         </button>
       </div>
 
@@ -109,13 +109,13 @@ const PlaylistPage: React.FC = () => {
       <div className="px-6">
         {songs.length === 0 ? (
           <div className="text-center py-16">
-            <Music className="w-12 h-12 text-[#535353] mx-auto mb-4" />
-            <p className="text-[#b3b3b3] mb-2">This playlist is empty</p>
-            <p className="text-[#727272] text-sm">Search for songs and add them to this playlist</p>
+            <Music className="w-12 h-12 text-[#d1d1d6] mx-auto mb-4" />
+            <p className="text-[#86868b] mb-2">This playlist is empty</p>
+            <p className="text-[#86868b] text-sm">Search for songs and add them to this playlist</p>
           </div>
         ) : (
-          <>
-            <div className="flex items-center gap-4 px-4 py-2 border-b border-[#333] text-[#b3b3b3] text-sm mb-2">
+          <div className="bg-white rounded-2xl shadow-sm border border-[#e8e8ed] p-4">
+            <div className="flex items-center gap-4 px-4 py-2 border-b border-[#e8e8ed] text-[#86868b] text-xs font-medium uppercase tracking-wider mb-1">
               <div className="w-8 text-center">#</div>
               <div className="flex-1">Title</div>
               <div className="hidden md:block w-48">Album</div>
@@ -130,7 +130,7 @@ const PlaylistPage: React.FC = () => {
                   <SongRow song={song} index={i} songs={songs} />
                   <button
                     onClick={() => handleRemoveSong(song.id)}
-                    className="absolute right-20 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 text-[#b3b3b3] hover:text-red-400 transition-all"
+                    className="absolute right-20 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 text-[#86868b] hover:text-[#fc3c44] transition-all"
                     title="Remove from playlist"
                   >
                     <Trash2 size={14} />
@@ -138,7 +138,7 @@ const PlaylistPage: React.FC = () => {
                 </div>
               ))}
             </div>
-          </>
+          </div>
         )}
       </div>
     </div>
