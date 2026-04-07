@@ -25,19 +25,6 @@ router.get('/', (req, res) => {
         return res.status(500).json({ error: 'Internal server error' });
       }
       
-      const projects = rows.map(row => ({
-        id: row.id,
-        name: row.name,
-        description: row.description,
-        clientId: row.client_id,
-        clientName: row.client_name,
-        startDate: row.start_date,
-        status: row.status,
-        userEmail: row.user_email,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at
-      }));
-      
       res.json({ projects: rows });
     }
   );
