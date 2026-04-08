@@ -50,6 +50,30 @@ async function initializeDatabase() {
         )
       `);
 
+      // Add mobile column to users table (for OTP login)
+      database.run(`
+        ALTER TABLE users ADD COLUMN mobile TEXT
+      `, [], function(err) {
+        if (err) {
+          // Ignore "duplicate column name" error - column already exists
+          if (!err.message.includes('duplicate column')) {
+            console.error('Error adding mobile column:', err);
+          }
+        }
+      });
+
+      // Create otp_codes table for mobile OTP authentication
+      database.run(`
+        CREATE TABLE IF NOT EXISTS otp_codes (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          mobile TEXT NOT NULL,
+          otp_code TEXT NOT NULL,
+          expires_at DATETIME NOT NULL,
+          used INTEGER DEFAULT 0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+
       // Create work_entries table
       database.run(`
         CREATE TABLE IF NOT EXISTS work_entries (
@@ -71,6 +95,18 @@ async function initializeDatabase() {
       database.run(`CREATE INDEX IF NOT EXISTS idx_work_entries_client_id ON work_entries (client_id)`);
       database.run(`CREATE INDEX IF NOT EXISTS idx_work_entries_user_email ON work_entries (user_email)`);
       database.run(`CREATE INDEX IF NOT EXISTS idx_work_entries_date ON work_entries (date)`);
+      database.run(`CREATE INDEX IF NOT EXISTS idx_otp_codes_mobile ON otp_codes (mobile)`);
+      database.run(`CREATE INDEX IF NOT EXISTS idx_users_mobile ON users (mobile)`);
+      database.run(`CREATE INDEX IF NOT EXISTS idx_otp_codes_expires_at ON otp_codes (expires_at)`);
+
+      // Clean up expired OTP codes
+      database.run(`DELETE FROM otp_codes WHERE expires_at < datetime('now')`);
+      // Clean up used OTP codes older than 1 hour
+      database.run(`DELETE FROM otp_codes WHERE used = 1 AND created_at < datetime('now', '-1 hour')`);
+      // Clean up all OTP codes older than 24 hours
+      database.run(`DELETE FROM otp_codes WHERE created_at < datetime('now', '-24 hours')`);
+      // Clean up OTP codes with null or empty mobile
+      database.run(`DELETE FROM otp_codes WHERE mobile IS NULL OR mobile = ''`);
 
       console.log('Database tables created successfully');
       resolve();

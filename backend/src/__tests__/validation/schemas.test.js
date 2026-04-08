@@ -3,7 +3,9 @@ const {
   workEntrySchema,
   updateWorkEntrySchema,
   updateClientSchema,
-  emailSchema
+  emailSchema,
+  sendOtpSchema,
+  verifyOtpSchema
 } = require('../../validation/schemas');
 
 describe('Validation Schemas', () => {
@@ -323,6 +325,90 @@ describe('Validation Schemas', () => {
 
       const { error } = emailSchema.validate(data);
       expect(error).toBeUndefined();
+    });
+  });
+
+  describe('sendOtpSchema', () => {
+    test('should validate valid mobile with + prefix', () => {
+      const { error } = sendOtpSchema.validate({ mobile: '+1234567890' });
+      expect(error).toBeUndefined();
+    });
+
+    test('should validate valid mobile without + prefix', () => {
+      const { error } = sendOtpSchema.validate({ mobile: '1234567890' });
+      expect(error).toBeUndefined();
+    });
+
+    test('should reject short mobile number', () => {
+      const { error } = sendOtpSchema.validate({ mobile: '123' });
+      expect(error).toBeDefined();
+    });
+
+    test('should reject mobile starting with 0', () => {
+      const { error } = sendOtpSchema.validate({ mobile: '0123456789' });
+      expect(error).toBeDefined();
+    });
+
+    test('should reject missing mobile', () => {
+      const { error } = sendOtpSchema.validate({});
+      expect(error).toBeDefined();
+    });
+
+    test('should reject mobile with letters', () => {
+      const { error } = sendOtpSchema.validate({ mobile: 'abcdefghij' });
+      expect(error).toBeDefined();
+    });
+
+    test('should accept long international number', () => {
+      const { error } = sendOtpSchema.validate({ mobile: '+441234567890123' });
+      expect(error).toBeUndefined();
+    });
+
+    test('should reject number exceeding 15 digits', () => {
+      const { error } = sendOtpSchema.validate({ mobile: '+1234567890123456' });
+      expect(error).toBeDefined();
+    });
+  });
+
+  describe('verifyOtpSchema', () => {
+    test('should validate valid mobile and OTP', () => {
+      const { error } = verifyOtpSchema.validate({ mobile: '+1234567890', otpCode: '123456' });
+      expect(error).toBeUndefined();
+    });
+
+    test('should reject missing mobile', () => {
+      const { error } = verifyOtpSchema.validate({ otpCode: '123456' });
+      expect(error).toBeDefined();
+    });
+
+    test('should reject missing otpCode', () => {
+      const { error } = verifyOtpSchema.validate({ mobile: '+1234567890' });
+      expect(error).toBeDefined();
+    });
+
+    test('should reject OTP shorter than 6 digits', () => {
+      const { error } = verifyOtpSchema.validate({ mobile: '+1234567890', otpCode: '12345' });
+      expect(error).toBeDefined();
+    });
+
+    test('should reject OTP longer than 6 digits', () => {
+      const { error } = verifyOtpSchema.validate({ mobile: '+1234567890', otpCode: '1234567' });
+      expect(error).toBeDefined();
+    });
+
+    test('should reject OTP with letters', () => {
+      const { error } = verifyOtpSchema.validate({ mobile: '+1234567890', otpCode: 'abcdef' });
+      expect(error).toBeDefined();
+    });
+
+    test('should reject empty object', () => {
+      const { error } = verifyOtpSchema.validate({});
+      expect(error).toBeDefined();
+    });
+
+    test('should reject invalid mobile format in verify', () => {
+      const { error } = verifyOtpSchema.validate({ mobile: 'abc', otpCode: '123456' });
+      expect(error).toBeDefined();
     });
   });
 });

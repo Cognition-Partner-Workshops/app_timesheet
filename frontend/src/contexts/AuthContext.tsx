@@ -41,6 +41,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  const loginWithOtp = async (mobile: string, otpCode: string) => {
+    try {
+      const response = await apiClient.verifyOtp(mobile, otpCode);
+      setUser(response.user);
+      localStorage.setItem('userEmail', response.user.email);
+    } catch (error) {
+      console.error('OTP login failed:', error);
+      throw error;
+    }
+  };
+
   const logout = () => {
     setUser(null);
     localStorage.removeItem('userEmail');
@@ -49,6 +60,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const value: AuthContextType = {
     user,
     login,
+    loginWithOtp,
     logout,
     isLoading,
     isAuthenticated: !!user,
