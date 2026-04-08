@@ -140,11 +140,12 @@
     async function startRecording() {
         try {
             // Request microphone access (don't force sampleRate - let browser use native)
+            // Disable noiseSuppression to prevent aggressive filtering of speech
             state.mediaStream = await navigator.mediaDevices.getUserMedia({
                 audio: {
                     channelCount: 1,
                     echoCancellation: true,
-                    noiseSuppression: true,
+                    noiseSuppression: false,
                     autoGainControl: true,
                 },
             });
@@ -184,31 +185,35 @@
             var audioChunks = [];
             var collectedSamples = 0; // 16kHz equivalent samples
 
-            // VAD (Voice Activity Detection) parameters
-            var vadSpeechThreshold = 0.01; // Energy threshold to detect speech
-            var vadSilenceThreshold = 0.005; // Energy threshold for silence
+            // Each frame = bufferSize samples at native rate
+            var frameDuration = bufferSize / nativeSampleRate; // seconds per frame
+
+            // --- Hybrid sending strategy ---
+            // Primary: periodic send every ~3 seconds (reliable, always works)
+            // Secondary: VAD early-send when speech ends (low latency optimization)
+            var PERIODIC_SEND_SECONDS = 3; // Always send every 3s
+            var periodicSendSamples = TARGET_SAMPLE_RATE * PERIODIC_SEND_SECONDS;
+            // Minimum audio to send (~0.3s at 16kHz) - avoid sending tiny noise
+            var minSamplesToSend = TARGET_SAMPLE_RATE * 0.3;
+
+            // VAD for early detection of speech end
+            var vadSpeechThreshold = 0.005; // Very low - just above digital silence
+            var vadSilenceThreshold = 0.003;
             var isSpeaking = false;
             var silenceFrames = 0;
             var speechFrames = 0;
-            // Calculate frames needed based on native sample rate
-            // Each frame = bufferSize samples at native rate
-            var frameDuration = bufferSize / nativeSampleRate; // seconds per frame
             // Send after ~0.5s of silence following speech
             var silenceFramesNeeded = Math.ceil(0.5 / frameDuration);
-            // Minimum speech frames before considering it valid (~0.3s)
-            var minSpeechFrames = Math.ceil(0.3 / frameDuration);
-            // Maximum chunk duration: force send after 3s to avoid long waits
-            var maxSamplesToSend = TARGET_SAMPLE_RATE * 3;
-            // Minimum audio to send (~0.5s at 16kHz)
-            var minSamplesToSend = TARGET_SAMPLE_RATE * 0.5;
-            // Hard timeout: force send after 8s regardless of VAD
-            var hardTimeoutSamples = TARGET_SAMPLE_RATE * 8;
+            // Minimum speech frames (~0.2s)
+            var minSpeechFrames = Math.ceil(0.2 / frameDuration);
 
             var frameCount = 0;
+            var maxRmsSeen = 0;
 
-            console.log("VAD config: frameDuration=", frameDuration.toFixed(3),
-                "silenceFramesNeeded=", silenceFramesNeeded,
-                "minSpeechFrames=", minSpeechFrames);
+            console.log("Audio config: frameDuration=", frameDuration.toFixed(3) + "s",
+                "periodicSend=" + PERIODIC_SEND_SECONDS + "s",
+                "vadSpeech=" + vadSpeechThreshold,
+                "vadSilence=" + vadSilenceThreshold);
 
             state.processor.onaudioprocess = function (e) {
                 if (!state.isRecording) return;
@@ -231,6 +236,7 @@
                     sumSquares += inputData[j] * inputData[j];
                 }
                 var rms = Math.sqrt(sumSquares / inputData.length);
+                if (rms > maxRmsSeen) maxRmsSeen = rms;
 
                 audioChunks.push(int16Data);
                 collectedSamples += resampled.length;
@@ -240,56 +246,52 @@
                 var logInterval = Math.ceil(2.0 / frameDuration);
                 if (frameCount % logInterval === 0) {
                     console.log("Audio: frame=" + frameCount +
-                        " rms=" + rms.toFixed(4) +
+                        " rms=" + rms.toFixed(6) +
+                        " maxRms=" + maxRmsSeen.toFixed(6) +
                         " samples16k=" + collectedSamples +
                         " speaking=" + isSpeaking +
-                        " speechF=" + speechFrames +
-                        " silenceF=" + silenceFrames);
+                        " speechF=" + speechFrames);
                 }
 
+                // VAD tracking
                 if (rms > vadSpeechThreshold) {
-                    // Speech detected
                     isSpeaking = true;
                     speechFrames++;
                     silenceFrames = 0;
                 } else if (isSpeaking && rms < vadSilenceThreshold) {
-                    // Silence after speech
                     silenceFrames++;
                 }
 
-                // Send conditions:
-                // 1. Speech ended (silence after valid speech)
-                // 2. Max duration reached during speech (force send)
-                // 3. Hard timeout reached (force send regardless)
+                // --- Send decision ---
                 var shouldSend = false;
                 var sendReason = "";
 
+                // 1. VAD: speech ended (silence detected after speech)
                 if (isSpeaking && silenceFrames >= silenceFramesNeeded &&
                     speechFrames >= minSpeechFrames &&
                     collectedSamples >= minSamplesToSend) {
                     shouldSend = true;
                     sendReason = "speech_ended";
-                } else if (collectedSamples >= maxSamplesToSend &&
-                           speechFrames >= minSpeechFrames) {
+                }
+                // 2. Periodic: always send after 3 seconds
+                else if (collectedSamples >= periodicSendSamples) {
                     shouldSend = true;
-                    sendReason = "max_duration";
-                } else if (collectedSamples >= hardTimeoutSamples) {
-                    // Hard timeout - send regardless of speech detection
-                    shouldSend = true;
-                    sendReason = "hard_timeout";
+                    sendReason = "periodic_" + PERIODIC_SEND_SECONDS + "s";
                 }
 
                 if (shouldSend) {
                     console.log("Sending audio: reason=" + sendReason +
                         " samples=" + collectedSamples +
                         " duration=" + (collectedSamples / TARGET_SAMPLE_RATE).toFixed(2) + "s" +
-                        " speechFrames=" + speechFrames);
+                        " speechFrames=" + speechFrames +
+                        " maxRms=" + maxRmsSeen.toFixed(6));
                     sendAudioData(audioChunks);
                     audioChunks = [];
                     collectedSamples = 0;
                     isSpeaking = false;
                     silenceFrames = 0;
                     speechFrames = 0;
+                    maxRmsSeen = 0;
                 }
             };
 
