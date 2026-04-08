@@ -97,7 +97,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <Typography variant="body2">{user?.email}</Typography>
-            <Avatar sx={{ width: 32, height: 32 }}>
+            <Avatar sx={{ width: 32, height: 32, bgcolor: '#1565c0' }} alt={`Avatar for ${user?.email || 'user'}`}>
               {user?.email?.charAt(0).toUpperCase()}
             </Avatar>
             <Button
@@ -114,7 +114,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       <Box
         component="nav"
         sx={{ width: { sm: drawerWidth }, flexShrink: { sm: 0 } }}
-        aria-label="mailbox folders"
+        aria-label="main navigation"
       >
         <Drawer
           variant="temporary"

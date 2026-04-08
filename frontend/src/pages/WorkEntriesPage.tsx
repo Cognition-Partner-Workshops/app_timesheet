@@ -188,7 +188,7 @@ const WorkEntriesPage: React.FC = () => {
     <LocalizationProvider dateAdapter={AdapterDateFns}>
       <Box>
         <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-          <Typography variant="h4">Work Entries</Typography>
+          <Typography variant="h4" component="h1">Work Entries</Typography>
           <Button variant="contained" startIcon={<AddIcon />} onClick={() => handleOpen()}>
             Add Work Entry
           </Button>
@@ -257,6 +257,7 @@ const WorkEntriesPage: React.FC = () => {
                             onClick={() => handleOpen(entry)}
                             color="primary"
                             size="small"
+                            aria-label={`Edit work entry for ${entry.client_name}`}
                           >
                             <EditIcon />
                           </IconButton>
@@ -264,6 +265,7 @@ const WorkEntriesPage: React.FC = () => {
                             onClick={() => handleDelete(entry)}
                             color="error"
                             size="small"
+                            aria-label={`Delete work entry for ${entry.client_name}`}
                           >
                             <DeleteIcon />
                           </IconButton>
@@ -292,8 +294,10 @@ const WorkEntriesPage: React.FC = () => {
           <form onSubmit={handleSubmit}>
             <DialogContent>
               <FormControl fullWidth margin="dense" required>
-                <InputLabel>Client</InputLabel>
+                <InputLabel id="client-select-label">Client</InputLabel>
                 <Select
+                  labelId="client-select-label"
+                  label="Client"
                   value={formData.clientId}
                   onChange={(e) => setFormData({ ...formData, clientId: Number(e.target.value) })}
                   disabled={createMutation.isPending || updateMutation.isPending}

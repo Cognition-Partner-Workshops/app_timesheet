@@ -63,7 +63,7 @@ const DashboardPage: React.FC = () => {
 
   return (
     <Box>
-      <Typography variant="h4" gutterBottom>
+      <Typography variant="h4" component="h1" gutterBottom>
         Dashboard
       </Typography>
 
@@ -80,11 +80,15 @@ const DashboardPage: React.FC = () => {
                 },
               }}
               onClick={stat.action}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); stat.action(); } }}
+              tabIndex={0}
+              role="button"
+              aria-label={`${stat.title}: ${stat.value}`}
             >
               <CardContent>
                 <Box display="flex" alignItems="center" justifyContent="space-between" gap={3}>
                   <Box>
-                    <Typography color="textSecondary" gutterBottom variant="h6">
+                    <Typography color="textSecondary" gutterBottom variant="h6" component="h2">
                       {stat.title}
                     </Typography>
                     <Typography variant="h4" component="div">
