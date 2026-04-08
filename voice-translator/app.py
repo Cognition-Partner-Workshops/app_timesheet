@@ -148,7 +148,13 @@ def handle_audio_data(data):
         enable_diarization = data.get("enable_diarization", True)
 
         if not audio_bytes:
+            logger.warning("No audio bytes received")
             return
+
+        logger.info(
+            "Received audio: %d bytes, lang=%s, target=%s, mode=%s",
+            len(audio_bytes), language, target_lang, translation_mode,
+        )
 
         # Capture sid while still in request context
         sid = request.sid

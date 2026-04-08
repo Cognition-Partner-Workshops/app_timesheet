@@ -108,26 +108,61 @@
         statusText.textContent = text;
     }
 
+    // ==================== Audio Resampling ====================
+
+    /**
+     * Downsample audio buffer from inputSampleRate to outputSampleRate.
+     * Uses linear interpolation for quality.
+     */
+    function downsampleBuffer(buffer, inputSampleRate, outputSampleRate) {
+        if (inputSampleRate === outputSampleRate) {
+            return buffer;
+        }
+        if (inputSampleRate < outputSampleRate) {
+            console.warn("Cannot upsample from", inputSampleRate, "to", outputSampleRate);
+            return buffer;
+        }
+        var ratio = inputSampleRate / outputSampleRate;
+        var newLength = Math.round(buffer.length / ratio);
+        var result = new Float32Array(newLength);
+        for (var i = 0; i < newLength; i++) {
+            var index = i * ratio;
+            var lower = Math.floor(index);
+            var upper = Math.min(Math.ceil(index), buffer.length - 1);
+            var frac = index - lower;
+            result[i] = buffer[lower] * (1 - frac) + buffer[upper] * frac;
+        }
+        return result;
+    }
+
     // ==================== Audio Recording ====================
 
     async function startRecording() {
         try {
-            // Request microphone access
+            // Request microphone access (don't force sampleRate - let browser use native)
             state.mediaStream = await navigator.mediaDevices.getUserMedia({
                 audio: {
                     channelCount: 1,
-                    sampleRate: 16000,
                     echoCancellation: true,
                     noiseSuppression: true,
                     autoGainControl: true,
                 },
             });
 
-            // Create audio context
+            // Create audio context with default (native) sample rate
             state.audioContext = new (window.AudioContext ||
-                window.webkitAudioContext)({
-                sampleRate: 16000,
-            });
+                window.webkitAudioContext)();
+
+            // Ensure AudioContext is running (Chrome autoplay policy)
+            if (state.audioContext.state === "suspended") {
+                await state.audioContext.resume();
+            }
+
+            var nativeSampleRate = state.audioContext.sampleRate;
+            var TARGET_SAMPLE_RATE = 16000;
+            console.log("AudioContext state:", state.audioContext.state);
+            console.log("Native sample rate:", nativeSampleRate);
+            console.log("Target sample rate:", TARGET_SAMPLE_RATE);
 
             var source = state.audioContext.createMediaStreamSource(
                 state.mediaStream
@@ -147,35 +182,50 @@
             );
 
             var audioChunks = [];
-            var collectedSamples = 0;
+            var collectedSamples = 0; // 16kHz equivalent samples
 
             // VAD (Voice Activity Detection) parameters
-            var vadSpeechThreshold = 0.015; // Energy threshold to detect speech
-            var vadSilenceThreshold = 0.008; // Energy threshold for silence
+            var vadSpeechThreshold = 0.01; // Energy threshold to detect speech
+            var vadSilenceThreshold = 0.005; // Energy threshold for silence
             var isSpeaking = false;
             var silenceFrames = 0;
             var speechFrames = 0;
-            // Send after ~0.4s of silence following speech (7 frames * 4096/16000)
-            var silenceFramesNeeded = 7;
-            // Minimum speech frames before considering it valid (~0.25s)
-            var minSpeechFrames = 4;
+            // Calculate frames needed based on native sample rate
+            // Each frame = bufferSize samples at native rate
+            var frameDuration = bufferSize / nativeSampleRate; // seconds per frame
+            // Send after ~0.5s of silence following speech
+            var silenceFramesNeeded = Math.ceil(0.5 / frameDuration);
+            // Minimum speech frames before considering it valid (~0.3s)
+            var minSpeechFrames = Math.ceil(0.3 / frameDuration);
             // Maximum chunk duration: force send after 3s to avoid long waits
-            var maxSamplesPerChunk = 16000 * 3;
-            // Minimum audio to send (~0.5s)
-            var minSamplesToSend = 16000 * 0.5;
+            var maxSamplesToSend = TARGET_SAMPLE_RATE * 3;
+            // Minimum audio to send (~0.5s at 16kHz)
+            var minSamplesToSend = TARGET_SAMPLE_RATE * 0.5;
+            // Hard timeout: force send after 8s regardless of VAD
+            var hardTimeoutSamples = TARGET_SAMPLE_RATE * 8;
+
+            var frameCount = 0;
+
+            console.log("VAD config: frameDuration=", frameDuration.toFixed(3),
+                "silenceFramesNeeded=", silenceFramesNeeded,
+                "minSpeechFrames=", minSpeechFrames);
 
             state.processor.onaudioprocess = function (e) {
                 if (!state.isRecording) return;
 
                 var inputData = e.inputBuffer.getChannelData(0);
-                // Convert float32 to int16
-                var int16Data = new Int16Array(inputData.length);
-                for (var i = 0; i < inputData.length; i++) {
-                    var s = Math.max(-1, Math.min(1, inputData[i]));
+
+                // Downsample from native rate to 16kHz
+                var resampled = downsampleBuffer(inputData, nativeSampleRate, TARGET_SAMPLE_RATE);
+
+                // Convert float32 to int16 (16-bit PCM)
+                var int16Data = new Int16Array(resampled.length);
+                for (var i = 0; i < resampled.length; i++) {
+                    var s = Math.max(-1, Math.min(1, resampled[i]));
                     int16Data[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
                 }
 
-                // Calculate RMS energy for VAD
+                // Calculate RMS energy for VAD (use original input)
                 var sumSquares = 0;
                 for (var j = 0; j < inputData.length; j++) {
                     sumSquares += inputData[j] * inputData[j];
@@ -183,7 +233,19 @@
                 var rms = Math.sqrt(sumSquares / inputData.length);
 
                 audioChunks.push(int16Data);
-                collectedSamples += inputData.length;
+                collectedSamples += resampled.length;
+
+                // Periodic logging (every ~2 seconds)
+                frameCount++;
+                var logInterval = Math.ceil(2.0 / frameDuration);
+                if (frameCount % logInterval === 0) {
+                    console.log("Audio: frame=" + frameCount +
+                        " rms=" + rms.toFixed(4) +
+                        " samples16k=" + collectedSamples +
+                        " speaking=" + isSpeaking +
+                        " speechF=" + speechFrames +
+                        " silenceF=" + silenceFrames);
+                }
 
                 if (rms > vadSpeechThreshold) {
                     // Speech detected
@@ -198,20 +260,30 @@
                 // Send conditions:
                 // 1. Speech ended (silence after valid speech)
                 // 2. Max duration reached during speech (force send)
+                // 3. Hard timeout reached (force send regardless)
                 var shouldSend = false;
+                var sendReason = "";
 
                 if (isSpeaking && silenceFrames >= silenceFramesNeeded &&
                     speechFrames >= minSpeechFrames &&
                     collectedSamples >= minSamplesToSend) {
-                    // Speech ended - send immediately
                     shouldSend = true;
-                } else if (collectedSamples >= maxSamplesPerChunk &&
+                    sendReason = "speech_ended";
+                } else if (collectedSamples >= maxSamplesToSend &&
                            speechFrames >= minSpeechFrames) {
-                    // Max duration reached - force send
                     shouldSend = true;
+                    sendReason = "max_duration";
+                } else if (collectedSamples >= hardTimeoutSamples) {
+                    // Hard timeout - send regardless of speech detection
+                    shouldSend = true;
+                    sendReason = "hard_timeout";
                 }
 
                 if (shouldSend) {
+                    console.log("Sending audio: reason=" + sendReason +
+                        " samples=" + collectedSamples +
+                        " duration=" + (collectedSamples / TARGET_SAMPLE_RATE).toFixed(2) + "s" +
+                        " speechFrames=" + speechFrames);
                     sendAudioData(audioChunks);
                     audioChunks = [];
                     collectedSamples = 0;
@@ -222,7 +294,20 @@
             };
 
             source.connect(state.processor);
-            state.processor.connect(state.audioContext.destination);
+            // Connect through silent gain node (keeps processor alive, prevents feedback)
+            var silentGain = state.audioContext.createGain();
+            silentGain.gain.value = 0;
+            state.processor.connect(silentGain);
+            silentGain.connect(state.audioContext.destination);
+
+            // Listen for AudioContext state changes
+            state.audioContext.onstatechange = function () {
+                console.log("AudioContext state changed to:", state.audioContext.state);
+                if (state.audioContext.state === "suspended" && state.isRecording) {
+                    console.warn("AudioContext suspended during recording, attempting resume...");
+                    state.audioContext.resume();
+                }
+            };
 
             // Update UI
             state.isRecording = true;
@@ -279,7 +364,10 @@
     }
 
     function sendAudioData(chunks) {
-        if (!state.isConnected || !state.socket) return;
+        if (!state.isConnected || !state.socket) {
+            console.warn("Cannot send audio: connected=" + state.isConnected);
+            return;
+        }
 
         // Merge chunks into single buffer
         var totalLength = 0;
@@ -293,6 +381,10 @@
             merged.set(chunk, offset);
             offset += chunk.length;
         });
+
+        console.log("Emitting audio_data: " + totalLength + " samples (" +
+            (totalLength / 16000).toFixed(2) + "s at 16kHz), " +
+            merged.buffer.byteLength + " bytes");
 
         // Send to server
         state.socket.emit("audio_data", {
