@@ -32,10 +32,33 @@ const emailSchema = Joi.object({
   email: Joi.string().email().required()
 });
 
+const phoneSchema = Joi.object({
+  phone: Joi.string().pattern(/^\+?[1-9]\d{6,14}$/).required()
+    .messages({
+      'string.pattern.base': 'Phone number must be a valid international phone number (e.g., +1234567890)',
+      'any.required': 'Phone number is required'
+    })
+});
+
+const otpVerifySchema = Joi.object({
+  phone: Joi.string().pattern(/^\+?[1-9]\d{6,14}$/).required()
+    .messages({
+      'string.pattern.base': 'Phone number must be a valid international phone number',
+      'any.required': 'Phone number is required'
+    }),
+  otp: Joi.string().pattern(/^\d{6}$/).required()
+    .messages({
+      'string.pattern.base': 'OTP must be a 6-digit number',
+      'any.required': 'OTP is required'
+    })
+});
+
 module.exports = {
   clientSchema,
   workEntrySchema,
   updateWorkEntrySchema,
   updateClientSchema,
-  emailSchema
+  emailSchema,
+  phoneSchema,
+  otpVerifySchema
 };

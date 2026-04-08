@@ -3,7 +3,9 @@ const {
   workEntrySchema,
   updateWorkEntrySchema,
   updateClientSchema,
-  emailSchema
+  emailSchema,
+  phoneSchema,
+  otpVerifySchema
 } = require('../../validation/schemas');
 
 describe('Validation Schemas', () => {
@@ -323,6 +325,90 @@ describe('Validation Schemas', () => {
 
       const { error } = emailSchema.validate(data);
       expect(error).toBeUndefined();
+    });
+  });
+
+  describe('phoneSchema', () => {
+    test('should validate valid phone with country code', () => {
+      const { error } = phoneSchema.validate({ phone: '+1234567890' });
+      expect(error).toBeUndefined();
+    });
+
+    test('should validate valid phone without plus prefix', () => {
+      const { error } = phoneSchema.validate({ phone: '1234567890' });
+      expect(error).toBeUndefined();
+    });
+
+    test('should reject too short phone number', () => {
+      const { error } = phoneSchema.validate({ phone: '123' });
+      expect(error).toBeDefined();
+    });
+
+    test('should reject phone starting with zero', () => {
+      const { error } = phoneSchema.validate({ phone: '0123456789' });
+      expect(error).toBeDefined();
+    });
+
+    test('should reject missing phone', () => {
+      const { error } = phoneSchema.validate({});
+      expect(error).toBeDefined();
+    });
+
+    test('should reject empty phone', () => {
+      const { error } = phoneSchema.validate({ phone: '' });
+      expect(error).toBeDefined();
+    });
+
+    test('should reject phone with letters', () => {
+      const { error } = phoneSchema.validate({ phone: '+1234abc890' });
+      expect(error).toBeDefined();
+    });
+
+    test('should validate long international number', () => {
+      const { error } = phoneSchema.validate({ phone: '+911234567890123' });
+      expect(error).toBeUndefined();
+    });
+  });
+
+  describe('otpVerifySchema', () => {
+    test('should validate valid phone and OTP', () => {
+      const { error } = otpVerifySchema.validate({ phone: '+1234567890', otp: '123456' });
+      expect(error).toBeUndefined();
+    });
+
+    test('should reject missing phone', () => {
+      const { error } = otpVerifySchema.validate({ otp: '123456' });
+      expect(error).toBeDefined();
+    });
+
+    test('should reject missing OTP', () => {
+      const { error } = otpVerifySchema.validate({ phone: '+1234567890' });
+      expect(error).toBeDefined();
+    });
+
+    test('should reject OTP shorter than 6 digits', () => {
+      const { error } = otpVerifySchema.validate({ phone: '+1234567890', otp: '12345' });
+      expect(error).toBeDefined();
+    });
+
+    test('should reject OTP longer than 6 digits', () => {
+      const { error } = otpVerifySchema.validate({ phone: '+1234567890', otp: '1234567' });
+      expect(error).toBeDefined();
+    });
+
+    test('should reject non-numeric OTP', () => {
+      const { error } = otpVerifySchema.validate({ phone: '+1234567890', otp: 'abcdef' });
+      expect(error).toBeDefined();
+    });
+
+    test('should reject invalid phone in verify', () => {
+      const { error } = otpVerifySchema.validate({ phone: '123', otp: '123456' });
+      expect(error).toBeDefined();
+    });
+
+    test('should reject empty OTP', () => {
+      const { error } = otpVerifySchema.validate({ phone: '+1234567890', otp: '' });
+      expect(error).toBeDefined();
     });
   });
 });

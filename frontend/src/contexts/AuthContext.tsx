@@ -41,6 +41,27 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  const sendOtp = async (phone: string): Promise<{ demo_otp?: string }> => {
+    try {
+      const response = await apiClient.sendOtp(phone);
+      return { demo_otp: response.demo_otp };
+    } catch (error) {
+      console.error('Failed to send OTP:', error);
+      throw error;
+    }
+  };
+
+  const loginWithPhone = async (phone: string, otp: string) => {
+    try {
+      const response = await apiClient.verifyOtp(phone, otp);
+      setUser(response.user);
+      localStorage.setItem('userEmail', response.user.email);
+    } catch (error) {
+      console.error('OTP verification failed:', error);
+      throw error;
+    }
+  };
+
   const logout = () => {
     setUser(null);
     localStorage.removeItem('userEmail');
@@ -49,6 +70,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const value: AuthContextType = {
     user,
     login,
+    loginWithPhone,
+    sendOtp,
     logout,
     isLoading,
     isAuthenticated: !!user,
