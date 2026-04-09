@@ -19,7 +19,7 @@
         isPlayingTTS: false,
         resultCounter: 0,
         translationMode: "google",
-        audioGain: 1.0,  // Software gain multiplier (1.0 = no boost)
+        audioGain: 5.0,  // Software gain multiplier (default 5x for Stereo Mix)
     };
 
     // ==================== DOM Elements ====================
@@ -143,13 +143,16 @@
     async function startRecording() {
         try {
             // Request microphone access (don't force sampleRate - let browser use native)
-            // Disable noiseSuppression to prevent aggressive filtering of speech
+            // For Stereo Mix: ALL processing must be disabled
+            // - echoCancellation removes audio matching speaker output = removes everything
+            // - noiseSuppression aggressively filters speech
+            // - autoGainControl may reduce levels unpredictably
             state.mediaStream = await navigator.mediaDevices.getUserMedia({
                 audio: {
                     channelCount: 1,
-                    echoCancellation: true,
+                    echoCancellation: false,
                     noiseSuppression: false,
-                    autoGainControl: true,
+                    autoGainControl: false,
                 },
             });
 
