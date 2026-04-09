@@ -89,7 +89,7 @@ class SpeechRecognizer:
             # Use RMS energy instead of just max amplitude for more reliable detection
             rms = np.sqrt(np.mean(audio_np ** 2))
             peak = np.max(np.abs(audio_np))
-            if rms < 0.005 or peak < 0.01:
+            if rms < 0.001 or peak < 0.005:
                 logger.debug("Skipping silent audio: rms=%.6f, peak=%.6f", rms, peak)
                 return {"text": "", "language": "", "segments": []}
 

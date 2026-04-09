@@ -282,7 +282,7 @@
                 if (shouldSend) {
                     // Skip sending if audio is clearly silence (maxRms too low)
                     // This prevents Whisper from hanging on empty audio
-                    var silenceThresholdForSend = 0.002;
+                    var silenceThresholdForSend = 0.0005;
                     if (maxRmsSeen < silenceThresholdForSend) {
                         console.log("Skipping silent chunk: maxRms=" + maxRmsSeen.toFixed(6) +
                             " < " + silenceThresholdForSend +

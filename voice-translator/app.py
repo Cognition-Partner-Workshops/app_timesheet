@@ -160,8 +160,8 @@ def handle_audio_data(data):
             "Received audio: %d bytes, rms=%.6f, lang=%s, target=%s, mode=%s",
             len(audio_bytes), rms_energy, language, target_lang, translation_mode,
         )
-        if rms_energy < 0.005:
-            logger.info("Skipping silent audio (rms=%.6f < 0.005)", rms_energy)
+        if rms_energy < 0.001:
+            logger.info("Skipping silent audio (rms=%.6f < 0.001)", rms_energy)
             return
 
         # Capture sid while still in request context
