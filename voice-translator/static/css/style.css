@@ -236,6 +236,58 @@ body::before {
     background: white;
 }
 
+/* Gain Slider */
+.gain-slider-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.gain-slider {
+    flex: 1;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 6px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    outline: none;
+    cursor: pointer;
+}
+
+.gain-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--primary);
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.gain-slider::-webkit-slider-thumb:hover {
+    background: var(--primary-light);
+    transform: scale(1.2);
+}
+
+.gain-slider::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--primary);
+    border: none;
+    cursor: pointer;
+}
+
+.gain-value {
+    font-size: 0.85rem;
+    color: var(--primary-light);
+    font-weight: 600;
+    min-width: 40px;
+    text-align: right;
+}
+
 /* ==================== Recording Button ==================== */
 
 .recording-section {

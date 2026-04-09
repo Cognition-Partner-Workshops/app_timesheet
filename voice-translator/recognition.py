@@ -5,6 +5,8 @@ Supports Japanese, English, and Chinese.
 """
 
 import logging
+import time
+
 import numpy as np
 from faster_whisper import WhisperModel
 
@@ -85,18 +87,26 @@ class SpeechRecognizer:
             if len(audio_np) == 0:
                 return {"text": "", "language": "", "segments": []}
 
-            # Check if audio is too quiet (likely silence)
-            # Use RMS energy instead of just max amplitude for more reliable detection
+            # Compute audio stats for logging
             rms = np.sqrt(np.mean(audio_np ** 2))
             peak = np.max(np.abs(audio_np))
-            if rms < 0.001 or peak < 0.005:
-                logger.debug("Skipping silent audio: rms=%.6f, peak=%.6f", rms, peak)
+            duration = len(audio_np) / sample_rate
+            logger.info(
+                "Transcribe input: duration=%.2fs, rms=%.6f, peak=%.6f, samples=%d",
+                duration, rms, peak, len(audio_np),
+            )
+
+            # Only skip pure digital silence (all zeros)
+            # Whisper's VAD + safety params handle real silence detection
+            if rms < 0.00001:
+                logger.info("Skipping digital silence: rms=%.6f", rms)
                 return {"text": "", "language": "", "segments": []}
 
             # Resolve language parameter
             lang = LANGUAGE_MAP.get(language, language)
 
             # Run transcription (optimized for low latency)
+            t_start = time.time()
             segments, info = self.model.transcribe(
                 audio_np,
                 language=lang,
@@ -133,7 +143,18 @@ class SpeechRecognizer:
                 )
                 full_text += text + " "
 
+            t_elapsed = time.time() - t_start
             detected_language = info.language if info.language else ""
+            logger.info(
+                "Transcribe result: lang=%s (prob=%.2f), text_len=%d, segments=%d, time=%.2fs",
+                detected_language,
+                info.language_probability if info.language_probability else 0,
+                len(full_text),
+                len(result_segments),
+                t_elapsed,
+            )
+            if full_text.strip():
+                logger.info("Transcribed text: %s", full_text.strip()[:200])
 
             return {
                 "text": full_text.strip(),

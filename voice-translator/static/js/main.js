@@ -19,6 +19,7 @@
         isPlayingTTS: false,
         resultCounter: 0,
         translationMode: "google",
+        audioGain: 1.0,  // Software gain multiplier (1.0 = no boost)
     };
 
     // ==================== DOM Elements ====================
@@ -36,6 +37,8 @@
         detectedLang: document.getElementById("detectedLang"),
         clearBtn: document.getElementById("clearBtn"),
         resetSpeakersBtn: document.getElementById("resetSpeakersBtn"),
+        audioGainSlider: document.getElementById("audioGainSlider"),
+        audioGainValue: document.getElementById("audioGainValue"),
         ttsPlayer: document.getElementById("ttsPlayer"),
         audioVisualizer: document.getElementById("audioVisualizer"),
         visualizerCanvas: document.getElementById("visualizerCanvas"),
@@ -223,10 +226,11 @@
                 // Downsample from native rate to 16kHz
                 var resampled = downsampleBuffer(inputData, nativeSampleRate, TARGET_SAMPLE_RATE);
 
-                // Convert float32 to int16 (16-bit PCM)
+                // Apply software gain (amplify weak signals)
+                var gain = state.audioGain;
                 var int16Data = new Int16Array(resampled.length);
                 for (var i = 0; i < resampled.length; i++) {
-                    var s = Math.max(-1, Math.min(1, resampled[i]));
+                    var s = Math.max(-1, Math.min(1, resampled[i] * gain));
                     int16Data[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
                 }
 
@@ -280,13 +284,10 @@
                 }
 
                 if (shouldSend) {
-                    // Skip sending if audio is clearly silence (maxRms too low)
-                    // This prevents Whisper from hanging on empty audio
-                    var silenceThresholdForSend = 0.0005;
-                    if (maxRmsSeen < silenceThresholdForSend) {
-                        console.log("Skipping silent chunk: maxRms=" + maxRmsSeen.toFixed(6) +
-                            " < " + silenceThresholdForSend +
-                            " samples=" + collectedSamples);
+                    // Only skip pure digital silence (all zeros)
+                    // Whisper's VAD handles real silence detection
+                    if (maxRmsSeen < 0.000001) {
+                        console.log("Skipping digital silence: maxRms=" + maxRmsSeen.toFixed(8));
                         audioChunks = [];
                         collectedSamples = 0;
                         isSpeaking = false;
@@ -823,6 +824,18 @@
                     });
                     btn.classList.add("active");
                 });
+            });
+        }
+
+        // Audio gain slider
+        if (elements.audioGainSlider) {
+            elements.audioGainSlider.addEventListener("input", function () {
+                var val = parseFloat(elements.audioGainSlider.value);
+                state.audioGain = val;
+                if (elements.audioGainValue) {
+                    elements.audioGainValue.textContent = val.toFixed(1) + "x";
+                }
+                console.log("Audio gain set to:", val);
             });
         }
 

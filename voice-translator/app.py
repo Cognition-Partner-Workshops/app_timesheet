@@ -152,16 +152,19 @@ def handle_audio_data(data):
             logger.warning("No audio bytes received")
             return
 
-        # Quick silence check before any heavy processing
-        # This prevents Whisper from hanging on empty/silent audio
+        # Compute audio stats for logging and silence detection
         audio_np_quick = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
         rms_energy = float(np.sqrt(np.mean(audio_np_quick ** 2)))
+        peak_energy = float(np.max(np.abs(audio_np_quick)))
+        duration_sec = len(audio_np_quick) / 16000.0
         logger.info(
-            "Received audio: %d bytes, rms=%.6f, lang=%s, target=%s, mode=%s",
-            len(audio_bytes), rms_energy, language, target_lang, translation_mode,
+            "Received audio: %d bytes, duration=%.2fs, rms=%.6f, peak=%.6f, lang=%s, target=%s, mode=%s",
+            len(audio_bytes), duration_sec, rms_energy, peak_energy, language, target_lang, translation_mode,
         )
-        if rms_energy < 0.001:
-            logger.info("Skipping silent audio (rms=%.6f < 0.001)", rms_energy)
+        # Only skip pure digital silence (all zeros or near-zero)
+        # Real silence filtering is handled by Whisper's VAD + safety params
+        if rms_energy < 0.00001:
+            logger.info("Skipping digital silence (rms=%.6f)", rms_energy)
             return
 
         # Capture sid while still in request context
