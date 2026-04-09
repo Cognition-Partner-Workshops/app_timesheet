@@ -114,22 +114,27 @@ class SpeechRecognizer:
             if os.environ.get("DEBUG_AUDIO") == "1":
                 self._save_debug_wav(audio_np, sample_rate, "pre_norm")
 
-            # Normalize audio using RMS-based approach
-            # Peak normalization is flawed: a single noise spike keeps the whole signal quiet
-            # RMS normalization ensures consistent energy level regardless of peak spikes
+            # Normalize audio using hybrid RMS+peak approach
+            # Pure RMS normalization can cause clipping when crest factor is high
+            # (e.g., rms=0.002, peak=0.027 → gain=50x → peak=1.35 → clipped)
+            # Hybrid: target rms=0.1 but cap gain so peak stays under 0.95
             target_rms = 0.1  # Standard speech RMS level
+            max_peak = 0.95  # Prevent clipping distortion
             if rms > 0.00001 and rms < target_rms:
-                gain_factor = target_rms / rms
+                rms_gain = target_rms / rms
+                peak_gain = max_peak / peak if peak > 0.0001 else rms_gain
+                # Use the smaller gain to avoid clipping
+                gain_factor = min(rms_gain, peak_gain)
                 # Cap gain to avoid amplifying pure noise too much
                 gain_factor = min(gain_factor, 200.0)
                 audio_np = audio_np * gain_factor
-                # Clip to prevent distortion
-                audio_np = np.clip(audio_np, -1.0, 1.0)
                 new_rms = float(np.sqrt(np.mean(audio_np ** 2)))
                 new_peak = float(np.max(np.abs(audio_np)))
                 logger.info(
-                    "Audio normalized (RMS): gain=%.1fx, rms: %.6f->%.6f, peak: %.6f->%.6f",
-                    gain_factor, rms, new_rms, peak, new_peak,
+                    "Audio normalized: gain=%.1fx (rms_gain=%.1f, peak_gain=%.1f), "
+                    "rms: %.6f->%.6f, peak: %.6f->%.6f",
+                    gain_factor, rms_gain, peak_gain,
+                    rms, new_rms, peak, new_peak,
                 )
 
             # Save debug WAV after normalization if enabled
@@ -152,7 +157,7 @@ class SpeechRecognizer:
                 best_of=1,
                 vad_filter=False,  # Disabled: Silero VAD rejects weak Stereo Mix signals
                 condition_on_previous_text=False,  # Prevent hallucination loops
-                no_speech_threshold=0.6,  # Filter non-speech segments
+                no_speech_threshold=0.3,  # Lower threshold to catch more non-speech
                 log_prob_threshold=-0.5,  # Skip low-confidence segments
                 compression_ratio_threshold=2.4,  # Filter repetitive hallucinations
             )
@@ -171,11 +176,22 @@ class SpeechRecognizer:
                     continue
                 # Log each segment with confidence details
                 logger.info(
-                    "  Segment [%.1f-%.1f]: no_speech=%.3f, avg_logprob=%.3f, text='%s'",
+                    "  Segment [%.1f-%.1f]: no_speech=%.3f, avg_logprob=%.3f, "
+                    "compression_ratio=%.2f, text='%s'",
                     segment.start, segment.end,
                     segment.no_speech_prob, segment.avg_logprob,
+                    getattr(segment, 'compression_ratio', 0),
                     text[:100],
                 )
+                # Post-processing hallucination filter:
+                # Segments with very low avg_logprob are almost certainly noise/hallucination
+                # User logs showed "Pfft" (logprob=-1.494) and "アータッ" (logprob=-1.672)
+                if segment.avg_logprob < -1.0:
+                    logger.info(
+                        "  -> FILTERED (avg_logprob=%.3f < -1.0, likely hallucination)",
+                        segment.avg_logprob,
+                    )
+                    continue
                 result_segments.append(
                     {
                         "start": segment.start,
