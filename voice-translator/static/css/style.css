@@ -60,7 +60,7 @@ body::before {
 .app-container {
     position: relative;
     z-index: 1;
-    max-width: 1100px;
+    max-width: 1400px;
     margin: 0 auto;
     padding: 0 20px;
     min-height: 100vh;
@@ -495,9 +495,9 @@ body::before {
 
 .card-body {
     padding: 18px;
-    max-height: 400px;
+    max-height: 600px;
     overflow-y: auto;
-    min-height: 200px;
+    min-height: 350px;
 }
 
 .card-body::-webkit-scrollbar {
@@ -808,7 +808,75 @@ body::before {
     }
 }
 
-/* ==================== Loading Spinner ==================== */
+/* ==================== Summary Button ==================== */
+
+.summary-section {
+    display: flex;
+    justify-content: center;
+    padding: 20px 0 10px;
+}
+
+.summary-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 28px;
+    background: linear-gradient(135deg, var(--primary), #7c3aed);
+    border: none;
+    border-radius: var(--radius);
+    color: white;
+    font-size: 0.95rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: var(--transition);
+    box-shadow: var(--shadow), 0 0 15px rgba(79, 70, 229, 0.2);
+}
+
+.summary-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg), 0 0 25px rgba(79, 70, 229, 0.4);
+}
+
+.summary-btn:active {
+    transform: translateY(0);
+}
+
+.summary-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.summary-btn svg {
+    flex-shrink: 0;
+}
+
+/* ==================== Model Loading Indicator ==================== */
+
+.model-loading {
+    position: relative;
+}
+
+.model-loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    right: 40px;
+    width: 16px;
+    height: 16px;
+    margin-top: -8px;
+    border: 2px solid transparent;
+    border-top-color: var(--primary-light);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ==================== Loading Spinner ====================
 
 .loading-dots {
     display: inline-flex;

@@ -9,7 +9,7 @@ import os
 import threading
 
 import numpy as np
-from flask import Flask, render_template, request, jsonify, send_from_directory
+from flask import Flask, render_template, request, jsonify, send_from_directory, Response
 from flask_socketio import SocketIO, emit
 
 from recognition import SpeechRecognizer
@@ -98,6 +98,76 @@ def init_ai_translator():
 def get_model_info():
     """Get speech recognition model information."""
     return jsonify(recognizer.get_model_info())
+
+
+@app.route("/api/change-model", methods=["POST"])
+def change_model():
+    """Change the speech recognition model."""
+    data = request.get_json()
+    model_size = data.get("model_size", "base")
+    valid_models = ["tiny", "base", "small", "medium"]
+    if model_size not in valid_models:
+        return jsonify({"error": f"Invalid model: {model_size}"}), 400
+
+    logger.info("Changing recognition model to: %s", model_size)
+    with recognizer_lock:
+        result = recognizer.change_model(model_size)
+    return jsonify(result)
+
+
+@app.route("/api/summarize", methods=["POST"])
+def summarize():
+    """Summarize all recognized text."""
+    data = request.get_json()
+    texts = data.get("texts", [])
+    target_lang = data.get("target_lang", "zh")
+    translation_mode = data.get("translation_mode", "google")
+
+    if not texts:
+        return jsonify({"error": "No text to summarize"}), 400
+
+    # Combine all recognized texts
+    combined = "\n".join(texts)
+    logger.info("Summarizing %d texts (%d chars) to %s", len(texts), len(combined), target_lang)
+
+    # Build structured summary
+    summary_lines = []
+    summary_lines.append("=" * 50)
+    summary_lines.append("Session Summary / \u4f1a\u8bae\u603b\u7ed3")
+    summary_lines.append("=" * 50)
+    summary_lines.append("")
+    summary_lines.append(f"Total sentences: {len(texts)}")
+    summary_lines.append(f"Total characters: {len(combined)}")
+    summary_lines.append("")
+    summary_lines.append("-" * 50)
+    summary_lines.append("Original Text / \u539f\u6587:")
+    summary_lines.append("-" * 50)
+    for i, text in enumerate(texts, 1):
+        summary_lines.append(f"{i}. {text}")
+    summary_lines.append("")
+
+    # Translate combined text to target language
+    summary_lines.append("-" * 50)
+    summary_lines.append(f"Translation ({target_lang}) / \u7ffb\u8bd1:")
+    summary_lines.append("-" * 50)
+    for i, text in enumerate(texts, 1):
+        trans_result = translator.translate(
+            text, source_lang="auto", target_lang=target_lang, mode=translation_mode
+        )
+        translated = trans_result.get("translated", text)
+        source_lang_detected = trans_result.get("source_lang", "")
+        summary_lines.append(f"{i}. [{source_lang_detected}] {text}")
+        summary_lines.append(f"   -> [{target_lang}] {translated}")
+
+    summary_lines.append("")
+    summary_lines.append("=" * 50)
+
+    return jsonify({
+        "summary": "\n".join(summary_lines),
+        "total_sentences": len(texts),
+        "total_characters": len(combined),
+        "target_lang": target_lang,
+    })
 
 
 @app.route("/static/audio/<path:filename>")

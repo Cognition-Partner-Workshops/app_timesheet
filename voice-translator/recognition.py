@@ -250,6 +250,25 @@ class SpeechRecognizer:
         except Exception as e:
             logger.warning("Failed to save debug WAV: %s", e)
 
+    def change_model(self, model_size):
+        """Change the Whisper model size.
+
+        Args:
+            model_size: New model size (tiny, base, small, medium)
+
+        Returns:
+            dict with model info after change
+        """
+        if model_size == self.model_size and self.model is not None:
+            logger.info("Model %s already loaded, skipping", model_size)
+            return self.get_model_info()
+
+        logger.info("Changing model from %s to %s", self.model_size, model_size)
+        self.model_size = model_size
+        self.model = None  # Free old model memory
+        self._load_model()
+        return self.get_model_info()
+
     def get_model_info(self):
         """Return information about the loaded model."""
         return {
@@ -257,4 +276,10 @@ class SpeechRecognizer:
             "device": self.device,
             "compute_type": self.compute_type,
             "loaded": self.model is not None,
+            "available_models": [
+                {"id": "tiny", "name": "Tiny (39M)", "description": "最快速度 / Fastest"},
+                {"id": "base", "name": "Base (140M)", "description": "平衡 / Balanced"},
+                {"id": "small", "name": "Small (244M)", "description": "高精度 / High accuracy"},
+                {"id": "medium", "name": "Medium (769M)", "description": "最高精度 / Highest accuracy"},
+            ],
         }

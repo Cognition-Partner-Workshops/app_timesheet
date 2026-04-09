@@ -20,6 +20,7 @@
         resultCounter: 0,
         translationMode: "google",
         audioGain: 5.0,  // Software gain multiplier (default 5x for Stereo Mix)
+        recognizedTexts: [],  // Collect all recognized texts for summary
     };
 
     // ==================== DOM Elements ====================
@@ -43,6 +44,8 @@
         audioVisualizer: document.getElementById("audioVisualizer"),
         visualizerCanvas: document.getElementById("visualizerCanvas"),
         translationEngine: document.getElementById("translationEngine"),
+        recognitionModel: document.getElementById("recognitionModel"),
+        summaryBtn: document.getElementById("summaryBtn"),
     };
 
     // ==================== Socket.IO Connection ====================
@@ -493,6 +496,9 @@
     function handleRecognitionResult(data) {
         if (!data.text) return;
 
+        // Collect text for summary
+        state.recognizedTexts.push(data.text);
+
         state.resultCounter++;
         var id = "rec-" + state.resultCounter;
 
@@ -755,7 +761,87 @@
         elements.detectedLang.classList.remove("visible");
         state.resultCounter = 0;
         state.ttsQueue = [];
+        state.recognizedTexts = [];
         showToast("已清除记录 / Cleared", "info");
+    }
+
+    // ==================== Summary ====================
+
+    function generateSummary() {
+        if (state.recognizedTexts.length === 0) {
+            showToast("没有识别记录可以总结 / No text to summarize", "info");
+            return;
+        }
+
+        var btn = elements.summaryBtn;
+        btn.disabled = true;
+        btn.textContent = "生成中... / Generating...";
+
+        fetch("/api/summarize", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                texts: state.recognizedTexts,
+                target_lang: elements.targetLang.value,
+                translation_mode: state.translationMode,
+            }),
+        })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                btn.disabled = false;
+                btn.innerHTML = '<svg width="20" height="20" viewBox="0 0 20 20" fill="none">' +
+                    '<path d="M3 3H17V17H3V3Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>' +
+                    '<path d="M6 7H14M6 10H14M6 13H10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>' +
+                    '</svg> 归纳总结 / Summarize';
+
+                if (data.error) {
+                    showToast("总结失败: " + data.error, "error");
+                    return;
+                }
+
+                // Open summary in new page
+                var summaryWindow = window.open("", "_blank");
+                if (summaryWindow) {
+                    summaryWindow.document.write(
+                        '<!DOCTYPE html><html><head>' +
+                        '<meta charset="UTF-8">' +
+                        '<title>Session Summary</title>' +
+                        '<style>' +
+                        'body { font-family: "Inter", "Noto Sans SC", sans-serif; ' +
+                        'background: #0f172a; color: #f1f5f9; padding: 40px; max-width: 900px; margin: 0 auto; }' +
+                        'h1 { color: #818cf8; border-bottom: 2px solid #334155; padding-bottom: 16px; }' +
+                        'pre { background: #1e293b; padding: 24px; border-radius: 12px; ' +
+                        'border: 1px solid #334155; white-space: pre-wrap; word-wrap: break-word; ' +
+                        'line-height: 1.8; font-size: 14px; font-family: inherit; }' +
+                        '.stats { color: #94a3b8; margin-bottom: 20px; }' +
+                        '.back-btn { display: inline-block; margin-top: 20px; padding: 10px 24px; ' +
+                        'background: #4f46e5; color: white; border: none; border-radius: 8px; ' +
+                        'cursor: pointer; font-size: 14px; text-decoration: none; }' +
+                        '.back-btn:hover { background: #3730a3; }' +
+                        '</style></head><body>' +
+                        '<h1>Session Summary / \u4f1a\u8bae\u603b\u7ed3</h1>' +
+                        '<div class="stats">' +
+                        '<p>Total sentences: ' + data.total_sentences + '</p>' +
+                        '<p>Total characters: ' + data.total_characters + '</p>' +
+                        '<p>Target language: ' + data.target_lang + '</p>' +
+                        '</div>' +
+                        '<pre>' + escapeHtml(data.summary) + '</pre>' +
+                        '<button class="back-btn" onclick="window.close()">Close / \u5173\u95ed</button>' +
+                        '</body></html>'
+                    );
+                    summaryWindow.document.close();
+                } else {
+                    showToast("请允许弹出窗口 / Please allow popups", "error");
+                }
+            })
+            .catch(function (err) {
+                btn.disabled = false;
+                btn.innerHTML = '<svg width="20" height="20" viewBox="0 0 20 20" fill="none">' +
+                    '<path d="M3 3H17V17H3V3Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>' +
+                    '<path d="M6 7H14M6 10H14M6 13H10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>' +
+                    '</svg> 归纳总结 / Summarize';
+                showToast("总结失败: " + err.message, "error");
+            });
     }
 
     function getCurrentTime() {
@@ -807,46 +893,69 @@
             });
         }
 
-        // Translation engine toggle
+        // Translation engine select
         if (elements.translationEngine) {
-            var btns = elements.translationEngine.querySelectorAll(".engine-btn");
-            btns.forEach(function (btn) {
-                btn.addEventListener("click", function () {
-                    var engine = btn.getAttribute("data-engine");
+            elements.translationEngine.addEventListener("change", function () {
+                var engine = elements.translationEngine.value;
 
-                    // If switching to AI, trigger lazy init
-                    if (engine === "ai") {
-                        btn.textContent = "AI 加载中...";
-                        fetch("/api/init-ai-translator", { method: "POST" })
-                            .then(function (res) { return res.json(); })
-                            .then(function (data) {
-                                var aiEngine = data.engines.find(
-                                    function (e) { return e.id === "ai"; }
-                                );
-                                if (aiEngine && aiEngine.available) {
-                                    btn.textContent = "AI 模型";
-                                    showToast("AI翻译已就绪", "success");
-                                } else {
-                                    btn.textContent = "AI 模型";
-                                    showToast(
-                                        "AI翻译初始化中，请稍后再试",
-                                        "info"
-                                    );
-                                }
-                            })
-                            .catch(function () {
-                                btn.textContent = "AI 模型";
-                                showToast("AI翻译初始化失败", "error");
-                            });
-                    }
+                // If switching to AI, trigger lazy init
+                if (engine === "ai") {
+                    showToast("AI翻译引擎加载中...", "info");
+                    fetch("/api/init-ai-translator", { method: "POST" })
+                        .then(function (res) { return res.json(); })
+                        .then(function (data) {
+                            var aiEngine = data.engines.find(
+                                function (e) { return e.id === "ai"; }
+                            );
+                            if (aiEngine && aiEngine.available) {
+                                showToast("AI翻译已就绪", "success");
+                            } else {
+                                showToast("AI翻译初始化中，请稍后再试", "info");
+                            }
+                        })
+                        .catch(function () {
+                            showToast("AI翻译初始化失败", "error");
+                        });
+                }
 
-                    state.translationMode = engine;
-                    btns.forEach(function (b) {
-                        b.classList.remove("active");
-                    });
-                    btn.classList.add("active");
-                });
+                state.translationMode = engine;
             });
+        }
+
+        // Recognition model select
+        if (elements.recognitionModel) {
+            elements.recognitionModel.addEventListener("change", function () {
+                var modelSize = elements.recognitionModel.value;
+                elements.recognitionModel.disabled = true;
+                elements.recognitionModel.classList.add("model-loading");
+                showToast("正在切换模型: " + modelSize + "...", "info");
+
+                fetch("/api/change-model", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ model_size: modelSize }),
+                })
+                    .then(function (res) { return res.json(); })
+                    .then(function (data) {
+                        elements.recognitionModel.disabled = false;
+                        elements.recognitionModel.classList.remove("model-loading");
+                        if (data.error) {
+                            showToast("模型切换失败: " + data.error, "error");
+                        } else {
+                            showToast("模型已切换: " + data.model_size, "success");
+                        }
+                    })
+                    .catch(function (err) {
+                        elements.recognitionModel.disabled = false;
+                        elements.recognitionModel.classList.remove("model-loading");
+                        showToast("模型切换失败: " + err.message, "error");
+                    });
+            });
+        }
+
+        // Summary button
+        if (elements.summaryBtn) {
+            elements.summaryBtn.addEventListener("click", generateSummary);
         }
 
         // Audio gain slider
@@ -906,9 +1015,10 @@
         console.log("Voice Translator initialized");
     }
 
-    // Expose playText for inline onclick handlers
+    // Expose functions for inline onclick handlers
     window.VT = {
         playText: playText,
+        generateSummary: generateSummary,
     };
 
     // Initialize when DOM is ready
