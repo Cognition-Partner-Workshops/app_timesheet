@@ -194,32 +194,41 @@
             // Each frame = bufferSize samples at native rate
             var frameDuration = bufferSize / nativeSampleRate; // seconds per frame
 
-            // --- Hybrid sending strategy ---
-            // Primary: periodic send every ~3 seconds (reliable, always works)
-            // Secondary: VAD early-send when speech ends (low latency optimization)
-            var PERIODIC_SEND_SECONDS = 3; // Always send every 3s
+            // --- Sentence-based sending strategy ---
+            // Goal: send complete sentences, not fixed-time chunks
+            // 1. Accumulate audio while speech is detected
+            // 2. Send when silence follows speech (sentence boundary)
+            // 3. Force send after max accumulation (continuous speech)
+            // 4. Periodic fallback for non-speech (ambient audio)
+            var PERIODIC_SEND_SECONDS = 2; // Non-speech fallback: 2s
             var periodicSendSamples = TARGET_SAMPLE_RATE * PERIODIC_SEND_SECONDS;
+            var MAX_ACCUMULATION_SECONDS = 8; // Max before force send during speech
+            var maxAccumulationSamples = TARGET_SAMPLE_RATE * MAX_ACCUMULATION_SECONDS;
             // Minimum audio to send (~0.3s at 16kHz) - avoid sending tiny noise
             var minSamplesToSend = TARGET_SAMPLE_RATE * 0.3;
 
-            // VAD for early detection of speech end
-            var vadSpeechThreshold = 0.005; // Very low - just above digital silence
-            var vadSilenceThreshold = 0.003;
+            // VAD for sentence boundary detection
+            // Thresholds are for GAINED signal (after software gain)
+            var vadSpeechThreshold = 0.008; // Speech detection (on gained signal)
+            var vadSilenceThreshold = 0.005; // Silence detection (on gained signal)
             var isSpeaking = false;
             var silenceFrames = 0;
             var speechFrames = 0;
-            // Send after ~0.5s of silence following speech
-            var silenceFramesNeeded = Math.ceil(0.5 / frameDuration);
-            // Minimum speech frames (~0.2s)
-            var minSpeechFrames = Math.ceil(0.2 / frameDuration);
+            // Send after ~0.3s of silence following speech (fast response)
+            var silenceFramesNeeded = Math.ceil(0.3 / frameDuration);
+            // Minimum speech frames (~0.15s)
+            var minSpeechFrames = Math.ceil(0.15 / frameDuration);
 
             var frameCount = 0;
             var maxRmsSeen = 0;
 
             console.log("Audio config: frameDuration=", frameDuration.toFixed(3) + "s",
                 "periodicSend=" + PERIODIC_SEND_SECONDS + "s",
+                "maxAccumulation=" + MAX_ACCUMULATION_SECONDS + "s",
+                "silenceDetect=" + (silenceFramesNeeded * frameDuration).toFixed(2) + "s",
                 "vadSpeech=" + vadSpeechThreshold,
-                "vadSilence=" + vadSilenceThreshold);
+                "vadSilence=" + vadSilenceThreshold,
+                "gain=" + state.audioGain + "x");
 
             state.processor.onaudioprocess = function (e) {
                 if (!state.isRecording) return;
@@ -237,12 +246,14 @@
                     int16Data[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
                 }
 
-                // Calculate RMS energy for VAD (use original input)
+                // Calculate RMS energy for VAD using GAINED signal
+                // Raw Stereo Mix signal is too weak for VAD; gained signal matches thresholds
                 var sumSquares = 0;
-                for (var j = 0; j < inputData.length; j++) {
-                    sumSquares += inputData[j] * inputData[j];
+                for (var j = 0; j < resampled.length; j++) {
+                    var gained = resampled[j] * gain;
+                    sumSquares += gained * gained;
                 }
-                var rms = Math.sqrt(sumSquares / inputData.length);
+                var rms = Math.sqrt(sumSquares / resampled.length);
                 if (rms > maxRmsSeen) maxRmsSeen = rms;
 
                 audioChunks.push(int16Data);
@@ -274,14 +285,22 @@
                 var sendReason = "";
 
                 // 1. VAD: speech ended (silence detected after speech)
+                //    This captures complete sentences by waiting for pause
                 if (isSpeaking && silenceFrames >= silenceFramesNeeded &&
                     speechFrames >= minSpeechFrames &&
                     collectedSamples >= minSamplesToSend) {
                     shouldSend = true;
                     sendReason = "speech_ended";
                 }
-                // 2. Periodic: always send after 3 seconds
-                else if (collectedSamples >= periodicSendSamples) {
+                // 2. Max accumulation: force send during continuous speech
+                //    Prevents excessive delay when someone talks without pause
+                else if (isSpeaking && collectedSamples >= maxAccumulationSamples) {
+                    shouldSend = true;
+                    sendReason = "max_accumulation_" + MAX_ACCUMULATION_SECONDS + "s";
+                }
+                // 3. Periodic: ONLY when NOT speaking (flush non-speech audio)
+                //    Don't cut sentences - only send ambient/non-speech chunks
+                else if (!isSpeaking && collectedSamples >= periodicSendSamples) {
                     shouldSend = true;
                     sendReason = "periodic_" + PERIODIC_SEND_SECONDS + "s";
                 }

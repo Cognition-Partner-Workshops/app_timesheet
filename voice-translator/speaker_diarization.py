@@ -28,7 +28,7 @@ MAX_SPEAKERS = len(SPEAKER_COLORS)
 class SpeakerDiarizer:
     """Speaker identification using audio feature analysis."""
 
-    def __init__(self, similarity_threshold=0.82, max_speakers=MAX_SPEAKERS):
+    def __init__(self, similarity_threshold=0.75, max_speakers=MAX_SPEAKERS):
         """
         Initialize the speaker diarizer.
 
@@ -41,6 +41,7 @@ class SpeakerDiarizer:
         self.max_speakers = min(max_speakers, MAX_SPEAKERS)
         self.speaker_profiles = OrderedDict()
         self.speaker_counter = 0
+        self.target_rms = 0.1  # Normalize audio to consistent level before feature extraction
         logger.info(
             "SpeakerDiarizer initialized (threshold=%.2f, max_speakers=%d)",
             similarity_threshold,
@@ -285,9 +286,19 @@ class SpeakerDiarizer:
             )
             audio_np = audio_np / 32768.0
 
-            # Check if audio is too quiet
-            if np.max(np.abs(audio_np)) < 0.01:
+            # Check if audio is essentially silent
+            rms = np.sqrt(np.mean(audio_np ** 2))
+            if rms < 0.0001:
                 return self._unknown_speaker()
+
+            # Normalize audio to consistent level before feature extraction
+            # This is critical for Stereo Mix where signal levels are very low
+            if rms < self.target_rms:
+                gain = min(self.target_rms / rms, 200.0)
+                peak = np.max(np.abs(audio_np))
+                peak_gain = 0.95 / peak if peak > 0.0001 else gain
+                gain = min(gain, peak_gain)
+                audio_np = audio_np * gain
 
             # Extract features
             features = self._extract_features(audio_np)

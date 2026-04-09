@@ -44,7 +44,7 @@ logger.info("Initializing translation manager...")
 translator = TranslationManager(max_workers=4)
 
 logger.info("Initializing speaker diarizer...")
-diarizer = SpeakerDiarizer(similarity_threshold=0.82)
+diarizer = SpeakerDiarizer(similarity_threshold=0.75)
 
 logger.info("Initializing TTS engine...")
 tts_engine = TTSEngine(
