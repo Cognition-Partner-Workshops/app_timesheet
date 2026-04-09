@@ -197,6 +197,7 @@ class SpeechRecognizer:
                         "start": segment.start,
                         "end": segment.end,
                         "text": text,
+                        "no_speech_prob": segment.no_speech_prob,
                     }
                 )
                 full_text += text + " "

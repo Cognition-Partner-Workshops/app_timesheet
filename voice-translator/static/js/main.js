@@ -496,8 +496,8 @@
     function handleRecognitionResult(data) {
         if (!data.text) return;
 
-        // Collect text for summary
-        state.recognizedTexts.push(data.text);
+        // Collect text and detected language for summary
+        state.recognizedTexts.push({ text: data.text, language: data.language || "auto" });
 
         state.resultCounter++;
         var id = "rec-" + state.resultCounter;
@@ -777,11 +777,16 @@
         btn.disabled = true;
         btn.textContent = "生成中... / Generating...";
 
+        // Extract texts and languages as parallel arrays
+        var texts = state.recognizedTexts.map(function (item) { return item.text; });
+        var languages = state.recognizedTexts.map(function (item) { return item.language; });
+
         fetch("/api/summarize", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-                texts: state.recognizedTexts,
+                texts: texts,
+                languages: languages,
                 target_lang: elements.targetLang.value,
                 translation_mode: state.translationMode,
             }),

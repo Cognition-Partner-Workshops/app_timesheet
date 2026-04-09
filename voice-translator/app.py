@@ -120,6 +120,7 @@ def summarize():
     """Summarize all recognized text."""
     data = request.get_json()
     texts = data.get("texts", [])
+    languages = data.get("languages", [])  # Detected language per text
     target_lang = data.get("target_lang", "zh")
     translation_mode = data.get("translation_mode", "google")
 
@@ -151,11 +152,14 @@ def summarize():
     summary_lines.append(f"Translation ({target_lang}) / \u7ffb\u8bd1:")
     summary_lines.append("-" * 50)
     for i, text in enumerate(texts, 1):
+        # Use the detected language from recognition if available,
+        # otherwise fall back to "auto" (which only works with Google Translate)
+        source_lang = languages[i - 1] if i - 1 < len(languages) and languages[i - 1] != "auto" else "auto"
         trans_result = translator.translate(
-            text, source_lang="auto", target_lang=target_lang, mode=translation_mode
+            text, source_lang=source_lang, target_lang=target_lang, mode=translation_mode
         )
         translated = trans_result.get("translated", text)
-        source_lang_detected = trans_result.get("source_lang", "")
+        source_lang_detected = trans_result.get("source_lang", source_lang)
         summary_lines.append(f"{i}. [{source_lang_detected}] {text}")
         summary_lines.append(f"   -> [{target_lang}] {translated}")
 
