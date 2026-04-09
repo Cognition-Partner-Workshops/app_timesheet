@@ -6,8 +6,10 @@ Supports Japanese, English, and Chinese.
 
 import logging
 import os
+import signal
 import time
 import wave
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 
 import numpy as np
 from faster_whisper import WhisperModel
@@ -150,6 +152,7 @@ class SpeechRecognizer:
             # Without VAD, Whisper processes all audio directly - the no_speech_threshold
             # parameter prevents hallucination on silent segments.
             t_start = time.time()
+            logger.info("Starting Whisper transcribe (lang=%s)...", lang)
             segments, info = self.model.transcribe(
                 audio_np,
                 language=lang,
@@ -161,13 +164,27 @@ class SpeechRecognizer:
                 log_prob_threshold=-0.5,  # Skip low-confidence segments
                 compression_ratio_threshold=2.4,  # Filter repetitive hallucinations
             )
+            logger.info(
+                "Whisper transcribe returned (lang=%s, prob=%.2f), iterating segments...",
+                info.language if info.language else "?",
+                info.language_probability if info.language_probability else 0,
+            )
 
-            # Collect results with safety limit to prevent infinite hallucination
+            # Collect results with safety limit and timeout to prevent infinite hallucination
             result_segments = []
             full_text = ""
             max_segments = 20  # Safety limit
+            segment_timeout = 15.0  # Max seconds to spend iterating segments
+            segment_start_time = time.time()
 
             for segment in segments:
+                # Check timeout to prevent Whisper from hanging indefinitely
+                if time.time() - segment_start_time > segment_timeout:
+                    logger.warning(
+                        "Segment iteration timeout (%.1fs), stopping after %d segments",
+                        segment_timeout, len(result_segments),
+                    )
+                    break
                 if len(result_segments) >= max_segments:
                     logger.warning("Reached max segments limit (%d), stopping", max_segments)
                     break

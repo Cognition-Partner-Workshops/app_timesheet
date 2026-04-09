@@ -248,14 +248,19 @@ def handle_audio_data(data):
         speaker_info = None
         if enable_diarization:
             try:
+                logger.info("Starting speaker diarization...")
                 speaker_info = diarizer.identify_speaker(audio_bytes)
+                logger.info("Speaker diarization done: %s", speaker_info.get("speaker_id", "?") if speaker_info else "None")
             except Exception as e:
                 logger.warning("Speaker diarization error: %s", e)
 
         # Step 2: Speech Recognition (thread-safe with lock)
         lang_param = None if language == "auto" else language
+        logger.info("Waiting for recognizer lock...")
         with recognizer_lock:
+            logger.info("Lock acquired, starting transcription...")
             result = recognizer.transcribe(audio_bytes, language=lang_param)
+        logger.info("Transcription complete: text_len=%d", len(result.get("text", "")))
 
         if not result["text"]:
             return
