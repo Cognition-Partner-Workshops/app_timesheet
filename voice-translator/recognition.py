@@ -6,10 +6,8 @@ Supports Japanese, English, and Chinese.
 
 import logging
 import os
-import signal
 import time
 import wave
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 
 import numpy as np
 from faster_whisper import WhisperModel
