@@ -97,10 +97,24 @@ class SpeechRecognizer:
             )
 
             # Only skip pure digital silence (all zeros)
-            # Whisper's VAD + safety params handle real silence detection
             if rms < 0.00001:
                 logger.info("Skipping digital silence: rms=%.6f", rms)
                 return {"text": "", "language": "", "segments": []}
+
+            # Normalize audio to standard level before Whisper
+            # Stereo Mix and some mics produce very low-level signals (rms~0.001-0.006)
+            # Whisper's VAD expects normal microphone levels to detect speech
+            target_peak = 0.9
+            if peak > 0.0001 and peak < target_peak:
+                gain_factor = target_peak / peak
+                # Cap gain to avoid amplifying pure noise too much
+                gain_factor = min(gain_factor, 100.0)
+                audio_np = audio_np * gain_factor
+                new_rms = rms * gain_factor
+                logger.info(
+                    "Audio normalized: gain=%.1fx, new_rms=%.6f, new_peak=%.6f",
+                    gain_factor, new_rms, float(np.max(np.abs(audio_np))),
+                )
 
             # Resolve language parameter
             lang = LANGUAGE_MAP.get(language, language)
@@ -114,6 +128,7 @@ class SpeechRecognizer:
                 best_of=1,
                 vad_filter=True,
                 vad_parameters=dict(
+                    threshold=0.15,  # Lower VAD threshold for weak signals (default 0.5)
                     min_silence_duration_ms=300,
                     speech_pad_ms=200,
                 ),
