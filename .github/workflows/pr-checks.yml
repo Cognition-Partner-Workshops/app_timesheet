@@ -12,8 +12,7 @@ permissions:
 
 jobs:
   security-audit:
-    name: Security Audit (CVE Check)
-    if: "!contains(github.event.pull_request.user.login, 'devin')"
+    name: Security Audit (CVE Check) - Frontend
     runs-on: ubuntu-latest
     outputs:
       has_vulnerabilities: ${{ steps.audit.outputs.has_vulnerabilities }}
@@ -105,7 +104,6 @@ jobs:
 
   test-coverage:
     name: Quality Gate (Test Coverage)
-    if: "!contains(github.event.pull_request.user.login, 'devin')"
     runs-on: ubuntu-latest
     outputs:
       coverage_failed: ${{ steps.coverage.outputs.coverage_failed }}
@@ -196,12 +194,96 @@ jobs:
           echo "Failing job: test coverage is below the required 80% threshold."
           exit 1
 
+  backend-tests:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Run tests with coverage
+        working-directory: backend
+        run: npm test -- --ci --coverage
+
+  backend-security-audit:
+    name: Security Audit (CVE Check) - Backend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: Run npm audit
+        working-directory: backend
+        continue-on-error: true
+        run: npm audit --audit-level=moderate
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run lint
+        working-directory: frontend
+        run: npm run lint
+
+  build-verification:
+    name: Build Verification
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
   trigger-devin:
     name: Trigger Devin Auto-Fix
-    needs: [security-audit, test-coverage]
+    needs: [security-audit, test-coverage, backend-tests, lint, build-verification]
     if: |
       always() &&
-      !contains(github.event.pull_request.user.login, 'devin') &&
       (needs.security-audit.result == 'failure' || needs.test-coverage.result == 'failure')
     runs-on: ubuntu-latest
 
