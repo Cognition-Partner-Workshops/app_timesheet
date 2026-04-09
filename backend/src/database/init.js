@@ -80,11 +80,11 @@ async function initializeDatabase() {
 
 function closeDatabase() {
   return new Promise((resolve, reject) => {
-    if (isClosed) {
-      // Already closed, resolve immediately
-      resolve();
-      return;
-    }
+      if (isClosed || !db) {
+        // Already closed or no connection, resolve immediately
+        resolve();
+        return;
+      }
     
     if (isClosing) {
       // Currently closing, wait for it to complete
@@ -94,12 +94,6 @@ function closeDatabase() {
           resolve();
         }
       }, 10);
-      return;
-    }
-    
-    if (!db) {
-      // No database connection, resolve immediately
-      resolve();
       return;
     }
     
