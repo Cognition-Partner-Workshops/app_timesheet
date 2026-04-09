@@ -258,10 +258,24 @@ def handle_audio_data(data):
 
         # Step 2: Speech Recognition (thread-safe with lock)
         lang_param = None if language == "auto" else language
-        logger.info("Waiting for recognizer lock...")
-        with recognizer_lock:
-            logger.info("Lock acquired, starting transcription...")
-            result = recognizer.transcribe(audio_bytes, language=lang_param)
+        if is_interim:
+            # Non-blocking lock for interim: skip if recognizer is busy
+            # This prevents interim requests from queuing up and delaying final results
+            acquired = recognizer_lock.acquire(blocking=False)
+            if not acquired:
+                logger.info("Recognizer busy, skipping interim request")
+                return
+            try:
+                logger.info("Lock acquired (interim), starting transcription...")
+                result = recognizer.transcribe(audio_bytes, language=lang_param)
+            finally:
+                recognizer_lock.release()
+        else:
+            # Blocking lock for final: always wait for result
+            logger.info("Waiting for recognizer lock...")
+            with recognizer_lock:
+                logger.info("Lock acquired, starting transcription...")
+                result = recognizer.transcribe(audio_bytes, language=lang_param)
         logger.info("Transcription complete: text_len=%d", len(result.get("text", "")))
 
         if not result["text"]:

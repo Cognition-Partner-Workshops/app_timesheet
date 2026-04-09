@@ -32,6 +32,15 @@ LANGUAGE_NAMES = {
 class SpeechRecognizer:
     """Real-time speech recognition using faster-whisper."""
 
+    # Model-specific thresholds: smaller models have lower confidence scores,
+    # so filters must be relaxed to avoid rejecting valid recognition results.
+    MODEL_PARAMS = {
+        "tiny": {"log_prob_threshold": -1.5, "avg_logprob_filter": -2.0, "no_speech_threshold": 0.5},
+        "base": {"log_prob_threshold": -0.5, "avg_logprob_filter": -1.0, "no_speech_threshold": 0.3},
+        "small": {"log_prob_threshold": -0.5, "avg_logprob_filter": -1.0, "no_speech_threshold": 0.3},
+        "medium": {"log_prob_threshold": -0.5, "avg_logprob_filter": -1.0, "no_speech_threshold": 0.3},
+    }
+
     def __init__(self, model_size="base", device="cpu", compute_type="int8"):
         """
         Initialize the speech recognizer.
@@ -149,8 +158,13 @@ class SpeechRecognizer:
             # We handle silence filtering ourselves (rms check above + app.py filtering).
             # Without VAD, Whisper processes all audio directly - the no_speech_threshold
             # parameter prevents hallucination on silent segments.
+            #
+            # Use model-specific parameters: smaller models (tiny) have lower confidence
+            # scores, so we relax thresholds to avoid rejecting valid results.
+            params = self.MODEL_PARAMS.get(self.model_size, self.MODEL_PARAMS["base"])
             t_start = time.time()
-            logger.info("Starting Whisper transcribe (lang=%s)...", lang)
+            logger.info("Starting Whisper transcribe (lang=%s, model=%s, log_prob=%.1f, no_speech=%.1f)...",
+                        lang, self.model_size, params["log_prob_threshold"], params["no_speech_threshold"])
             segments, info = self.model.transcribe(
                 audio_np,
                 language=lang,
@@ -158,8 +172,8 @@ class SpeechRecognizer:
                 best_of=1,
                 vad_filter=False,  # Disabled: Silero VAD rejects weak Stereo Mix signals
                 condition_on_previous_text=False,  # Prevent hallucination loops
-                no_speech_threshold=0.3,  # Lower threshold to catch more non-speech
-                log_prob_threshold=-0.5,  # Skip low-confidence segments
+                no_speech_threshold=params["no_speech_threshold"],
+                log_prob_threshold=params["log_prob_threshold"],
                 compression_ratio_threshold=2.4,  # Filter repetitive hallucinations
             )
             logger.info(
@@ -201,10 +215,12 @@ class SpeechRecognizer:
                 # Post-processing hallucination filter:
                 # Segments with very low avg_logprob are almost certainly noise/hallucination
                 # User logs showed "Pfft" (logprob=-1.494) and "アータッ" (logprob=-1.672)
-                if segment.avg_logprob < -1.0:
+                # Threshold is model-dependent: tiny models have naturally lower logprobs
+                avg_logprob_threshold = params["avg_logprob_filter"]
+                if segment.avg_logprob < avg_logprob_threshold:
                     logger.info(
-                        "  -> FILTERED (avg_logprob=%.3f < -1.0, likely hallucination)",
-                        segment.avg_logprob,
+                        "  -> FILTERED (avg_logprob=%.3f < %.1f, likely hallucination)",
+                        segment.avg_logprob, avg_logprob_threshold,
                     )
                     continue
                 result_segments.append(

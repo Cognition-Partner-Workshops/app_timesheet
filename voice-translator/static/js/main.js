@@ -215,8 +215,8 @@
             var maxAccumulationSamples = TARGET_SAMPLE_RATE * MAX_ACCUMULATION_SECONDS;
             // Minimum audio to send (~0.3s at 16kHz) - avoid sending tiny noise
             var minSamplesToSend = TARGET_SAMPLE_RATE * 0.3;
-            // Interim send interval (~1s during speech for progressive display)
-            var INTERIM_SEND_SECONDS = 1.0;
+            // Interim send interval (~0.5s during speech for progressive display)
+            var INTERIM_SEND_SECONDS = 0.5;
             var interimSendSamples = TARGET_SAMPLE_RATE * INTERIM_SEND_SECONDS;
             var lastInterimSamples = 0; // Samples count at last interim send
 
@@ -587,7 +587,7 @@
             }
 
             var charIndex = currentText.length;
-            var typingSpeed = 30; // ms per character
+            var typingSpeed = 15; // ms per character (fast to sync with audio)
 
             state.interimTypingTimer = setInterval(function () {
                 if (charIndex < newText.length) {
