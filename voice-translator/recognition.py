@@ -5,7 +5,9 @@ Supports Japanese, English, and Chinese.
 """
 
 import logging
+import os
 import time
+import wave
 
 import numpy as np
 from faster_whisper import WhisperModel
@@ -88,12 +90,19 @@ class SpeechRecognizer:
                 return {"text": "", "language": "", "segments": []}
 
             # Compute audio stats for logging
-            rms = np.sqrt(np.mean(audio_np ** 2))
-            peak = np.max(np.abs(audio_np))
+            rms = float(np.sqrt(np.mean(audio_np ** 2)))
+            peak = float(np.max(np.abs(audio_np)))
             duration = len(audio_np) / sample_rate
+
+            # Compute percentile stats for better diagnostics
+            abs_audio = np.abs(audio_np)
+            p95 = float(np.percentile(abs_audio, 95))
+            p99 = float(np.percentile(abs_audio, 99))
+            nonzero_ratio = float(np.count_nonzero(audio_np) / len(audio_np))
             logger.info(
-                "Transcribe input: duration=%.2fs, rms=%.6f, peak=%.6f, samples=%d",
-                duration, rms, peak, len(audio_np),
+                "Transcribe input: duration=%.2fs, rms=%.6f, peak=%.6f, "
+                "p95=%.6f, p99=%.6f, nonzero=%.1f%%, samples=%d",
+                duration, rms, peak, p95, p99, nonzero_ratio * 100, len(audio_np),
             )
 
             # Only skip pure digital silence (all zeros)
@@ -101,40 +110,51 @@ class SpeechRecognizer:
                 logger.info("Skipping digital silence: rms=%.6f", rms)
                 return {"text": "", "language": "", "segments": []}
 
-            # Normalize audio to standard level before Whisper
-            # Stereo Mix and some mics produce very low-level signals (rms~0.001-0.006)
-            # Whisper's VAD expects normal microphone levels to detect speech
-            target_peak = 0.9
-            if peak > 0.0001 and peak < target_peak:
-                gain_factor = target_peak / peak
+            # Save debug WAV if enabled (set env DEBUG_AUDIO=1)
+            if os.environ.get("DEBUG_AUDIO") == "1":
+                self._save_debug_wav(audio_np, sample_rate, "pre_norm")
+
+            # Normalize audio using RMS-based approach
+            # Peak normalization is flawed: a single noise spike keeps the whole signal quiet
+            # RMS normalization ensures consistent energy level regardless of peak spikes
+            target_rms = 0.1  # Standard speech RMS level
+            if rms > 0.00001 and rms < target_rms:
+                gain_factor = target_rms / rms
                 # Cap gain to avoid amplifying pure noise too much
-                gain_factor = min(gain_factor, 100.0)
+                gain_factor = min(gain_factor, 200.0)
                 audio_np = audio_np * gain_factor
-                new_rms = rms * gain_factor
+                # Clip to prevent distortion
+                audio_np = np.clip(audio_np, -1.0, 1.0)
+                new_rms = float(np.sqrt(np.mean(audio_np ** 2)))
+                new_peak = float(np.max(np.abs(audio_np)))
                 logger.info(
-                    "Audio normalized: gain=%.1fx, new_rms=%.6f, new_peak=%.6f",
-                    gain_factor, new_rms, float(np.max(np.abs(audio_np))),
+                    "Audio normalized (RMS): gain=%.1fx, rms: %.6f->%.6f, peak: %.6f->%.6f",
+                    gain_factor, rms, new_rms, peak, new_peak,
                 )
+
+            # Save debug WAV after normalization if enabled
+            if os.environ.get("DEBUG_AUDIO") == "1":
+                self._save_debug_wav(audio_np, sample_rate, "post_norm")
 
             # Resolve language parameter
             lang = LANGUAGE_MAP.get(language, language)
 
-            # Run transcription (optimized for low latency)
+            # Run transcription with VAD DISABLED
+            # Whisper's Silero VAD is too aggressive for weak signals even after normalization.
+            # We handle silence filtering ourselves (rms check above + app.py filtering).
+            # Without VAD, Whisper processes all audio directly - the no_speech_threshold
+            # parameter prevents hallucination on silent segments.
             t_start = time.time()
             segments, info = self.model.transcribe(
                 audio_np,
                 language=lang,
                 beam_size=1,
                 best_of=1,
-                vad_filter=True,
-                vad_parameters=dict(
-                    threshold=0.15,  # Lower VAD threshold for weak signals (default 0.5)
-                    min_silence_duration_ms=300,
-                    speech_pad_ms=200,
-                ),
+                vad_filter=False,  # Disabled: Silero VAD rejects weak Stereo Mix signals
                 condition_on_previous_text=False,  # Prevent hallucination loops
-                no_speech_threshold=0.5,  # More aggressive no-speech detection
+                no_speech_threshold=0.6,  # Filter non-speech segments
                 log_prob_threshold=-0.5,  # Skip low-confidence segments
+                compression_ratio_threshold=2.4,  # Filter repetitive hallucinations
             )
 
             # Collect results with safety limit to prevent infinite hallucination
@@ -149,6 +169,13 @@ class SpeechRecognizer:
                 text = segment.text.strip()
                 if not text:
                     continue
+                # Log each segment with confidence details
+                logger.info(
+                    "  Segment [%.1f-%.1f]: no_speech=%.3f, avg_logprob=%.3f, text='%s'",
+                    segment.start, segment.end,
+                    segment.no_speech_prob, segment.avg_logprob,
+                    text[:100],
+                )
                 result_segments.append(
                     {
                         "start": segment.start,
@@ -160,16 +187,20 @@ class SpeechRecognizer:
 
             t_elapsed = time.time() - t_start
             detected_language = info.language if info.language else ""
+            lang_prob = info.language_probability if info.language_probability else 0
             logger.info(
-                "Transcribe result: lang=%s (prob=%.2f), text_len=%d, segments=%d, time=%.2fs",
-                detected_language,
-                info.language_probability if info.language_probability else 0,
-                len(full_text),
-                len(result_segments),
+                "Transcribe result: lang=%s (prob=%.2f), text_len=%d, segments=%d, "
+                "time=%.2fs, no_speech_prob=%.3f",
+                detected_language, lang_prob,
+                len(full_text), len(result_segments),
                 t_elapsed,
+                # Log first segment's no_speech_prob as overall indicator
+                result_segments[0].get("no_speech_prob", 0) if result_segments else 0,
             )
             if full_text.strip():
                 logger.info("Transcribed text: %s", full_text.strip()[:200])
+            else:
+                logger.info("No speech detected in this chunk")
 
             return {
                 "text": full_text.strip(),
@@ -184,6 +215,24 @@ class SpeechRecognizer:
         except Exception as e:
             logger.error("Transcription error: %s", e)
             return {"text": "", "language": "", "segments": [], "error": str(e)}
+
+    def _save_debug_wav(self, audio_np, sample_rate, label):
+        """Save audio to a WAV file for debugging."""
+        try:
+            debug_dir = os.path.join(os.path.dirname(__file__), "debug_audio")
+            os.makedirs(debug_dir, exist_ok=True)
+            timestamp = time.strftime("%H%M%S")
+            filepath = os.path.join(debug_dir, f"{timestamp}_{label}.wav")
+            # Convert float32 to int16
+            audio_int16 = (audio_np * 32767).astype(np.int16)
+            with wave.open(filepath, "wb") as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)
+                wf.setframerate(sample_rate)
+                wf.writeframes(audio_int16.tobytes())
+            logger.info("Debug WAV saved: %s", filepath)
+        except Exception as e:
+            logger.warning("Failed to save debug WAV: %s", e)
 
     def get_model_info(self):
         """Return information about the loaded model."""
