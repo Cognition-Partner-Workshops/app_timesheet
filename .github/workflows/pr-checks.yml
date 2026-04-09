@@ -196,6 +196,44 @@ jobs:
           echo "Failing job: test coverage is below the required 80% threshold."
           exit 1
 
+  secret-scan:
+    name: Secret Scan (Gitleaks)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install gitleaks
+        run: |
+          GITLEAKS_VERSION="8.18.4"
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin gitleaks
+
+      - name: Run gitleaks on PR diff
+        run: |
+          gitleaks detect \
+            --source . \
+            --log-opts "${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }}" \
+            --verbose \
+            --exit-code 1
+
+      - name: Comment on PR if secrets found
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr comment ${{ github.event.pull_request.number }} --body \
+            "## Secret Scan Failed
+
+          **gitleaks** detected hardcoded secrets in this PR.
+
+          Please remove any secrets from the code and use environment variables instead. See \`.env.example\` for the expected variable names.
+
+          Run \`gitleaks detect --source . --verbose\` locally to identify the findings."
+
   trigger-devin:
     name: Trigger Devin Auto-Fix
     needs: [security-audit, test-coverage]

@@ -1,0 +1,11 @@
+# Dependencies
+node_modules/
+
+# Environment files (never commit real secrets)
+.env
+.env.local
+.env.*.local
+
+# OS files
+.DS_Store
+Thumbs.db

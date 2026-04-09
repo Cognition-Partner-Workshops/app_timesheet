@@ -1,0 +1,17 @@
+# Gitleaks configuration
+# https://github.com/gitleaks/gitleaks
+
+title = "Gitleaks Configuration for app_timesheet"
+
+[extend]
+# Use the default gitleaks rules as a base
+useDefault = true
+
+[allowlist]
+description = "Global allowlist"
+paths = [
+  '''node_modules''',
+  '''\.env\.example$''',
+  '''package-lock\.json$''',
+  '''\.gitleaks\.toml$''',
+]
