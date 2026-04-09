@@ -210,7 +210,8 @@ def handle_audio_data(data):
         "enable_tts": true,      # Whether to generate TTS
         "tts_voice": null,       # Custom TTS voice (optional)
         "translation_mode": "google",  # Translation engine
-        "enable_diarization": true     # Speaker diarization toggle
+        "enable_diarization": true,    # Speaker diarization toggle
+        "interim": false               # If true, skip translation/diarization for speed
     }
     """
     try:
@@ -221,6 +222,7 @@ def handle_audio_data(data):
         tts_voice = data.get("tts_voice")
         translation_mode = data.get("translation_mode", "google")
         enable_diarization = data.get("enable_diarization", True)
+        is_interim = data.get("interim", False)
 
         if not audio_bytes:
             logger.warning("No audio bytes received")
@@ -232,8 +234,8 @@ def handle_audio_data(data):
         peak_energy = float(np.max(np.abs(audio_np_quick)))
         duration_sec = len(audio_np_quick) / 16000.0
         logger.info(
-            "Received audio: %d bytes, duration=%.2fs, rms=%.6f, peak=%.6f, lang=%s, target=%s, mode=%s",
-            len(audio_bytes), duration_sec, rms_energy, peak_energy, language, target_lang, translation_mode,
+            "Received audio: %d bytes, duration=%.2fs, rms=%.6f, peak=%.6f, lang=%s, target=%s, mode=%s, interim=%s",
+            len(audio_bytes), duration_sec, rms_energy, peak_energy, language, target_lang, translation_mode, is_interim,
         )
         # Only skip pure digital silence (all zeros or near-zero)
         # Real silence filtering is handled by Whisper's VAD + safety params
@@ -244,9 +246,9 @@ def handle_audio_data(data):
         # Capture sid while still in request context
         sid = request.sid
 
-        # Step 1: Speaker diarization (fast, run first)
+        # Step 1: Speaker diarization (skip for interim requests - speed)
         speaker_info = None
-        if enable_diarization:
+        if enable_diarization and not is_interim:
             try:
                 logger.info("Starting speaker diarization...")
                 speaker_info = diarizer.identify_speaker(audio_bytes)
@@ -272,14 +274,19 @@ def handle_audio_data(data):
             "language_name": result.get("language_name", ""),
             "confidence": result.get("language_probability", 0),
             "segments": result.get("segments", []),
+            "interim": is_interim,
         }
         if speaker_info:
             rec_data["speaker"] = speaker_info
 
         # Emit recognition result immediately
+        if is_interim:
+            emit("interim_result", rec_data)
+            return  # Skip translation/TTS for interim results
+
         emit("recognition_result", rec_data)
 
-        # Step 3: Translation (synchronous for immediate result)
+        # Step 3: Translation (synchronous for immediate result) - only for final results
         detected_lang = result["language"]
         trans_result = translator.translate(
             result["text"],

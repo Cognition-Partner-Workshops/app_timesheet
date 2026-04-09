@@ -21,6 +21,8 @@
         translationMode: "google",
         audioGain: 5.0,  // Software gain multiplier (default 5x for Stereo Mix)
         recognizedTexts: [],  // Collect all recognized texts for summary
+        interimElement: null,  // Current interim result DOM element
+        interimTypingTimer: null,  // Timer for typing animation
     };
 
     // ==================== DOM Elements ====================
@@ -80,6 +82,10 @@
 
         state.socket.on("status", function (data) {
             showToast(data.message, data.type || "info");
+        });
+
+        state.socket.on("interim_result", function (data) {
+            handleInterimResult(data);
         });
 
         state.socket.on("recognition_result", function (data) {
@@ -197,10 +203,10 @@
             // Each frame = bufferSize samples at native rate
             var frameDuration = bufferSize / nativeSampleRate; // seconds per frame
 
-            // --- Sentence-based sending strategy ---
-            // Goal: send complete sentences, not fixed-time chunks
-            // 1. Accumulate audio while speech is detected
-            // 2. Send when silence follows speech (sentence boundary)
+            // --- Progressive recognition strategy ---
+            // Goal: show interim results quickly, then final complete result
+            // 1. During speech: send interim chunks every ~1s for progressive display
+            // 2. On sentence end (silence): send full accumulated audio as final
             // 3. Force send after max accumulation (continuous speech)
             // 4. Periodic fallback for non-speech (ambient audio)
             var PERIODIC_SEND_SECONDS = 2; // Non-speech fallback: 2s
@@ -209,6 +215,14 @@
             var maxAccumulationSamples = TARGET_SAMPLE_RATE * MAX_ACCUMULATION_SECONDS;
             // Minimum audio to send (~0.3s at 16kHz) - avoid sending tiny noise
             var minSamplesToSend = TARGET_SAMPLE_RATE * 0.3;
+            // Interim send interval (~1s during speech for progressive display)
+            var INTERIM_SEND_SECONDS = 1.0;
+            var interimSendSamples = TARGET_SAMPLE_RATE * INTERIM_SEND_SECONDS;
+            var lastInterimSamples = 0; // Samples count at last interim send
+
+            // Keep a copy of ALL accumulated chunks for final send
+            var allAccumulatedChunks = [];
+            var totalAccumulatedSamples = 0;
 
             // VAD for sentence boundary detection
             // Thresholds are for GAINED signal (after software gain)
@@ -228,6 +242,7 @@
             console.log("Audio config: frameDuration=", frameDuration.toFixed(3) + "s",
                 "periodicSend=" + PERIODIC_SEND_SECONDS + "s",
                 "maxAccumulation=" + MAX_ACCUMULATION_SECONDS + "s",
+                "interimSend=" + INTERIM_SEND_SECONDS + "s",
                 "silenceDetect=" + (silenceFramesNeeded * frameDuration).toFixed(2) + "s",
                 "vadSpeech=" + vadSpeechThreshold,
                 "vadSilence=" + vadSilenceThreshold,
@@ -261,6 +276,8 @@
 
                 audioChunks.push(int16Data);
                 collectedSamples += resampled.length;
+                allAccumulatedChunks.push(int16Data);
+                totalAccumulatedSamples += resampled.length;
 
                 // Periodic logging (every ~2 seconds)
                 frameCount++;
@@ -270,6 +287,7 @@
                         " rms=" + rms.toFixed(6) +
                         " maxRms=" + maxRmsSeen.toFixed(6) +
                         " samples16k=" + collectedSamples +
+                        " accumulated=" + totalAccumulatedSamples +
                         " speaking=" + isSpeaking +
                         " speechF=" + speechFrames);
                 }
@@ -283,7 +301,21 @@
                     silenceFrames++;
                 }
 
-                // --- Send decision ---
+                // --- Interim send: during speech, send partial audio every ~1s ---
+                if (isSpeaking && speechFrames >= minSpeechFrames &&
+                    (totalAccumulatedSamples - lastInterimSamples) >= interimSendSamples) {
+                    if (maxRmsSeen >= 0.000001) {
+                        console.log("Sending interim: accumulated=" +
+                            totalAccumulatedSamples +
+                            " duration=" + (totalAccumulatedSamples / TARGET_SAMPLE_RATE).toFixed(2) + "s" +
+                            " maxRms=" + maxRmsSeen.toFixed(6));
+                        // Send ALL accumulated audio so far as interim
+                        sendAudioData(allAccumulatedChunks.slice(), true);
+                        lastInterimSamples = totalAccumulatedSamples;
+                    }
+                }
+
+                // --- Final send decision ---
                 var shouldSend = false;
                 var sendReason = "";
 
@@ -315,6 +347,9 @@
                         console.log("Skipping digital silence: maxRms=" + maxRmsSeen.toFixed(8));
                         audioChunks = [];
                         collectedSamples = 0;
+                        allAccumulatedChunks = [];
+                        totalAccumulatedSamples = 0;
+                        lastInterimSamples = 0;
                         isSpeaking = false;
                         silenceFrames = 0;
                         speechFrames = 0;
@@ -322,14 +357,18 @@
                         return;
                     }
 
-                    console.log("Sending audio: reason=" + sendReason +
-                        " samples=" + collectedSamples +
-                        " duration=" + (collectedSamples / TARGET_SAMPLE_RATE).toFixed(2) + "s" +
+                    console.log("Sending FINAL audio: reason=" + sendReason +
+                        " samples=" + totalAccumulatedSamples +
+                        " duration=" + (totalAccumulatedSamples / TARGET_SAMPLE_RATE).toFixed(2) + "s" +
                         " speechFrames=" + speechFrames +
                         " maxRms=" + maxRmsSeen.toFixed(6));
-                    sendAudioData(audioChunks);
+                    // Send ALL accumulated audio as final (not just current chunk)
+                    sendAudioData(allAccumulatedChunks, false);
                     audioChunks = [];
                     collectedSamples = 0;
+                    allAccumulatedChunks = [];
+                    totalAccumulatedSamples = 0;
+                    lastInterimSamples = 0;
                     isSpeaking = false;
                     silenceFrames = 0;
                     speechFrames = 0;
@@ -407,7 +446,7 @@
         showToast("录音已停止 / Recording stopped", "info");
     }
 
-    function sendAudioData(chunks) {
+    function sendAudioData(chunks, interim) {
         if (!state.isConnected || !state.socket) {
             console.warn("Cannot send audio: connected=" + state.isConnected);
             return;
@@ -426,7 +465,8 @@
             offset += chunk.length;
         });
 
-        console.log("Emitting audio_data: " + totalLength + " samples (" +
+        var typeLabel = interim ? "INTERIM" : "FINAL";
+        console.log("Emitting audio_data [" + typeLabel + "]: " + totalLength + " samples (" +
             (totalLength / 16000).toFixed(2) + "s at 16kHz), " +
             merged.buffer.byteLength + " bytes");
 
@@ -435,10 +475,11 @@
             audio: merged.buffer,
             language: elements.recognitionLang.value,
             target_lang: elements.targetLang.value,
-            enable_tts: elements.enableTTS.checked,
+            enable_tts: interim ? false : elements.enableTTS.checked,
             tts_voice: elements.ttsVoice.value || null,
             translation_mode: state.translationMode,
             enable_diarization: elements.enableDiarization.checked,
+            interim: !!interim,
         });
     }
 
@@ -493,8 +534,95 @@
 
     // ==================== Result Handlers ====================
 
+    /**
+     * Handle interim (partial) recognition results.
+     * Shows text progressively with typing animation while speech continues.
+     */
+    function handleInterimResult(data) {
+        if (!data.text) return;
+
+        // Update language badge
+        if (data.language_name) {
+            elements.detectedLang.textContent = data.language_name;
+            elements.detectedLang.classList.add("visible");
+        }
+
+        // Clear placeholder
+        var placeholder =
+            elements.recognitionResults.querySelector(".placeholder-text");
+        if (placeholder) {
+            placeholder.remove();
+        }
+
+        // Create or reuse interim element
+        if (!state.interimElement) {
+            state.interimElement = document.createElement("div");
+            state.interimElement.className = "result-item interim";
+            state.interimElement.id = "interim-current";
+
+            state.interimElement.innerHTML =
+                '<div class="result-text interim-text"></div>' +
+                '<div class="result-meta">' +
+                '<span class="interim-label">识别中... / Recognizing...</span>' +
+                '<span>' + getCurrentTime() + '</span>' +
+                '</div>';
+
+            // Insert at top
+            elements.recognitionResults.insertBefore(
+                state.interimElement,
+                elements.recognitionResults.firstChild
+            );
+        }
+
+        // Animate typing: show text character by character
+        var textEl = state.interimElement.querySelector(".interim-text");
+        var currentText = textEl.textContent;
+        var newText = data.text;
+
+        // If new text is longer, animate the new characters
+        if (newText.length > currentText.length) {
+            // Clear any existing typing timer
+            if (state.interimTypingTimer) {
+                clearInterval(state.interimTypingTimer);
+            }
+
+            var charIndex = currentText.length;
+            var typingSpeed = 30; // ms per character
+
+            state.interimTypingTimer = setInterval(function () {
+                if (charIndex < newText.length) {
+                    textEl.textContent = newText.substring(0, charIndex + 1);
+                    charIndex++;
+                } else {
+                    clearInterval(state.interimTypingTimer);
+                    state.interimTypingTimer = null;
+                }
+            }, typingSpeed);
+        } else {
+            // Text is different (correction) - show immediately
+            textEl.textContent = newText;
+        }
+
+        // Auto-scroll
+        elements.recognitionResults.scrollTop = 0;
+    }
+
+    /**
+     * Handle final recognition results.
+     * Replaces interim display with final confirmed text, then triggers translation.
+     */
     function handleRecognitionResult(data) {
         if (!data.text) return;
+
+        // Clear interim element and typing timer
+        if (state.interimTypingTimer) {
+            clearInterval(state.interimTypingTimer);
+            state.interimTypingTimer = null;
+        }
+        if (state.interimElement) {
+            state.interimElement.remove();
+            state.interimElement = null;
+        }
 
         // Collect text and detected language for summary
         state.recognizedTexts.push({ text: data.text, language: data.language || "auto" });
@@ -517,7 +645,7 @@
 
         // Create result item
         var item = document.createElement("div");
-        item.className = "result-item";
+        item.className = "result-item final";
         item.id = id;
         item.setAttribute("data-text", data.text);
 
@@ -754,6 +882,13 @@
     }
 
     function clearResults() {
+        // Clean up interim state
+        if (state.interimTypingTimer) {
+            clearInterval(state.interimTypingTimer);
+            state.interimTypingTimer = null;
+        }
+        state.interimElement = null;
+
         elements.recognitionResults.innerHTML =
             '<div class="placeholder-text">等待语音输入...</div>';
         elements.translationResults.innerHTML =

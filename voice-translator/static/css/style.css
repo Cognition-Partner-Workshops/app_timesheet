@@ -532,6 +532,52 @@ body::before {
     position: relative;
 }
 
+/* Interim (partial) recognition result - shown during speech */
+.result-item.interim {
+    border-left-color: var(--warning);
+    background: rgba(245, 158, 11, 0.06);
+    animation: none;
+}
+
+.result-item.interim .interim-text {
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+.result-item.interim .interim-text::after {
+    content: '|';
+    animation: blink-cursor 0.7s step-end infinite;
+    color: var(--warning);
+    font-weight: 700;
+    margin-left: 1px;
+}
+
+.result-item.interim .interim-label {
+    color: var(--warning);
+    font-weight: 500;
+}
+
+/* Final confirmed recognition result */
+.result-item.final {
+    animation: interimToFinal 0.4s ease-out;
+}
+
+@keyframes blink-cursor {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+}
+
+@keyframes interimToFinal {
+    0% {
+        background: rgba(245, 158, 11, 0.1);
+        border-left-color: var(--warning);
+    }
+    100% {
+        background: rgba(0, 0, 0, 0.15);
+        border-left-color: var(--primary);
+    }
+}
+
 .result-item.translation {
     border-left-color: var(--success);
 }
