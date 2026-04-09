@@ -86,7 +86,11 @@ class SpeechRecognizer:
                 return {"text": "", "language": "", "segments": []}
 
             # Check if audio is too quiet (likely silence)
-            if np.max(np.abs(audio_np)) < 0.01:
+            # Use RMS energy instead of just max amplitude for more reliable detection
+            rms = np.sqrt(np.mean(audio_np ** 2))
+            peak = np.max(np.abs(audio_np))
+            if rms < 0.005 or peak < 0.01:
+                logger.debug("Skipping silent audio: rms=%.6f, peak=%.6f", rms, peak)
                 return {"text": "", "language": "", "segments": []}
 
             # Resolve language parameter
@@ -103,21 +107,31 @@ class SpeechRecognizer:
                     min_silence_duration_ms=300,
                     speech_pad_ms=200,
                 ),
+                condition_on_previous_text=False,  # Prevent hallucination loops
+                no_speech_threshold=0.5,  # More aggressive no-speech detection
+                log_prob_threshold=-0.5,  # Skip low-confidence segments
             )
 
-            # Collect results
+            # Collect results with safety limit to prevent infinite hallucination
             result_segments = []
             full_text = ""
+            max_segments = 20  # Safety limit
 
             for segment in segments:
+                if len(result_segments) >= max_segments:
+                    logger.warning("Reached max segments limit (%d), stopping", max_segments)
+                    break
+                text = segment.text.strip()
+                if not text:
+                    continue
                 result_segments.append(
                     {
                         "start": segment.start,
                         "end": segment.end,
-                        "text": segment.text.strip(),
+                        "text": text,
                     }
                 )
-                full_text += segment.text.strip() + " "
+                full_text += text + " "
 
             detected_language = info.language if info.language else ""
 

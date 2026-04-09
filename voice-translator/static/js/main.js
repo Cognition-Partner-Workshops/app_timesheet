@@ -280,6 +280,22 @@
                 }
 
                 if (shouldSend) {
+                    // Skip sending if audio is clearly silence (maxRms too low)
+                    // This prevents Whisper from hanging on empty audio
+                    var silenceThresholdForSend = 0.002;
+                    if (maxRmsSeen < silenceThresholdForSend) {
+                        console.log("Skipping silent chunk: maxRms=" + maxRmsSeen.toFixed(6) +
+                            " < " + silenceThresholdForSend +
+                            " samples=" + collectedSamples);
+                        audioChunks = [];
+                        collectedSamples = 0;
+                        isSpeaking = false;
+                        silenceFrames = 0;
+                        speechFrames = 0;
+                        maxRmsSeen = 0;
+                        return;
+                    }
+
                     console.log("Sending audio: reason=" + sendReason +
                         " samples=" + collectedSamples +
                         " duration=" + (collectedSamples / TARGET_SAMPLE_RATE).toFixed(2) + "s" +

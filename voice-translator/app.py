@@ -8,6 +8,7 @@ import logging
 import os
 import threading
 
+import numpy as np
 from flask import Flask, render_template, request, jsonify, send_from_directory
 from flask_socketio import SocketIO, emit
 
@@ -151,10 +152,17 @@ def handle_audio_data(data):
             logger.warning("No audio bytes received")
             return
 
+        # Quick silence check before any heavy processing
+        # This prevents Whisper from hanging on empty/silent audio
+        audio_np_quick = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+        rms_energy = float(np.sqrt(np.mean(audio_np_quick ** 2)))
         logger.info(
-            "Received audio: %d bytes, lang=%s, target=%s, mode=%s",
-            len(audio_bytes), language, target_lang, translation_mode,
+            "Received audio: %d bytes, rms=%.6f, lang=%s, target=%s, mode=%s",
+            len(audio_bytes), rms_energy, language, target_lang, translation_mode,
         )
+        if rms_energy < 0.005:
+            logger.info("Skipping silent audio (rms=%.6f < 0.005)", rms_energy)
+            return
 
         # Capture sid while still in request context
         sid = request.sid
