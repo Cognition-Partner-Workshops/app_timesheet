@@ -1,0 +1,15 @@
+#!/usr/bin/env sh
+
+# Run gitleaks on staged files to prevent committing secrets
+if command -v gitleaks >/dev/null 2>&1; then
+  gitleaks protect --staged --verbose
+  if [ $? -ne 0 ]; then
+    echo ""
+    echo "gitleaks detected secrets in staged files. Commit aborted."
+    echo "Please remove the secrets and try again."
+    exit 1
+  fi
+else
+  echo "WARNING: gitleaks is not installed. Skipping secret scan."
+  echo "Install it from https://github.com/gitleaks/gitleaks#installing"
+fi

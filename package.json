@@ -1,0 +1,12 @@
+{
+  "name": "app-timesheet",
+  "version": "1.0.0",
+  "description": "A full-stack web application for tracking and reporting employee hourly work across different clients.",
+  "private": true,
+  "scripts": {
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7"
+  }
+}
