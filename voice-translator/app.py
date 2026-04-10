@@ -114,9 +114,20 @@ def change_model():
         return jsonify({"error": f"Invalid model: {model_size}"}), 400
 
     logger.info("Changing recognition model to: %s", model_size)
-    with recognizer_lock:
-        result = recognizer.change_model(model_size)
-    return jsonify(result)
+    try:
+        with recognizer_lock:
+            result = recognizer.change_model(model_size)
+        return jsonify(result)
+    except FileNotFoundError as e:
+        logger.error("Model not found: %s", e)
+        return jsonify({
+            "error": str(e),
+            "hint": "SenseVoice model files need to be downloaded separately. "
+                    "Download from https://github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models",
+        }), 400
+    except Exception as e:
+        logger.error("Model change failed: %s", e)
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/summarize", methods=["POST"])

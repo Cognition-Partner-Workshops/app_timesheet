@@ -410,6 +410,12 @@ class SpeechRecognizer:
         logger.info("Changing model from %s (%s) to %s (%s)",
                      self.model_size, self.engine, model_size, new_engine)
 
+        # Save previous state for rollback on failure
+        prev_model_size = self.model_size
+        prev_engine = self.engine
+        prev_whisper = self.whisper_model
+        prev_sensevoice = self.sensevoice_model
+
         self.model_size = model_size
         self.engine = new_engine
 
@@ -417,7 +423,17 @@ class SpeechRecognizer:
         self.whisper_model = None
         self.sensevoice_model = None
 
-        self._load_model()
+        try:
+            self._load_model()
+        except Exception:
+            # Rollback to previous working model
+            logger.warning("Failed to load %s, rolling back to %s", model_size, prev_model_size)
+            self.model_size = prev_model_size
+            self.engine = prev_engine
+            self.whisper_model = prev_whisper
+            self.sensevoice_model = prev_sensevoice
+            raise
+
         return self.get_model_info()
 
     def get_model_info(self):

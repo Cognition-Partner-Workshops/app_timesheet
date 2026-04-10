@@ -1073,6 +1073,8 @@
         if (elements.recognitionModel) {
             elements.recognitionModel.addEventListener("change", function () {
                 var modelSize = elements.recognitionModel.value;
+                var previousModel = state.currentModel || "base";
+                state.currentModel = modelSize;
                 elements.recognitionModel.disabled = true;
                 elements.recognitionModel.classList.add("model-loading");
                 showToast("正在切换模型: " + modelSize + "...", "info");
@@ -1088,14 +1090,21 @@
                         elements.recognitionModel.classList.remove("model-loading");
                         if (data.error) {
                             showToast("模型切换失败: " + data.error, "error");
+                            // Revert dropdown to previous model
+                            elements.recognitionModel.value = previousModel;
+                            state.currentModel = previousModel;
                         } else {
-                            showToast("模型已切换: " + data.model_size, "success");
+                            state.currentModel = data.model_size;
+                            showToast("模型已切换: " + data.model_size + " (" + (data.engine || "") + ")", "success");
                         }
                     })
                     .catch(function (err) {
                         elements.recognitionModel.disabled = false;
                         elements.recognitionModel.classList.remove("model-loading");
                         showToast("模型切换失败: " + err.message, "error");
+                        // Revert dropdown to previous model
+                        elements.recognitionModel.value = previousModel;
+                        state.currentModel = previousModel;
                     });
             });
         }
