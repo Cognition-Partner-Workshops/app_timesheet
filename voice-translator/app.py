@@ -54,8 +54,12 @@ tts_engine = TTSEngine(
 
 logger.info("All modules initialized successfully!")
 
-# Lock for thread-safe access to recognizer
+# Lock for thread-safe access to recognizer (final requests + model changes)
 recognizer_lock = threading.Lock()
+# Separate semaphore for interim requests — allows 1 concurrent interim
+# that does NOT compete with recognizer_lock. CTranslate2 is thread-safe
+# for inference, so interim and final can run simultaneously.
+_interim_sem = threading.Semaphore(1)
 
 
 # ==================== HTTP Routes ====================
@@ -256,25 +260,27 @@ def handle_audio_data(data):
             except Exception as e:
                 logger.warning("Speaker diarization error: %s", e)
 
-        # Step 2: Speech Recognition (thread-safe with lock)
+        # Step 2: Speech Recognition
         lang_param = None if language == "auto" else language
         if is_interim:
-            # Non-blocking lock for interim: skip if recognizer is busy
-            # This prevents interim requests from queuing up and delaying final results
-            acquired = recognizer_lock.acquire(blocking=False)
+            # Interim uses a separate semaphore (not recognizer_lock) so it
+            # can run concurrently with final requests. CTranslate2 is thread-safe
+            # for inference. Only 1 interim at a time (semaphore=1) to limit CPU load.
+            acquired = _interim_sem.acquire(blocking=False)
             if not acquired:
-                logger.info("Recognizer busy, skipping interim request")
+                logger.info("Interim already processing, skipping")
                 return
             try:
-                logger.info("Lock acquired (interim), starting transcription...")
+                logger.info("Processing interim (concurrent, no main lock)...")
                 result = recognizer.transcribe(audio_bytes, language=lang_param)
             finally:
-                recognizer_lock.release()
+                _interim_sem.release()
         else:
-            # Blocking lock for final: always wait for result
-            logger.info("Waiting for recognizer lock...")
+            # Final: blocking lock to serialize final results and prevent
+            # concurrent final+model-change conflicts
+            logger.info("Waiting for recognizer lock (final)...")
             with recognizer_lock:
-                logger.info("Lock acquired, starting transcription...")
+                logger.info("Lock acquired, starting transcription (final)...")
                 result = recognizer.transcribe(audio_bytes, language=lang_param)
         logger.info("Transcription complete: text_len=%d", len(result.get("text", "")))
 
