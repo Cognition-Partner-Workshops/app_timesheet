@@ -1,11 +1,14 @@
 """
 Speech Recognition Module
-Uses faster-whisper for high-speed, high-accuracy multilingual speech recognition.
+Supports multiple engines:
+  - faster-whisper: High-accuracy multilingual batch recognition (Tiny/Base/Small/Medium)
+  - sherpa-onnx SenseVoice: Ultra-fast multilingual recognition (zh/en/ja/ko/yue)
 Supports Japanese, English, and Chinese.
 """
 
 import logging
 import os
+import re
 import time
 import wave
 
@@ -26,14 +29,38 @@ LANGUAGE_NAMES = {
     "ja": "日本語",
     "en": "English",
     "zh": "中文",
+    "ko": "한국어",
+    "yue": "粤语",
 }
+
+# SenseVoice language tag mapping (from model output to standard codes)
+SENSEVOICE_LANG_MAP = {
+    "<|zh|>": "zh",
+    "<|en|>": "en",
+    "<|ja|>": "ja",
+    "<|ko|>": "ko",
+    "<|yue|>": "yue",
+}
+
+# All available models across all engines
+ALL_MODELS = [
+    {"id": "sense-voice", "name": "SenseVoice (中英日韩粤)", "engine": "sensevoice",
+     "description": "超高速AI识别 / Ultra-fast AI recognition"},
+    {"id": "tiny", "name": "Whisper Tiny (39M)", "engine": "whisper",
+     "description": "最快Whisper / Fastest Whisper"},
+    {"id": "base", "name": "Whisper Base (140M)", "engine": "whisper",
+     "description": "Whisper平衡 / Whisper Balanced"},
+    {"id": "small", "name": "Whisper Small (244M)", "engine": "whisper",
+     "description": "Whisper高精度 / Whisper High accuracy"},
+    {"id": "medium", "name": "Whisper Medium (769M)", "engine": "whisper",
+     "description": "Whisper最高精度 / Whisper Highest accuracy"},
+]
 
 
 class SpeechRecognizer:
-    """Real-time speech recognition using faster-whisper."""
+    """Real-time speech recognition supporting multiple engines."""
 
-    # Model-specific thresholds: smaller models have lower confidence scores,
-    # so filters must be relaxed to avoid rejecting valid recognition results.
+    # Model-specific thresholds for Whisper
     MODEL_PARAMS = {
         "tiny": {"log_prob_threshold": -1.5, "avg_logprob_filter": -2.0, "no_speech_threshold": 0.5},
         "base": {"log_prob_threshold": -0.5, "avg_logprob_filter": -1.0, "no_speech_threshold": 0.3},
@@ -41,31 +68,45 @@ class SpeechRecognizer:
         "medium": {"log_prob_threshold": -0.5, "avg_logprob_filter": -1.0, "no_speech_threshold": 0.3},
     }
 
+    # SenseVoice model directory (relative to this file)
+    SENSEVOICE_MODEL_DIR = os.path.join(
+        os.path.dirname(__file__),
+        "models",
+        "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17",
+    )
+
     def __init__(self, model_size="base", device="cpu", compute_type="int8"):
         """
         Initialize the speech recognizer.
 
         Args:
-            model_size: Whisper model size (tiny, base, small, medium, large-v3)
+            model_size: Model identifier (tiny, base, small, medium, sense-voice)
             device: Device to use (cpu or cuda)
-            compute_type: Computation type (int8, float16, float32)
+            compute_type: Computation type for Whisper (int8, float16, float32)
         """
         self.model_size = model_size
         self.device = device
         self.compute_type = compute_type
-        self.model = None
+        self.engine = "sensevoice" if model_size == "sense-voice" else "whisper"
+        self.whisper_model = None
+        self.sensevoice_model = None
         self._load_model()
 
     def _load_model(self):
-        """Load the Whisper model."""
+        """Load the appropriate model based on engine type."""
+        if self.engine == "sensevoice":
+            self._load_sensevoice()
+        else:
+            self._load_whisper()
+
+    def _load_whisper(self):
+        """Load a Whisper model."""
         logger.info(
             "Loading Whisper model: %s (device=%s, compute=%s)",
-            self.model_size,
-            self.device,
-            self.compute_type,
+            self.model_size, self.device, self.compute_type,
         )
         try:
-            self.model = WhisperModel(
+            self.whisper_model = WhisperModel(
                 self.model_size,
                 device=self.device,
                 compute_type=self.compute_type,
@@ -75,9 +116,37 @@ class SpeechRecognizer:
             logger.error("Failed to load Whisper model: %s", e)
             raise
 
+    def _load_sensevoice(self):
+        """Load the SenseVoice model via sherpa-onnx."""
+        model_dir = self.SENSEVOICE_MODEL_DIR
+        model_path = os.path.join(model_dir, "model.int8.onnx")
+        tokens_path = os.path.join(model_dir, "tokens.txt")
+
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(
+                f"SenseVoice model not found at {model_path}. "
+                "Please download from https://github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models"
+            )
+
+        logger.info("Loading SenseVoice model from %s ...", model_dir)
+        try:
+            import sherpa_onnx
+            self.sensevoice_model = sherpa_onnx.OfflineRecognizer.from_sense_voice(
+                model=model_path,
+                tokens=tokens_path,
+                num_threads=4,
+                sample_rate=16000,
+                language="auto",
+                use_itn=True,
+            )
+            logger.info("SenseVoice model loaded successfully")
+        except Exception as e:
+            logger.error("Failed to load SenseVoice model: %s", e)
+            raise
+
     def transcribe(self, audio_data, language=None, sample_rate=16000):
         """
-        Transcribe audio data to text.
+        Transcribe audio data to text using the active engine.
 
         Args:
             audio_data: Raw audio bytes (16-bit PCM, mono)
@@ -87,94 +156,138 @@ class SpeechRecognizer:
         Returns:
             dict with keys: text, language, segments
         """
-        if self.model is None:
+        # Convert bytes to numpy array (16-bit PCM -> float32)
+        audio_np = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32)
+        audio_np = audio_np / 32768.0  # Normalize to [-1.0, 1.0]
+
+        if len(audio_np) == 0:
+            return {"text": "", "language": "", "segments": []}
+
+        # Compute audio stats for logging
+        rms = float(np.sqrt(np.mean(audio_np ** 2)))
+        peak = float(np.max(np.abs(audio_np)))
+        duration = len(audio_np) / sample_rate
+
+        # Compute percentile stats for better diagnostics
+        abs_audio = np.abs(audio_np)
+        p95 = float(np.percentile(abs_audio, 95))
+        p99 = float(np.percentile(abs_audio, 99))
+        nonzero_ratio = float(np.count_nonzero(audio_np) / len(audio_np))
+        logger.info(
+            "Transcribe input: duration=%.2fs, rms=%.6f, peak=%.6f, "
+            "p95=%.6f, p99=%.6f, nonzero=%.1f%%, samples=%d, engine=%s",
+            duration, rms, peak, p95, p99, nonzero_ratio * 100, len(audio_np),
+            self.engine,
+        )
+
+        # Only skip pure digital silence (all zeros)
+        if rms < 0.00001:
+            logger.info("Skipping digital silence: rms=%.6f", rms)
+            return {"text": "", "language": "", "segments": []}
+
+        # Save debug WAV if enabled (set env DEBUG_AUDIO=1)
+        if os.environ.get("DEBUG_AUDIO") == "1":
+            self._save_debug_wav(audio_np, sample_rate, "pre_norm")
+
+        # Normalize audio using hybrid RMS+peak approach
+        target_rms = 0.1
+        max_peak = 0.95
+        if rms > 0.00001 and rms < target_rms:
+            rms_gain = target_rms / rms
+            peak_gain = max_peak / peak if peak > 0.0001 else rms_gain
+            gain_factor = min(rms_gain, peak_gain)
+            gain_factor = min(gain_factor, 200.0)
+            audio_np = audio_np * gain_factor
+            new_rms = float(np.sqrt(np.mean(audio_np ** 2)))
+            new_peak = float(np.max(np.abs(audio_np)))
+            logger.info(
+                "Audio normalized: gain=%.1fx (rms_gain=%.1f, peak_gain=%.1f), "
+                "rms: %.6f->%.6f, peak: %.6f->%.6f",
+                gain_factor, rms_gain, peak_gain,
+                rms, new_rms, peak, new_peak,
+            )
+
+        # Save debug WAV after normalization if enabled
+        if os.environ.get("DEBUG_AUDIO") == "1":
+            self._save_debug_wav(audio_np, sample_rate, "post_norm")
+
+        # Route to appropriate engine
+        if self.engine == "sensevoice":
+            return self._transcribe_sensevoice(audio_np, language, sample_rate)
+        else:
+            return self._transcribe_whisper(audio_np, language, sample_rate)
+
+    def _transcribe_sensevoice(self, audio_np, language, sample_rate):
+        """Transcribe using SenseVoice (sherpa-onnx). Ultra-fast."""
+        if self.sensevoice_model is None:
+            raise RuntimeError("SenseVoice model not loaded")
+
+        try:
+            t_start = time.time()
+            logger.info("Starting SenseVoice transcribe (lang=%s)...", language or "auto")
+
+            stream = self.sensevoice_model.create_stream()
+            stream.accept_waveform(sample_rate, audio_np.tolist())
+            self.sensevoice_model.decode_stream(stream)
+            result = stream.result
+
+            t_elapsed = time.time() - t_start
+
+            text = result.text.strip() if result.text else ""
+            # Parse language from SenseVoice output (e.g., "<|zh|>")
+            detected_lang = ""
+            if hasattr(result, "lang") and result.lang:
+                detected_lang = SENSEVOICE_LANG_MAP.get(result.lang, result.lang.strip("<|>"))
+            elif language:
+                detected_lang = language
+
+            # Clean up SenseVoice output: remove language/emotion/event tags
+            text = re.sub(r"<\|[^|]*\|>", "", text).strip()
+
+            logger.info(
+                "SenseVoice result: lang=%s, text_len=%d, time=%.3fs, text='%s'",
+                detected_lang, len(text), t_elapsed, text[:200],
+            )
+
+            if not text:
+                logger.info("No speech detected in this chunk (SenseVoice)")
+
+            return {
+                "text": text,
+                "language": detected_lang or "zh",
+                "language_name": LANGUAGE_NAMES.get(detected_lang, detected_lang),
+                "segments": [{"start": 0, "end": len(audio_np) / sample_rate, "text": text}] if text else [],
+                "language_probability": 0.95 if text else 0,
+            }
+
+        except Exception as e:
+            logger.error("SenseVoice transcription error: %s", e)
+            return {"text": "", "language": "", "segments": [], "error": str(e)}
+
+    def _transcribe_whisper(self, audio_np, language, sample_rate):
+        """Transcribe using faster-whisper."""
+        if self.whisper_model is None:
             raise RuntimeError("Whisper model not loaded")
 
         try:
-            # Convert bytes to numpy array (16-bit PCM -> float32)
-            audio_np = np.frombuffer(audio_data, dtype=np.int16).astype(np.float32)
-            audio_np = audio_np / 32768.0  # Normalize to [-1.0, 1.0]
-
-            if len(audio_np) == 0:
-                return {"text": "", "language": "", "segments": []}
-
-            # Compute audio stats for logging
-            rms = float(np.sqrt(np.mean(audio_np ** 2)))
-            peak = float(np.max(np.abs(audio_np)))
-            duration = len(audio_np) / sample_rate
-
-            # Compute percentile stats for better diagnostics
-            abs_audio = np.abs(audio_np)
-            p95 = float(np.percentile(abs_audio, 95))
-            p99 = float(np.percentile(abs_audio, 99))
-            nonzero_ratio = float(np.count_nonzero(audio_np) / len(audio_np))
-            logger.info(
-                "Transcribe input: duration=%.2fs, rms=%.6f, peak=%.6f, "
-                "p95=%.6f, p99=%.6f, nonzero=%.1f%%, samples=%d",
-                duration, rms, peak, p95, p99, nonzero_ratio * 100, len(audio_np),
-            )
-
-            # Only skip pure digital silence (all zeros)
-            if rms < 0.00001:
-                logger.info("Skipping digital silence: rms=%.6f", rms)
-                return {"text": "", "language": "", "segments": []}
-
-            # Save debug WAV if enabled (set env DEBUG_AUDIO=1)
-            if os.environ.get("DEBUG_AUDIO") == "1":
-                self._save_debug_wav(audio_np, sample_rate, "pre_norm")
-
-            # Normalize audio using hybrid RMS+peak approach
-            # Pure RMS normalization can cause clipping when crest factor is high
-            # (e.g., rms=0.002, peak=0.027 → gain=50x → peak=1.35 → clipped)
-            # Hybrid: target rms=0.1 but cap gain so peak stays under 0.95
-            target_rms = 0.1  # Standard speech RMS level
-            max_peak = 0.95  # Prevent clipping distortion
-            if rms > 0.00001 and rms < target_rms:
-                rms_gain = target_rms / rms
-                peak_gain = max_peak / peak if peak > 0.0001 else rms_gain
-                # Use the smaller gain to avoid clipping
-                gain_factor = min(rms_gain, peak_gain)
-                # Cap gain to avoid amplifying pure noise too much
-                gain_factor = min(gain_factor, 200.0)
-                audio_np = audio_np * gain_factor
-                new_rms = float(np.sqrt(np.mean(audio_np ** 2)))
-                new_peak = float(np.max(np.abs(audio_np)))
-                logger.info(
-                    "Audio normalized: gain=%.1fx (rms_gain=%.1f, peak_gain=%.1f), "
-                    "rms: %.6f->%.6f, peak: %.6f->%.6f",
-                    gain_factor, rms_gain, peak_gain,
-                    rms, new_rms, peak, new_peak,
-                )
-
-            # Save debug WAV after normalization if enabled
-            if os.environ.get("DEBUG_AUDIO") == "1":
-                self._save_debug_wav(audio_np, sample_rate, "post_norm")
-
             # Resolve language parameter
             lang = LANGUAGE_MAP.get(language, language)
 
-            # Run transcription with VAD DISABLED
-            # Whisper's Silero VAD is too aggressive for weak signals even after normalization.
-            # We handle silence filtering ourselves (rms check above + app.py filtering).
-            # Without VAD, Whisper processes all audio directly - the no_speech_threshold
-            # parameter prevents hallucination on silent segments.
-            #
-            # Use model-specific parameters: smaller models (tiny) have lower confidence
-            # scores, so we relax thresholds to avoid rejecting valid results.
+            # Use model-specific parameters
             params = self.MODEL_PARAMS.get(self.model_size, self.MODEL_PARAMS["base"])
             t_start = time.time()
             logger.info("Starting Whisper transcribe (lang=%s, model=%s, log_prob=%.1f, no_speech=%.1f)...",
                         lang, self.model_size, params["log_prob_threshold"], params["no_speech_threshold"])
-            segments, info = self.model.transcribe(
+            segments, info = self.whisper_model.transcribe(
                 audio_np,
                 language=lang,
                 beam_size=1,
                 best_of=1,
-                vad_filter=False,  # Disabled: Silero VAD rejects weak Stereo Mix signals
-                condition_on_previous_text=False,  # Prevent hallucination loops
+                vad_filter=False,
+                condition_on_previous_text=False,
                 no_speech_threshold=params["no_speech_threshold"],
                 log_prob_threshold=params["log_prob_threshold"],
-                compression_ratio_threshold=2.4,  # Filter repetitive hallucinations
+                compression_ratio_threshold=2.4,
             )
             logger.info(
                 "Whisper transcribe returned (lang=%s, prob=%.2f), iterating segments...",
@@ -182,15 +295,14 @@ class SpeechRecognizer:
                 info.language_probability if info.language_probability else 0,
             )
 
-            # Collect results with safety limit and timeout to prevent infinite hallucination
+            # Collect results with safety limit and timeout
             result_segments = []
             full_text = ""
-            max_segments = 20  # Safety limit
-            segment_timeout = 15.0  # Max seconds to spend iterating segments
+            max_segments = 20
+            segment_timeout = 15.0
             segment_start_time = time.time()
 
             for segment in segments:
-                # Check timeout to prevent Whisper from hanging indefinitely
                 if time.time() - segment_start_time > segment_timeout:
                     logger.warning(
                         "Segment iteration timeout (%.1fs), stopping after %d segments",
@@ -203,7 +315,6 @@ class SpeechRecognizer:
                 text = segment.text.strip()
                 if not text:
                     continue
-                # Log each segment with confidence details
                 logger.info(
                     "  Segment [%.1f-%.1f]: no_speech=%.3f, avg_logprob=%.3f, "
                     "compression_ratio=%.2f, text='%s'",
@@ -212,10 +323,7 @@ class SpeechRecognizer:
                     getattr(segment, 'compression_ratio', 0),
                     text[:100],
                 )
-                # Post-processing hallucination filter:
-                # Segments with very low avg_logprob are almost certainly noise/hallucination
-                # User logs showed "Pfft" (logprob=-1.494) and "アータッ" (logprob=-1.672)
-                # Threshold is model-dependent: tiny models have naturally lower logprobs
+                # Post-processing hallucination filter
                 avg_logprob_threshold = params["avg_logprob_filter"]
                 if segment.avg_logprob < avg_logprob_threshold:
                     logger.info(
@@ -242,7 +350,6 @@ class SpeechRecognizer:
                 detected_language, lang_prob,
                 len(full_text), len(result_segments),
                 t_elapsed,
-                # Log first segment's no_speech_prob as overall indicator
                 result_segments[0].get("no_speech_prob", 0) if result_segments else 0,
             )
             if full_text.strip():
@@ -283,35 +390,55 @@ class SpeechRecognizer:
             logger.warning("Failed to save debug WAV: %s", e)
 
     def change_model(self, model_size):
-        """Change the Whisper model size.
+        """Change the recognition model.
 
         Args:
-            model_size: New model size (tiny, base, small, medium)
+            model_size: New model identifier (tiny, base, small, medium, sense-voice)
 
         Returns:
             dict with model info after change
         """
-        if model_size == self.model_size and self.model is not None:
+        new_engine = "sensevoice" if model_size == "sense-voice" else "whisper"
+
+        if model_size == self.model_size and (
+            (self.engine == "whisper" and self.whisper_model is not None) or
+            (self.engine == "sensevoice" and self.sensevoice_model is not None)
+        ):
             logger.info("Model %s already loaded, skipping", model_size)
             return self.get_model_info()
 
-        logger.info("Changing model from %s to %s", self.model_size, model_size)
+        logger.info("Changing model from %s (%s) to %s (%s)",
+                     self.model_size, self.engine, model_size, new_engine)
+
         self.model_size = model_size
-        self.model = None  # Free old model memory
+        self.engine = new_engine
+
+        # Free old models
+        self.whisper_model = None
+        self.sensevoice_model = None
+
         self._load_model()
         return self.get_model_info()
 
     def get_model_info(self):
         """Return information about the loaded model."""
+        sensevoice_available = os.path.exists(
+            os.path.join(self.SENSEVOICE_MODEL_DIR, "model.int8.onnx")
+        )
+
+        models = []
+        for m in ALL_MODELS:
+            model_entry = dict(m)
+            if m["id"] == "sense-voice" and not sensevoice_available:
+                model_entry["description"] = "未安装 / Not installed"
+                model_entry["disabled"] = True
+            models.append(model_entry)
+
         return {
             "model_size": self.model_size,
+            "engine": self.engine,
             "device": self.device,
             "compute_type": self.compute_type,
-            "loaded": self.model is not None,
-            "available_models": [
-                {"id": "tiny", "name": "Tiny (39M)", "description": "最快速度 / Fastest"},
-                {"id": "base", "name": "Base (140M)", "description": "平衡 / Balanced"},
-                {"id": "small", "name": "Small (244M)", "description": "高精度 / High accuracy"},
-                {"id": "medium", "name": "Medium (769M)", "description": "最高精度 / Highest accuracy"},
-            ],
+            "loaded": (self.whisper_model is not None) or (self.sensevoice_model is not None),
+            "available_models": models,
         }

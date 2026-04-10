@@ -20,6 +20,7 @@
         resultCounter: 0,
         translationMode: "google",
         audioGain: 5.0,  // Software gain multiplier (default 5x for Stereo Mix)
+        silenceInterval: 0.5,  // Silence interval for sentence boundary detection (seconds)
         recognizedTexts: [],  // Collect all recognized texts for summary
         interimElement: null,  // Current interim result DOM element
         interimTypingTimer: null,  // Timer for typing animation
@@ -48,6 +49,8 @@
         translationEngine: document.getElementById("translationEngine"),
         recognitionModel: document.getElementById("recognitionModel"),
         summaryBtn: document.getElementById("summaryBtn"),
+        silenceIntervalSlider: document.getElementById("silenceIntervalSlider"),
+        silenceIntervalValue: document.getElementById("silenceIntervalValue"),
     };
 
     // ==================== Socket.IO Connection ====================
@@ -231,8 +234,8 @@
             var isSpeaking = false;
             var silenceFrames = 0;
             var speechFrames = 0;
-            // Send after ~0.3s of silence following speech (fast response)
-            var silenceFramesNeeded = Math.ceil(0.3 / frameDuration);
+            // Send after silence interval following speech (user-adjustable)
+            var silenceFramesNeeded = Math.ceil(state.silenceInterval / frameDuration);
             // Minimum speech frames (~0.15s)
             var minSpeechFrames = Math.ceil(0.15 / frameDuration);
 
@@ -291,6 +294,9 @@
                         " speaking=" + isSpeaking +
                         " speechF=" + speechFrames);
                 }
+
+                // Update silence frames needed dynamically from slider
+                silenceFramesNeeded = Math.ceil(state.silenceInterval / frameDuration);
 
                 // VAD tracking
                 if (rms > vadSpeechThreshold) {
@@ -480,6 +486,7 @@
             translation_mode: state.translationMode,
             enable_diarization: elements.enableDiarization.checked,
             interim: !!interim,
+            silence_interval: state.silenceInterval,
         });
     }
 
@@ -1107,6 +1114,18 @@
                     elements.audioGainValue.textContent = val.toFixed(1) + "x";
                 }
                 console.log("Audio gain set to:", val);
+            });
+        }
+
+        // Silence interval slider
+        if (elements.silenceIntervalSlider) {
+            elements.silenceIntervalSlider.addEventListener("input", function () {
+                var val = parseFloat(elements.silenceIntervalSlider.value);
+                state.silenceInterval = val;
+                if (elements.silenceIntervalValue) {
+                    elements.silenceIntervalValue.textContent = val.toFixed(1) + "s";
+                }
+                console.log("Silence interval set to:", val);
             });
         }
 

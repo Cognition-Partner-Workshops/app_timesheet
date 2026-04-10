@@ -4,3 +4,8 @@ __pycache__/
 *.pyo
 static/audio/*.mp3
 .env
+models/
+debug_audio/
+_write_files.py
+*.mp3
+!static/audio/*.mp3

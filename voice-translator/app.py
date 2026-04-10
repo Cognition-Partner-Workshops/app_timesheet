@@ -109,7 +109,7 @@ def change_model():
     """Change the speech recognition model."""
     data = request.get_json()
     model_size = data.get("model_size", "base")
-    valid_models = ["tiny", "base", "small", "medium"]
+    valid_models = ["tiny", "base", "small", "medium", "sense-voice"]
     if model_size not in valid_models:
         return jsonify({"error": f"Invalid model: {model_size}"}), 400
 
@@ -227,6 +227,7 @@ def handle_audio_data(data):
         translation_mode = data.get("translation_mode", "google")
         enable_diarization = data.get("enable_diarization", True)
         is_interim = data.get("interim", False)
+        silence_interval = data.get("silence_interval", 0.5)
 
         if not audio_bytes:
             logger.warning("No audio bytes received")
