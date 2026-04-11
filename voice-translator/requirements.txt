@@ -12,3 +12,4 @@ scipy==1.15.2
 transformers>=4.30.0
 sentencepiece>=0.1.99
 sherpa-onnx>=1.10.0
+sherpa-ncnn>=2.1.0

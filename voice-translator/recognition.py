@@ -99,6 +99,7 @@ class SpeechRecognizer:
         self.engine = "sensevoice" if model_size == "sense-voice" else "whisper"
         self.whisper_model = None
         self.sensevoice_model = None
+        self._sensevoice_format = None  # "onnx" or "ncnn"
         self._load_model()
 
     def _load_model(self):
@@ -126,16 +127,21 @@ class SpeechRecognizer:
             raise
 
     def _find_sensevoice_model(self):
-        """Find the SenseVoice ONNX model directory.
+        """Find the best available SenseVoice model (ONNX or ncnn).
 
-        Searches known directories for model.int8.onnx or model.onnx.
-        Also scans the models/ folder for any matching directory.
+        Searches known directories and scans the models/ folder for any
+        directory whose name contains 'sense-voice'.  Prefers ONNX (int8
+        then fp32) but falls back to ncnn automatically.
 
         Returns:
-            tuple: (model_dir, model_path, tokens_path)
+            tuple: (model_dir, model_format, model_files)
+                model_format: "onnx" or "ncnn"
+                model_files: dict with keys depending on format
+                    onnx: {"model": path, "tokens": path}
+                    ncnn: {"model_dir": path, "tokens": path}
 
         Raises:
-            FileNotFoundError: if no valid ONNX model is found
+            FileNotFoundError: if no valid model is found
         """
         models_root = os.path.join(os.path.dirname(__file__), "models")
 
@@ -148,62 +154,62 @@ class SpeechRecognizer:
                     if full not in search_dirs:
                         search_dirs.append(full)
 
-        # Search for ONNX model files
+        # 1) Search for ONNX model files (preferred)
         for d in search_dirs:
             for model_file in ("model.int8.onnx", "model.onnx"):
                 candidate = os.path.join(d, model_file)
                 tokens = os.path.join(d, "tokens.txt")
                 if os.path.exists(candidate) and os.path.exists(tokens):
-                    return d, candidate, tokens
+                    return d, "onnx", {"model": candidate, "tokens": tokens}
 
-        # Check if user has ncnn format instead of onnx
-        ncnn_found = None
+        # 2) Search for ncnn model files
         for d in search_dirs:
-            for f in ("model.ncnn.bin", "model.ncnn.param"):
-                if os.path.exists(os.path.join(d, f)):
-                    ncnn_found = d
-                    break
-        # Also scan models_root for ncnn dirs
-        if not ncnn_found and os.path.isdir(models_root):
-            for entry in os.listdir(models_root):
-                full = os.path.join(models_root, entry)
-                if os.path.isdir(full) and "sense-voice" in entry.lower():
-                    if os.path.exists(os.path.join(full, "model.ncnn.bin")):
-                        ncnn_found = full
-
-        if ncnn_found:
-            raise FileNotFoundError(
-                f"Found ncnn format model at {ncnn_found}, but ONNX format is required. "
-                "Please download the ONNX version: "
-                "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/"
-                "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17.tar.bz2 "
-                "and extract to the models/ directory."
-            )
+            ncnn_bin = os.path.join(d, "model.ncnn.bin")
+            ncnn_param = os.path.join(d, "model.ncnn.param")
+            tokens = os.path.join(d, "tokens.txt")
+            if os.path.exists(ncnn_bin) and os.path.exists(ncnn_param) and os.path.exists(tokens):
+                return d, "ncnn", {"model_dir": d, "tokens": tokens}
 
         raise FileNotFoundError(
-            "SenseVoice ONNX model not found. Please download from: "
-            "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/"
-            "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17.tar.bz2 "
+            "SenseVoice model not found. Please download either:\n"
+            "  ONNX: https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/"
+            "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17.tar.bz2\n"
+            "  ncnn: https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/"
+            "sherpa-ncnn-sense-voice-zh-en-ja-ko-yue-2025-09-09.tar.bz2\n"
             "and extract to voice-translator/models/"
         )
 
     def _load_sensevoice(self):
-        """Load the SenseVoice model via sherpa-onnx."""
-        model_dir, model_path, tokens_path = self._find_sensevoice_model()
+        """Load the SenseVoice model via sherpa-onnx (ONNX) or sherpa-ncnn (ncnn)."""
+        model_dir, model_format, model_files = self._find_sensevoice_model()
+        self._sensevoice_format = model_format
 
-        logger.info("Loading SenseVoice model from %s ...", model_dir)
+        logger.info("Loading SenseVoice model (%s format) from %s ...", model_format, model_dir)
         try:
-            import sherpa_onnx
-            self.sensevoice_model = sherpa_onnx.OfflineRecognizer.from_sense_voice(
-                model=model_path,
-                tokens=tokens_path,
-                num_threads=4,
-                sample_rate=16000,
-                language="auto",
-                use_itn=True,
-            )
+            if model_format == "onnx":
+                import sherpa_onnx
+                self.sensevoice_model = sherpa_onnx.OfflineRecognizer.from_sense_voice(
+                    model=model_files["model"],
+                    tokens=model_files["tokens"],
+                    num_threads=4,
+                    sample_rate=16000,
+                    language="auto",
+                    use_itn=True,
+                )
+            else:
+                import sherpa_ncnn
+                config = sherpa_ncnn.OfflineRecognizerConfig()
+                config.model_config.sense_voice.model_dir = model_files["model_dir"]
+                config.model_config.sense_voice.language = "auto"
+                config.model_config.sense_voice.use_itn = True
+                config.model_config.tokens = model_files["tokens"]
+                config.model_config.num_threads = 4
+                config.model_config.debug = False
+                self.sensevoice_model = sherpa_ncnn.OfflineRecognizer(config)
+
             self.SENSEVOICE_MODEL_DIR = model_dir
-            logger.info("SenseVoice model loaded successfully from %s", model_path)
+            logger.info("SenseVoice model loaded successfully (%s) from %s",
+                        model_format, model_dir)
         except Exception as e:
             logger.error("Failed to load SenseVoice model: %s", e)
             raise
@@ -282,7 +288,7 @@ class SpeechRecognizer:
             return self._transcribe_whisper(audio_np, language, sample_rate)
 
     def _transcribe_sensevoice(self, audio_np, language, sample_rate):
-        """Transcribe using SenseVoice (sherpa-onnx). Ultra-fast."""
+        """Transcribe using SenseVoice (sherpa-onnx or sherpa-ncnn). Ultra-fast."""
         if self.sensevoice_model is None:
             raise RuntimeError("SenseVoice model not loaded")
 
@@ -503,16 +509,14 @@ class SpeechRecognizer:
     def get_model_info(self):
         """Return information about the loaded model."""
         sensevoice_available = False
+        sensevoice_format = None
         sensevoice_status = "未安装 / Not installed"
         try:
-            self._find_sensevoice_model()
+            _, fmt, _ = self._find_sensevoice_model()
             sensevoice_available = True
-        except FileNotFoundError as e:
-            err_msg = str(e)
-            if "ncnn" in err_msg:
-                sensevoice_status = "需要ONNX格式 / ONNX format required (ncnn found)"
-            else:
-                sensevoice_status = "未安装 / Not installed"
+            sensevoice_format = fmt
+        except FileNotFoundError:
+            sensevoice_status = "未安装 / Not installed"
 
         models = []
         for m in ALL_MODELS:
