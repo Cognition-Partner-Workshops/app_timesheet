@@ -294,7 +294,7 @@ class SpeechRecognizer:
 
         try:
             t_start = time.time()
-            logger.info("Starting SenseVoice transcribe (lang=%s)...", language or "auto")
+            logger.info("Starting SenseVoice transcribe (user_lang=%s)...", language or "auto")
 
             stream = self.sensevoice_model.create_stream()
             stream.accept_waveform(sample_rate, audio_np.tolist())
@@ -305,18 +305,30 @@ class SpeechRecognizer:
 
             text = result.text.strip() if result.text else ""
             # Parse language from SenseVoice output (e.g., "<|zh|>")
-            detected_lang = ""
+            auto_detected_lang = ""
             if hasattr(result, "lang") and result.lang:
-                detected_lang = SENSEVOICE_LANG_MAP.get(result.lang, result.lang.strip("<|>"))
-            elif language:
+                auto_detected_lang = SENSEVOICE_LANG_MAP.get(result.lang, result.lang.strip("<|>"))
+
+            # If user explicitly selected a language (not auto), use it
+            # SenseVoice auto-detection is unreliable for short utterances
+            # (e.g., "嗯" detected as yue instead of ja/zh)
+            if language and language != "auto":
                 detected_lang = language
+                if auto_detected_lang and auto_detected_lang != language:
+                    logger.info(
+                        "SenseVoice auto-detected '%s' but user selected '%s', using user selection",
+                        auto_detected_lang, language,
+                    )
+            else:
+                detected_lang = auto_detected_lang
 
             # Clean up SenseVoice output: remove language/emotion/event tags
             text = re.sub(r"<\|[^|]*\|>", "", text).strip()
 
             logger.info(
-                "SenseVoice result: lang=%s, text_len=%d, time=%.3fs, text='%s'",
-                detected_lang, len(text), t_elapsed, text[:200],
+                "SenseVoice result: lang=%s (auto=%s, user=%s), text_len=%d, time=%.3fs, text='%s'",
+                detected_lang, auto_detected_lang, language or "auto",
+                len(text), t_elapsed, text[:200],
             )
 
             if not text:
