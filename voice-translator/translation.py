@@ -16,12 +16,18 @@ TRANSLATION_LANGUAGES = {
     "zh": "zh-CN",
     "en": "en",
     "ja": "ja",
+    "ko": "ko",
+    "yue": "zh-CN",   # Cantonese -> Chinese (Simplified) for Google Translate
+    "zh-CN": "zh-CN",
+    "zh-TW": "zh-TW",
 }
 
 LANGUAGE_LABELS = {
     "zh": "中文",
     "en": "English",
     "ja": "日本語",
+    "ko": "한국어",
+    "yue": "粤语",
 }
 
 # Argos language codes
@@ -29,6 +35,8 @@ ARGOS_LANG_MAP = {
     "zh": "zh",
     "en": "en",
     "ja": "ja",
+    "ko": "ko",
+    "yue": "zh",  # Cantonese -> Chinese for argos
 }
 
 
@@ -77,8 +85,12 @@ class Translator:
                 "target_lang": target_lang,
             }
 
-        # Skip translation if source and target are the same
-        if source_lang == target_lang:
+        # Normalize codes so e.g. yue and zh both map to zh-CN
+        src_resolved = TRANSLATION_LANGUAGES.get(source_lang, source_lang)
+        tgt_resolved = TRANSLATION_LANGUAGES.get(target_lang, target_lang)
+
+        # Skip translation if source and target resolve to the same code
+        if source_lang == target_lang or src_resolved == tgt_resolved:
             return {
                 "original": text,
                 "translated": text,
@@ -98,7 +110,7 @@ class Translator:
                 "target_label": LANGUAGE_LABELS.get(target_lang, target_lang),
             }
         except Exception as e:
-            logger.error("Google translation error: %s", e)
+            logger.error("Google translation error (%s->%s): %s", source_lang, target_lang, e)
             return {
                 "original": text.strip(),
                 "translated": f"[翻译错误: {e}]",
@@ -256,7 +268,11 @@ class AITranslator:
                 "target_lang": target_lang,
             }
 
-        if source_lang == target_lang:
+        # Normalize codes so e.g. yue and zh both resolve to zh
+        src_resolved = ARGOS_LANG_MAP.get(source_lang, source_lang)
+        tgt_resolved = ARGOS_LANG_MAP.get(target_lang, target_lang)
+
+        if source_lang == target_lang or src_resolved == tgt_resolved:
             return {
                 "original": text,
                 "translated": text,
