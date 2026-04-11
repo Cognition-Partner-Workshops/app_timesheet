@@ -1,0 +1,15 @@
+flask==3.1.0
+flask-socketio==5.5.1
+faster-whisper==1.1.1
+deep-translator==1.11.4
+edge-tts==6.1.19
+numpy==1.26.4
+eventlet==0.37.0
+pydub==0.25.1
+argostranslate==1.9.6
+scikit-learn==1.6.1
+scipy==1.15.2
+transformers>=4.30.0
+sentencepiece>=0.1.99
+sherpa-onnx>=1.10.0
+sherpa-ncnn>=2.1.0
