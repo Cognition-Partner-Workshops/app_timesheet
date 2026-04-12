@@ -303,7 +303,16 @@ class SpeechRecognizer:
 
             t_elapsed = time.time() - t_start
 
-            text = result.text.strip() if result.text else ""
+            raw_text = result.text if result.text else ""
+            # Log raw output before any processing
+            logger.info(
+                "SenseVoice RAW output: text=%r, lang=%r, tokens=%s",
+                raw_text[:300],
+                getattr(result, "lang", None),
+                getattr(result, "tokens", [])[:30],
+            )
+
+            text = raw_text.strip()
             # Parse language from SenseVoice output (e.g., "<|zh|>")
             auto_detected_lang = ""
             if hasattr(result, "lang") and result.lang:
@@ -326,9 +335,12 @@ class SpeechRecognizer:
             text = re.sub(r"<\|[^|]*\|>", "", text).strip()
 
             logger.info(
-                "SenseVoice result: lang=%s (auto=%s, user=%s), text_len=%d, time=%.3fs, text='%s'",
+                "SenseVoice result: lang=%s (auto=%s, user=%s), text_len=%d, time=%.3fs, "
+                "format=%s, text='%s'",
                 detected_lang, auto_detected_lang, language or "auto",
-                len(text), t_elapsed, text[:200],
+                len(text), t_elapsed,
+                getattr(self, "_sensevoice_format", "unknown"),
+                text[:200],
             )
 
             if not text:
