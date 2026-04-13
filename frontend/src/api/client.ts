@@ -97,12 +97,12 @@ class ApiClient {
     return response.data;
   }
 
-  async createProject(projectData: { name: string; description?: string; client_id?: number | null; start_date?: string | null; status?: string }) {
+  async createProject(projectData: { name: string; description?: string; client_id?: number | null; start_date?: string | null; end_date?: string | null; status?: string }) {
     const response = await this.client.post('/api/projects', projectData);
     return response.data;
   }
 
-  async updateProject(id: number, projectData: { name?: string; description?: string; client_id?: number | null; start_date?: string | null; status?: string }) {
+  async updateProject(id: number, projectData: { name?: string; description?: string; client_id?: number | null; start_date?: string | null; end_date?: string | null; status?: string }) {
     const response = await this.client.put(`/api/projects/${id}`, projectData);
     return response.data;
   }

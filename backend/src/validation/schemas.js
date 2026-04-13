@@ -33,6 +33,7 @@ const projectSchema = Joi.object({
   description: Joi.string().trim().max(1000).optional().allow(''),
   client_id: Joi.number().integer().positive().optional().allow(null),
   start_date: Joi.date().iso().optional().allow(null, ''),
+  end_date: Joi.date().iso().optional().allow(null, ''),
   status: Joi.string().trim().valid('active', 'completed', 'on-hold').optional().default('active')
 });
 
@@ -41,6 +42,7 @@ const updateProjectSchema = Joi.object({
   description: Joi.string().trim().max(1000).optional().allow(''),
   client_id: Joi.number().integer().positive().optional().allow(null),
   start_date: Joi.date().iso().optional().allow(null, ''),
+  end_date: Joi.date().iso().optional().allow(null, ''),
   status: Joi.string().trim().valid('active', 'completed', 'on-hold').optional()
 }).min(1);
 

@@ -58,6 +58,7 @@ async function initializeDatabase() {
           description TEXT,
           client_id INTEGER,
           start_date DATE,
+          end_date DATE,
           status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active', 'completed', 'on-hold')),
           user_email TEXT NOT NULL,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,

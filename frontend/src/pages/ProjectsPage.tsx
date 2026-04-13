@@ -36,6 +36,7 @@ interface ProjectFormData {
   description: string;
   client_id: string;
   start_date: string;
+  end_date: string;
   status: 'active' | 'completed' | 'on-hold';
 }
 
@@ -44,6 +45,7 @@ const emptyFormData: ProjectFormData = {
   description: '',
   client_id: '',
   start_date: '',
+  end_date: '',
   status: 'active',
 };
 
@@ -72,7 +74,7 @@ const ProjectsPage: React.FC = () => {
   });
 
   const createMutation = useMutation({
-    mutationFn: (projectData: { name: string; description?: string; client_id?: number | null; start_date?: string | null; status?: string }) =>
+    mutationFn: (projectData: { name: string; description?: string; client_id?: number | null; start_date?: string | null; end_date?: string | null; status?: string }) =>
       apiClient.createProject(projectData),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
@@ -85,7 +87,7 @@ const ProjectsPage: React.FC = () => {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: { name?: string; description?: string; client_id?: number | null; start_date?: string | null; status?: string } }) =>
+    mutationFn: ({ id, data }: { id: number; data: { name?: string; description?: string; client_id?: number | null; start_date?: string | null; end_date?: string | null; status?: string } }) =>
       apiClient.updateProject(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
@@ -130,6 +132,7 @@ const ProjectsPage: React.FC = () => {
         description: project.description || '',
         client_id: project.client_id ? String(project.client_id) : '',
         start_date: project.start_date || '',
+        end_date: project.end_date || '',
         status: project.status,
       });
     } else {
@@ -161,6 +164,7 @@ const ProjectsPage: React.FC = () => {
       description: formData.description || undefined,
       client_id: formData.client_id ? Number(formData.client_id) : null,
       start_date: formData.start_date || null,
+      end_date: formData.end_date || null,
       status: formData.status,
     };
 
@@ -227,6 +231,7 @@ const ProjectsPage: React.FC = () => {
                 <TableCell>Name</TableCell>
                 <TableCell>Client</TableCell>
                 <TableCell>Start Date</TableCell>
+                <TableCell>End Date</TableCell>
                 <TableCell>Status</TableCell>
                 <TableCell>Description</TableCell>
                 <TableCell>Created</TableCell>
@@ -255,6 +260,15 @@ const ProjectsPage: React.FC = () => {
                       {project.start_date ? (
                         <Typography variant="body2" color="text.secondary">
                           {new Date(project.start_date).toLocaleDateString()}
+                        </Typography>
+                      ) : (
+                        <Chip label="-" size="small" variant="outlined" />
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {project.end_date ? (
+                        <Typography variant="body2" color="text.secondary">
+                          {new Date(project.end_date).toLocaleDateString()}
                         </Typography>
                       ) : (
                         <Chip label="-" size="small" variant="outlined" />
@@ -301,7 +315,7 @@ const ProjectsPage: React.FC = () => {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={7} align="center">
+                  <TableCell colSpan={8} align="center">
                     <Typography color="text.secondary" sx={{ py: 3 }}>
                       No projects found. Create your first project to get started.
                     </Typography>
@@ -354,6 +368,16 @@ const ProjectsPage: React.FC = () => {
               type="date"
               value={formData.start_date}
               onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+              disabled={createMutation.isPending || updateMutation.isPending}
+              slotProps={{ inputLabel: { shrink: true } }}
+            />
+            <TextField
+              margin="dense"
+              label="End Date"
+              fullWidth
+              type="date"
+              value={formData.end_date}
+              onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
               disabled={createMutation.isPending || updateMutation.isPending}
               slotProps={{ inputLabel: { shrink: true } }}
             />
