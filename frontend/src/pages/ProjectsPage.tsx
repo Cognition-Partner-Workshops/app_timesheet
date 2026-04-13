@@ -140,7 +140,7 @@ const ProjectsPage: React.FC = () => {
 
     const projectData = {
       name: formData.name,
-      description: formData.description || undefined,
+      description: formData.description,
       status: formData.status,
       clientId: formData.clientId || null,
     };
