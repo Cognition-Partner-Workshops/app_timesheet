@@ -1,12 +1,14 @@
 """
 Speaker Diarization Module
-Identifies and tracks different speakers using audio feature analysis.
-Uses spectral features and cosine similarity for speaker matching.
+Identifies and tracks different speakers using neural speaker embeddings.
+Uses 3D-Speaker CAM++ model via sherpa-onnx for high-accuracy speaker identification.
 """
 
 import logging
+import os
+import urllib.request
+
 import numpy as np
-from collections import OrderedDict
 
 logger = logging.getLogger(__name__)
 
@@ -24,285 +26,173 @@ SPEAKER_COLORS = [
 
 MAX_SPEAKERS = len(SPEAKER_COLORS)
 
+# Model configuration
+EMBEDDING_MODEL_FILENAME = "3dspeaker_speech_campplus_sv_zh_en_16k-common_advanced.onnx"
+EMBEDDING_MODEL_URL = (
+    "https://github.com/k2-fsa/sherpa-onnx/releases/download/"
+    "speaker-recongition-models/"
+    + EMBEDDING_MODEL_FILENAME
+)
+MODELS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
+
+
+def _download_embedding_model(dest_path):
+    """Download the speaker embedding model if not present."""
+    if os.path.exists(dest_path):
+        return True
+    os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+    logger.info("Downloading speaker embedding model to %s ...", dest_path)
+    try:
+        urllib.request.urlretrieve(EMBEDDING_MODEL_URL, dest_path)
+        size_mb = os.path.getsize(dest_path) / (1024 * 1024)
+        logger.info("Speaker embedding model downloaded (%.1f MB)", size_mb)
+        return True
+    except Exception as e:
+        logger.error("Failed to download speaker embedding model: %s", e)
+        if os.path.exists(dest_path):
+            os.remove(dest_path)
+        return False
+
 
 class SpeakerDiarizer:
-    """Speaker identification using audio feature analysis."""
+    """Speaker identification using neural speaker embeddings (3D-Speaker CAM++)."""
 
-    def __init__(self, similarity_threshold=0.75, max_speakers=MAX_SPEAKERS):
+    def __init__(self, similarity_threshold=0.55, max_speakers=MAX_SPEAKERS):
         """
         Initialize the speaker diarizer.
 
         Args:
             similarity_threshold: Cosine similarity threshold for speaker matching.
-                Higher values require closer match (0.0-1.0).
+                For neural embeddings, 0.5-0.6 is typical (embeddings are more
+                discriminative than hand-crafted features).
             max_speakers: Maximum number of distinct speakers to track.
         """
         self.similarity_threshold = similarity_threshold
         self.max_speakers = min(max_speakers, MAX_SPEAKERS)
-        self.speaker_profiles = OrderedDict()
+        self.speaker_profiles = {}  # speaker_id -> {mean_embedding, label, color, count}
         self.speaker_counter = 0
-        self.target_rms = 0.1  # Normalize audio to consistent level before feature extraction
+        self.extractor = None
+        self._initialized = False
+
+        self._init_extractor()
+
         logger.info(
-            "SpeakerDiarizer initialized (threshold=%.2f, max_speakers=%d)",
+            "SpeakerDiarizer initialized (threshold=%.2f, max_speakers=%d, neural=%s)",
             similarity_threshold,
             self.max_speakers,
+            self._initialized,
         )
 
-    def _extract_features(self, audio_np):
+    def _init_extractor(self):
+        """Initialize the sherpa-onnx speaker embedding extractor."""
+        try:
+            import sherpa_onnx
+        except ImportError:
+            logger.warning(
+                "sherpa-onnx not installed. Speaker diarization disabled. "
+                "Install with: pip install sherpa-onnx"
+            )
+            return
+
+        model_path = os.path.join(MODELS_DIR, EMBEDDING_MODEL_FILENAME)
+
+        if not os.path.exists(model_path):
+            if not _download_embedding_model(model_path):
+                logger.warning(
+                    "Speaker embedding model not available. "
+                    "Diarization disabled."
+                )
+                return
+
+        try:
+            config = sherpa_onnx.SpeakerEmbeddingExtractorConfig(
+                model=model_path,
+                num_threads=2,
+                provider="cpu",
+            )
+            self.extractor = sherpa_onnx.SpeakerEmbeddingExtractor(config)
+            self._initialized = True
+            logger.info(
+                "Neural speaker embedding extractor loaded "
+                "(model=%s, dim=%d)",
+                EMBEDDING_MODEL_FILENAME,
+                self.extractor.dim,
+            )
+        except Exception as e:
+            logger.error("Failed to load speaker embedding model: %s", e)
+
+    def _extract_embedding(self, audio_np):
         """
-        Extract speaker-discriminative features from audio.
+        Extract speaker embedding from audio using neural model.
 
         Args:
-            audio_np: Numpy array of audio samples (float32, normalized).
+            audio_np: Numpy array of float32 audio samples (16kHz, normalized to [-1, 1]).
 
         Returns:
-            Feature vector (numpy array) or None if audio is too short.
+            List of floats (embedding vector) or None if extraction fails.
         """
-        if len(audio_np) < 1600:  # Less than 0.1s at 16kHz
+        if self.extractor is None:
             return None
 
-        features = []
-
-        # 1. RMS Energy
-        rms = np.sqrt(np.mean(audio_np ** 2))
-        features.append(rms)
-
-        # 2. Zero Crossing Rate
-        zero_crossings = np.sum(np.abs(np.diff(np.sign(audio_np)))) / (
-            2 * len(audio_np)
-        )
-        features.append(zero_crossings)
-
-        # 3. Spectral features via FFT
-        n_fft = min(2048, len(audio_np))
-        # Use multiple frames and average
-        hop_length = n_fft // 2
-        n_frames = max(1, (len(audio_np) - n_fft) // hop_length + 1)
-
-        spectral_centroids = []
-        spectral_bandwidths = []
-        spectral_rolloffs = []
-        spectral_flatness_vals = []
-
-        for i in range(min(n_frames, 20)):  # Limit to 20 frames
-            start = i * hop_length
-            end = start + n_fft
-            if end > len(audio_np):
-                break
-
-            frame = audio_np[start:end]
-            windowed = frame * np.hanning(len(frame))
-            spectrum = np.abs(np.fft.rfft(windowed))
-
-            if np.sum(spectrum) < 1e-10:
-                continue
-
-            freqs = np.fft.rfftfreq(len(windowed), d=1.0 / 16000)
-
-            # Spectral centroid
-            centroid = np.sum(freqs * spectrum) / (np.sum(spectrum) + 1e-10)
-            spectral_centroids.append(centroid)
-
-            # Spectral bandwidth
-            bandwidth = np.sqrt(
-                np.sum(((freqs - centroid) ** 2) * spectrum)
-                / (np.sum(spectrum) + 1e-10)
-            )
-            spectral_bandwidths.append(bandwidth)
-
-            # Spectral rolloff (85th percentile)
-            cumsum = np.cumsum(spectrum)
-            rolloff_idx = np.searchsorted(cumsum, 0.85 * cumsum[-1])
-            rolloff_freq = freqs[min(rolloff_idx, len(freqs) - 1)]
-            spectral_rolloffs.append(rolloff_freq)
-
-            # Spectral flatness
-            geo_mean = np.exp(np.mean(np.log(spectrum + 1e-10)))
-            arith_mean = np.mean(spectrum) + 1e-10
-            flatness = geo_mean / arith_mean
-            spectral_flatness_vals.append(flatness)
-
-        if not spectral_centroids:
+        if len(audio_np) < 3200:  # Less than 0.2s at 16kHz - too short
             return None
 
-        # Aggregate spectral features (mean and std)
-        features.extend([
-            np.mean(spectral_centroids),
-            np.std(spectral_centroids),
-            np.mean(spectral_bandwidths),
-            np.std(spectral_bandwidths),
-            np.mean(spectral_rolloffs),
-            np.std(spectral_rolloffs),
-            np.mean(spectral_flatness_vals),
-            np.std(spectral_flatness_vals),
-        ])
-
-        # 4. Pitch estimation via autocorrelation
-        pitch = self._estimate_pitch(audio_np)
-        features.append(pitch if pitch > 0 else 200.0)  # Default pitch
-
-        # 5. MFCC-like features (simplified)
-        mfcc_features = self._compute_mfcc_like(audio_np)
-        features.extend(mfcc_features)
-
-        feature_vector = np.array(features, dtype=np.float32)
-
-        # Normalize feature vector
-        norm = np.linalg.norm(feature_vector)
-        if norm > 0:
-            feature_vector = feature_vector / norm
-
-        return feature_vector
-
-    def _estimate_pitch(self, audio_np, sr=16000):
-        """
-        Estimate fundamental frequency using autocorrelation.
-
-        Args:
-            audio_np: Audio samples.
-            sr: Sample rate.
-
-        Returns:
-            Estimated pitch in Hz, or 0 if unvoiced.
-        """
-        # Focus on typical speech pitch range (80-400 Hz)
-        min_lag = sr // 400  # 40 samples
-        max_lag = sr // 80   # 200 samples
-
-        if len(audio_np) < max_lag * 2:
-            return 0.0
-
-        # Use center portion of audio
-        center = len(audio_np) // 2
-        half_win = min(4000, center)
-        segment = audio_np[center - half_win:center + half_win]
-
-        # Autocorrelation
-        corr = np.correlate(segment, segment, mode="full")
-        corr = corr[len(corr) // 2:]
-
-        # Normalize
-        if corr[0] > 0:
-            corr = corr / corr[0]
-
-        # Find peak in valid range
-        if max_lag >= len(corr):
-            return 0.0
-
-        search_region = corr[min_lag:max_lag]
-        if len(search_region) == 0:
-            return 0.0
-
-        peak_idx = np.argmax(search_region) + min_lag
-
-        # Verify it's a real peak (correlation > 0.3)
-        if corr[peak_idx] < 0.3:
-            return 0.0
-
-        pitch = sr / peak_idx
-        return pitch
-
-    def _compute_mfcc_like(self, audio_np, n_mfcc=13, sr=16000):
-        """
-        Compute simplified MFCC-like features.
-
-        Args:
-            audio_np: Audio samples.
-            n_mfcc: Number of coefficients.
-            sr: Sample rate.
-
-        Returns:
-            List of MFCC-like coefficients.
-        """
-        n_fft = min(2048, len(audio_np))
-        if n_fft < 256:
-            return [0.0] * n_mfcc
-
-        # Compute power spectrum
-        windowed = audio_np[:n_fft] * np.hanning(n_fft)
-        spectrum = np.abs(np.fft.rfft(windowed)) ** 2
-
-        # Create mel filterbank
-        n_mels = 26
-        low_freq = 0
-        high_freq = sr / 2
-
-        low_mel = 2595 * np.log10(1 + low_freq / 700)
-        high_mel = 2595 * np.log10(1 + high_freq / 700)
-        mel_points = np.linspace(low_mel, high_mel, n_mels + 2)
-        hz_points = 700 * (10 ** (mel_points / 2595) - 1)
-        bin_points = np.floor((n_fft + 1) * hz_points / sr).astype(int)
-
-        filterbank = np.zeros((n_mels, n_fft // 2 + 1))
-        for m in range(1, n_mels + 1):
-            f_left = bin_points[m - 1]
-            f_center = bin_points[m]
-            f_right = bin_points[m + 1]
-
-            for k in range(f_left, f_center):
-                if f_center > f_left:
-                    filterbank[m - 1, k] = (k - f_left) / (f_center - f_left)
-            for k in range(f_center, f_right):
-                if f_right > f_center:
-                    filterbank[m - 1, k] = (f_right - k) / (f_right - f_center)
-
-        # Apply filterbank
-        mel_spectrum = np.dot(filterbank, spectrum)
-        mel_spectrum = np.log(mel_spectrum + 1e-10)
-
-        # DCT to get MFCCs
-        mfcc = np.zeros(n_mfcc)
-        for i in range(n_mfcc):
-            mfcc[i] = np.sum(
-                mel_spectrum
-                * np.cos(np.pi * i * (np.arange(n_mels) + 0.5) / n_mels)
+        try:
+            stream = self.extractor.create_stream()
+            stream.accept_waveform(
+                sample_rate=16000, waveform=audio_np.tolist()
             )
+            stream.input_finished()
 
-        return mfcc.tolist()
+            if not self.extractor.is_ready(stream):
+                return None
 
-    def _cosine_similarity(self, a, b):
-        """Compute cosine similarity between two vectors."""
-        dot = np.dot(a, b)
-        norm_a = np.linalg.norm(a)
-        norm_b = np.linalg.norm(b)
-        if norm_a == 0 or norm_b == 0:
+            embedding = self.extractor.compute(stream)
+            return embedding
+        except Exception as e:
+            logger.warning("Embedding extraction error: %s", e)
+            return None
+
+    @staticmethod
+    def _cosine_similarity(a, b):
+        """Compute cosine similarity between two embedding vectors."""
+        a_arr = np.array(a, dtype=np.float32)
+        b_arr = np.array(b, dtype=np.float32)
+        dot = float(np.dot(a_arr, b_arr))
+        norm_a = float(np.linalg.norm(a_arr))
+        norm_b = float(np.linalg.norm(b_arr))
+        if norm_a < 1e-10 or norm_b < 1e-10:
             return 0.0
         return dot / (norm_a * norm_b)
 
     def identify_speaker(self, audio_bytes):
         """
-        Identify the speaker from audio data.
+        Identify the speaker from audio data using neural embeddings.
 
         Args:
             audio_bytes: Raw PCM audio bytes (16-bit, mono, 16kHz).
 
         Returns:
-            dict with speaker_id, speaker_label, speaker_color, is_new.
+            dict with speaker_id, speaker_label, speaker_color, is_new, confidence.
         """
+        if not self._initialized:
+            return self._unknown_speaker()
+
         try:
-            # Convert to float32
+            # Convert bytes to float32 samples
             audio_np = np.frombuffer(audio_bytes, dtype=np.int16).astype(
                 np.float32
             )
             audio_np = audio_np / 32768.0
 
-            # Check if audio is essentially silent
-            rms = np.sqrt(np.mean(audio_np ** 2))
+            # Check if audio has enough energy
+            rms = float(np.sqrt(np.mean(audio_np ** 2)))
             if rms < 0.0001:
                 return self._unknown_speaker()
 
-            # Normalize audio to consistent level before feature extraction
-            # This is critical for Stereo Mix where signal levels are very low
-            if rms < self.target_rms:
-                gain = min(self.target_rms / rms, 200.0)
-                peak = np.max(np.abs(audio_np))
-                peak_gain = 0.95 / peak if peak > 0.0001 else gain
-                gain = min(gain, peak_gain)
-                audio_np = audio_np * gain
-
-            # Extract features
-            features = self._extract_features(audio_np)
-            if features is None:
+            # Extract neural embedding
+            embedding = self._extract_embedding(audio_np)
+            if embedding is None:
                 return self._unknown_speaker()
 
             # Match against known speakers
@@ -310,64 +200,80 @@ class SpeakerDiarizer:
             best_similarity = -1.0
 
             for speaker_id, profile in self.speaker_profiles.items():
-                similarity = self._cosine_similarity(features, profile["features"])
+                similarity = self._cosine_similarity(
+                    embedding, profile["mean_embedding"]
+                )
                 if similarity > best_similarity:
                     best_similarity = similarity
                     best_match = speaker_id
 
             # Check if match is good enough
-            if best_match and best_similarity >= self.similarity_threshold:
-                # Update speaker profile with running average
+            if best_match is not None and best_similarity >= self.similarity_threshold:
                 profile = self.speaker_profiles[best_match]
-                alpha = 0.3  # Learning rate for profile update
-                profile["features"] = (
-                    (1 - alpha) * profile["features"] + alpha * features
-                )
+                # Update mean embedding with exponential moving average
+                alpha = min(0.3, 1.0 / (profile["count"] + 1))
+                old_emb = np.array(profile["mean_embedding"], dtype=np.float32)
+                new_emb = np.array(embedding, dtype=np.float32)
+                updated = (1 - alpha) * old_emb + alpha * new_emb
                 # Re-normalize
-                norm = np.linalg.norm(profile["features"])
+                norm = float(np.linalg.norm(updated))
                 if norm > 0:
-                    profile["features"] = profile["features"] / norm
+                    updated = updated / norm
+                profile["mean_embedding"] = updated.tolist()
                 profile["count"] += 1
+
+                logger.debug(
+                    "Speaker matched: %s (sim=%.3f, count=%d)",
+                    profile["label"],
+                    best_similarity,
+                    profile["count"],
+                )
 
                 return {
                     "speaker_id": best_match,
                     "speaker_label": profile["label"],
                     "speaker_color": profile["color"],
                     "is_new": False,
-                    "confidence": round(float(best_similarity), 3),
+                    "confidence": round(best_similarity, 3),
                 }
 
             # New speaker
             if len(self.speaker_profiles) >= self.max_speakers:
-                # Assign to least-used speaker if limit reached
-                least_used = min(
-                    self.speaker_profiles.items(),
-                    key=lambda x: x[1]["count"],
-                )
-                return {
-                    "speaker_id": least_used[0],
-                    "speaker_label": least_used[1]["label"],
-                    "speaker_color": least_used[1]["color"],
-                    "is_new": False,
-                    "confidence": round(float(best_similarity), 3),
-                }
+                # If max speakers reached, assign to the closest match
+                if best_match is not None:
+                    profile = self.speaker_profiles[best_match]
+                    return {
+                        "speaker_id": best_match,
+                        "speaker_label": profile["label"],
+                        "speaker_color": profile["color"],
+                        "is_new": False,
+                        "confidence": round(best_similarity, 3),
+                    }
+                return self._unknown_speaker()
 
             self.speaker_counter += 1
             speaker_id = f"speaker_{self.speaker_counter}"
             color_idx = (self.speaker_counter - 1) % len(SPEAKER_COLORS)
             label = f"Speaker {self.speaker_counter}"
 
+            # Normalize embedding for storage
+            emb_arr = np.array(embedding, dtype=np.float32)
+            norm = float(np.linalg.norm(emb_arr))
+            if norm > 0:
+                emb_arr = emb_arr / norm
+
             self.speaker_profiles[speaker_id] = {
-                "features": features,
+                "mean_embedding": emb_arr.tolist(),
                 "label": label,
                 "color": SPEAKER_COLORS[color_idx],
                 "count": 1,
             }
 
             logger.info(
-                "New speaker detected: %s (total: %d)",
+                "New speaker detected: %s (total: %d, embedding_dim=%d)",
                 label,
                 len(self.speaker_profiles),
+                len(embedding),
             )
 
             return {
@@ -409,3 +315,7 @@ class SpeakerDiarizer:
             }
             for sid, profile in self.speaker_profiles.items()
         ]
+
+    def is_neural(self):
+        """Return True if using neural embeddings."""
+        return self._initialized

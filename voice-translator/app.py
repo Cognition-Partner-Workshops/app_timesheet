@@ -44,7 +44,7 @@ logger.info("Initializing translation manager...")
 translator = TranslationManager(max_workers=4)
 
 logger.info("Initializing speaker diarizer...")
-diarizer = SpeakerDiarizer(similarity_threshold=0.75)
+diarizer = SpeakerDiarizer(similarity_threshold=0.55)
 
 logger.info("Initializing TTS engine...")
 tts_engine = TTSEngine(
@@ -101,7 +101,9 @@ def init_ai_translator():
 @app.route("/api/model-info")
 def get_model_info():
     """Get speech recognition model information."""
-    return jsonify(recognizer.get_model_info())
+    info = recognizer.get_model_info()
+    info["diarization_neural"] = diarizer.is_neural()
+    return jsonify(info)
 
 
 @app.route("/api/change-model", methods=["POST"])
