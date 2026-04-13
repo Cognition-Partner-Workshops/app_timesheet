@@ -12,13 +12,19 @@ class Base(DeclarativeBase):
 
 settings = get_settings()
 
-engine = create_async_engine(
-    settings.DATABASE_URL,
-    echo=settings.DEBUG,
-    pool_size=20,
-    max_overflow=10,
-    pool_pre_ping=True,
-)
+_engine_kwargs = {
+    "echo": settings.DEBUG,
+}
+
+# SQLite doesn't support pool_size/max_overflow
+if not settings.DATABASE_URL.startswith("sqlite"):
+    _engine_kwargs.update({
+        "pool_size": 20,
+        "max_overflow": 10,
+        "pool_pre_ping": True,
+    })
+
+engine = create_async_engine(settings.DATABASE_URL, **_engine_kwargs)
 
 async_session_factory = async_sessionmaker(
     engine,

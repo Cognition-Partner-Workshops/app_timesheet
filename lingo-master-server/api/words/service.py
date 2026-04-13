@@ -4,6 +4,7 @@ Word and wordbook service.
 from typing import List, Optional
 from sqlalchemy import select, func, and_
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from api.database.models import (
     Language, WordbookCategory, Wordbook, Word, WordbookWord
@@ -133,6 +134,7 @@ class WordService:
         offset = (page - 1) * size
         query = (
             select(Wordbook)
+            .options(selectinload(Wordbook.category))
             .where(and_(*conditions))
             .order_by(Wordbook.sort_order)
             .offset(offset)
@@ -162,7 +164,7 @@ class WordService:
 
     async def get_wordbook_detail(self, book_id: str) -> WordbookDetailResponse:
         """Get wordbook detail with word preview."""
-        query = select(Wordbook).where(Wordbook.book_id == book_id)
+        query = select(Wordbook).options(selectinload(Wordbook.category)).where(Wordbook.book_id == book_id)
         result = await self.db.execute(query)
         wb = result.scalar_one_or_none()
 
