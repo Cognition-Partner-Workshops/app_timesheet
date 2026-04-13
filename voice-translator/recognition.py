@@ -154,13 +154,21 @@ class SpeechRecognizer:
                     if full not in search_dirs:
                         search_dirs.append(full)
 
+        logger.info("SenseVoice model search dirs: %s", [os.path.basename(d) for d in search_dirs])
+
         # 1) Search for ONNX model files (preferred)
         for d in search_dirs:
             for model_file in ("model.int8.onnx", "model.onnx"):
                 candidate = os.path.join(d, model_file)
                 tokens = os.path.join(d, "tokens.txt")
-                if os.path.exists(candidate) and os.path.exists(tokens):
+                exists_model = os.path.exists(candidate)
+                exists_tokens = os.path.exists(tokens)
+                if exists_model and exists_tokens:
+                    logger.info("Found ONNX model: %s", candidate)
                     return d, "onnx", {"model": candidate, "tokens": tokens}
+                elif exists_model or exists_tokens:
+                    logger.info("Partial ONNX match in %s: model=%s, tokens=%s",
+                                os.path.basename(d), exists_model, exists_tokens)
 
         # 2) Search for ncnn model files
         for d in search_dirs:
@@ -168,6 +176,7 @@ class SpeechRecognizer:
             ncnn_param = os.path.join(d, "model.ncnn.param")
             tokens = os.path.join(d, "tokens.txt")
             if os.path.exists(ncnn_bin) and os.path.exists(ncnn_param) and os.path.exists(tokens):
+                logger.info("Found ncnn model: %s (ONNX not available)", d)
                 return d, "ncnn", {"model_dir": d, "tokens": tokens}
 
         raise FileNotFoundError(
