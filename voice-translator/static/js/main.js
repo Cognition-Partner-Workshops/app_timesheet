@@ -1096,6 +1096,10 @@
                         } else {
                             state.currentModel = data.model_size;
                             showToast("模型已切换: " + data.model_size + " (" + (data.engine || "") + ")", "success");
+                            // Show ncnn Cantonese-specialized warning if present
+                            if (data.warning) {
+                                showToast(data.warning, "error");
+                            }
                         }
                     })
                     .catch(function (err) {

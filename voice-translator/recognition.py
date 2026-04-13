@@ -184,6 +184,27 @@ class SpeechRecognizer:
         model_dir, model_format, model_files = self._find_sensevoice_model()
         self._sensevoice_format = model_format
 
+        # Check if ncnn model is the Cantonese-specialized variant
+        self._sensevoice_ncnn_warning = ""
+        if model_format == "ncnn":
+            readme_path = os.path.join(model_dir, "README.md")
+            if os.path.exists(readme_path):
+                with open(readme_path, "r", encoding="utf-8") as f:
+                    readme = f.read()
+                if "WSYue" in readme or "sensevoice_small_yue" in readme:
+                    self._sensevoice_ncnn_warning = (
+                        "警告: ncnn模型是粤语特化版本，日语假名(ひらがな/カタカナ)会丢失。"
+                        "建议下载ONNX格式模型以获得完整的日语识别。"
+                        " / Warning: ncnn model is Cantonese-specialized and "
+                        "strips Japanese hiragana/katakana. "
+                        "Please download the ONNX model for full Japanese support."
+                    )
+                    logger.warning(
+                        "ncnn SenseVoice model is Cantonese-specialized "
+                        "(from ASLP-lab/WSYue-ASR). Japanese hiragana/katakana "
+                        "will be stripped. Recommend using ONNX format instead."
+                    )
+
         logger.info("Loading SenseVoice model (%s format) from %s ...", model_format, model_dir)
         try:
             if model_format == "onnx":
@@ -550,7 +571,7 @@ class SpeechRecognizer:
                 model_entry["disabled"] = True
             models.append(model_entry)
 
-        return {
+        info = {
             "model_size": self.model_size,
             "engine": self.engine,
             "device": self.device,
@@ -558,3 +579,8 @@ class SpeechRecognizer:
             "loaded": (self.whisper_model is not None) or (self.sensevoice_model is not None),
             "available_models": models,
         }
+        # Attach ncnn warning if present
+        ncnn_warn = getattr(self, "_sensevoice_ncnn_warning", "")
+        if ncnn_warn and self.engine == "sensevoice":
+            info["warning"] = ncnn_warn
+        return info
