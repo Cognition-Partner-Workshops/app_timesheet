@@ -317,15 +317,22 @@ def handle_audio_data(data):
             return  # Skip translation/TTS for interim results
 
         emit("recognition_result", rec_data)
+        logger.info("FINAL recognition emitted: lang=%s, target=%s, text='%s'",
+                     result["language"], target_lang, result["text"][:100])
 
         # Step 3: Translation (synchronous for immediate result) - only for final results
         detected_lang = result["language"]
+        logger.info("Starting translation: %s -> %s, mode=%s, text_len=%d",
+                     detected_lang, target_lang, translation_mode, len(result["text"]))
         trans_result = translator.translate(
             result["text"],
             source_lang=detected_lang,
             target_lang=target_lang,
             mode=translation_mode,
         )
+        logger.info("Translation result: translated='%s', error=%s",
+                     trans_result.get("translated", "")[:100],
+                     trans_result.get("error", "none"))
 
         if speaker_info:
             trans_result["speaker"] = speaker_info
