@@ -41,6 +41,7 @@ export interface Project {
   description: string | null;
   client_id: number | null;
   start_date: string | null;
+  end_date: string | null;
   status: 'active' | 'completed' | 'on-hold';
   client_name: string | null;
   created_at: string;
@@ -52,6 +53,7 @@ export interface CreateProjectRequest {
   description?: string;
   clientId?: number | null;
   startDate?: string;
+  endDate?: string;
   status?: 'active' | 'completed' | 'on-hold';
 }
 
@@ -60,6 +62,7 @@ export interface UpdateProjectRequest {
   description?: string;
   clientId?: number | null;
   startDate?: string;
+  endDate?: string;
   status?: 'active' | 'completed' | 'on-hold';
 }
 

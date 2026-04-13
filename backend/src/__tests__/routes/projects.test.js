@@ -159,6 +159,11 @@ describe('Project Routes', () => {
         callback(null, { id: 1 });
       });
 
+      // Overlap check returns no existing projects
+      mockDb.all.mockImplementationOnce((query, params, callback) => {
+        callback(null, []);
+      });
+
       mockDb.run.mockImplementation(function(query, params, callback) {
         this.lastID = 1;
         callback.call(this, null);
@@ -277,6 +282,118 @@ describe('Project Routes', () => {
       expect(response.status).toBe(500);
       expect(response.body).toEqual({ error: 'Internal server error' });
     });
+
+    test('should return 400 when endDate is before startDate', async () => {
+      const response = await request(app)
+        .post('/api/projects')
+        .send({ name: 'Project', startDate: '2024-06-01', endDate: '2024-01-01' });
+
+      expect(response.status).toBe(400);
+    });
+
+    test('should create project with valid startDate and endDate', async () => {
+      const createdProject = { id: 1, name: 'Project', start_date: '2024-01-01', end_date: '2024-06-01', status: 'active' };
+
+      mockDb.run.mockImplementation(function(query, params, callback) {
+        this.lastID = 1;
+        callback.call(this, null);
+      });
+
+      mockDb.get.mockImplementation((query, params, callback) => {
+        callback(null, createdProject);
+      });
+
+      const response = await request(app)
+        .post('/api/projects')
+        .send({ name: 'Project', startDate: '2024-01-01', endDate: '2024-06-01' });
+
+      expect(response.status).toBe(201);
+    });
+
+    test('should reject project with overlapping dates for same client', async () => {
+      // Client exists
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, { id: 1 });
+      });
+
+      // Overlap check returns existing overlapping project
+      mockDb.all.mockImplementationOnce((query, params, callback) => {
+        callback(null, [{ id: 2, name: 'Existing Project', start_date: '2024-01-01', end_date: '2024-06-30' }]);
+      });
+
+      const response = await request(app)
+        .post('/api/projects')
+        .send({ name: 'New Project', clientId: 1, startDate: '2024-03-01', endDate: '2024-09-01' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toContain('overlap');
+    });
+
+    test('should allow project with non-overlapping dates for same client', async () => {
+      // Client exists
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, { id: 1 });
+      });
+
+      // Overlap check returns no overlapping projects
+      mockDb.all.mockImplementationOnce((query, params, callback) => {
+        callback(null, [{ id: 2, name: 'Existing Project', start_date: '2024-01-01', end_date: '2024-03-31' }]);
+      });
+
+      mockDb.run.mockImplementation(function(query, params, callback) {
+        this.lastID = 3;
+        callback.call(this, null);
+      });
+
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, { id: 3, name: 'New Project', start_date: '2024-04-01', end_date: '2024-06-30', status: 'active' });
+      });
+
+      const response = await request(app)
+        .post('/api/projects')
+        .send({ name: 'New Project', clientId: 1, startDate: '2024-04-01', endDate: '2024-06-30' });
+
+      expect(response.status).toBe(201);
+    });
+
+    test('should allow overlapping dates for different clients', async () => {
+      // This test creates a project without clientId (no overlap check needed)
+      const createdProject = { id: 1, name: 'No Client Project', start_date: '2024-01-01', end_date: '2024-06-01', status: 'active' };
+
+      mockDb.run.mockImplementation(function(query, params, callback) {
+        this.lastID = 1;
+        callback.call(this, null);
+      });
+
+      mockDb.get.mockImplementation((query, params, callback) => {
+        callback(null, createdProject);
+      });
+
+      const response = await request(app)
+        .post('/api/projects')
+        .send({ name: 'No Client Project', startDate: '2024-01-01', endDate: '2024-06-01' });
+
+      expect(response.status).toBe(201);
+    });
+
+    test('should reject open-ended project overlapping with existing project for same client', async () => {
+      // Client exists
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, { id: 1 });
+      });
+
+      // Overlap check returns existing project with open end date
+      mockDb.all.mockImplementationOnce((query, params, callback) => {
+        callback(null, [{ id: 2, name: 'Ongoing Project', start_date: '2024-01-01', end_date: null }]);
+      });
+
+      const response = await request(app)
+        .post('/api/projects')
+        .send({ name: 'New Project', clientId: 1, startDate: '2024-06-01', endDate: '2024-12-31' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toContain('overlap');
+    });
   });
 
   describe('PUT /api/projects/:id', () => {
@@ -284,7 +401,7 @@ describe('Project Routes', () => {
       const updatedProject = { id: 1, name: 'Updated Name', description: 'Old Desc', status: 'active' };
 
       mockDb.get.mockImplementationOnce((query, params, callback) => {
-        callback(null, { id: 1 }); // Project exists
+        callback(null, { id: 1, client_id: null, start_date: null, end_date: null }); // Project exists
       });
 
       mockDb.run.mockImplementation((query, params, callback) => {
@@ -306,7 +423,7 @@ describe('Project Routes', () => {
 
     test('should update project status', async () => {
       mockDb.get.mockImplementationOnce((query, params, callback) => {
-        callback(null, { id: 1 });
+        callback(null, { id: 1, client_id: null, start_date: null, end_date: null });
       });
 
       mockDb.run.mockImplementation((query, params, callback) => {
@@ -326,11 +443,16 @@ describe('Project Routes', () => {
 
     test('should update project client assignment', async () => {
       mockDb.get.mockImplementationOnce((query, params, callback) => {
-        callback(null, { id: 1 }); // Project exists
+        callback(null, { id: 1, client_id: null, start_date: null, end_date: null }); // Project exists
       });
 
       mockDb.get.mockImplementationOnce((query, params, callback) => {
         callback(null, { id: 2 }); // Client exists
+      });
+
+      // Overlap check returns no existing projects
+      mockDb.all.mockImplementationOnce((query, params, callback) => {
+        callback(null, []);
       });
 
       mockDb.run.mockImplementation((query, params, callback) => {
@@ -350,7 +472,7 @@ describe('Project Routes', () => {
 
     test('should return 400 when updating to non-existent client', async () => {
       mockDb.get.mockImplementationOnce((query, params, callback) => {
-        callback(null, { id: 1 }); // Project exists
+        callback(null, { id: 1, client_id: null, start_date: null, end_date: null }); // Project exists
       });
 
       mockDb.get.mockImplementationOnce((query, params, callback) => {
@@ -418,7 +540,7 @@ describe('Project Routes', () => {
 
     test('should handle database error during update', async () => {
       mockDb.get.mockImplementationOnce((query, params, callback) => {
-        callback(null, { id: 1 });
+        callback(null, { id: 1, client_id: null, start_date: null, end_date: null });
       });
 
       mockDb.run.mockImplementation((query, params, callback) => {
@@ -435,7 +557,7 @@ describe('Project Routes', () => {
 
     test('should handle error retrieving project after update', async () => {
       mockDb.get.mockImplementationOnce((query, params, callback) => {
-        callback(null, { id: 1 });
+        callback(null, { id: 1, client_id: null, start_date: null, end_date: null });
       });
 
       mockDb.run.mockImplementation((query, params, callback) => {
@@ -456,7 +578,7 @@ describe('Project Routes', () => {
 
     test('should handle database error when checking client during update', async () => {
       mockDb.get.mockImplementationOnce((query, params, callback) => {
-        callback(null, { id: 1 }); // Project exists
+        callback(null, { id: 1, client_id: null, start_date: null, end_date: null }); // Project exists
       });
 
       mockDb.get.mockImplementationOnce((query, params, callback) => {
@@ -469,6 +591,64 @@ describe('Project Routes', () => {
 
       expect(response.status).toBe(500);
       expect(response.body).toEqual({ error: 'Internal server error' });
+    });
+
+    test('should return 400 when updating endDate before startDate', async () => {
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, { id: 1, client_id: null, start_date: '2024-01-01', end_date: '2024-06-01' });
+      });
+
+      const response = await request(app)
+        .put('/api/projects/1')
+        .send({ endDate: '2023-06-01' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toContain('End date must not be before start date');
+    });
+
+    test('should reject update with overlapping dates for same client', async () => {
+      // Project exists with client
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, { id: 1, client_id: 1, start_date: '2024-01-01', end_date: '2024-03-31' });
+      });
+
+      // Overlap check returns overlapping project
+      mockDb.all.mockImplementationOnce((query, params, callback) => {
+        callback(null, [{ id: 2, name: 'Other Project', start_date: '2024-04-01', end_date: '2024-06-30' }]);
+      });
+
+      const response = await request(app)
+        .put('/api/projects/1')
+        .send({ endDate: '2024-05-01' });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error).toContain('overlap');
+    });
+
+    test('should allow update with non-overlapping dates for same client', async () => {
+      // Project exists with client
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, { id: 1, client_id: 1, start_date: '2024-01-01', end_date: '2024-03-31' });
+      });
+
+      // Overlap check returns no overlapping projects
+      mockDb.all.mockImplementationOnce((query, params, callback) => {
+        callback(null, [{ id: 2, name: 'Other Project', start_date: '2024-07-01', end_date: '2024-09-30' }]);
+      });
+
+      mockDb.run.mockImplementation((query, params, callback) => {
+        callback(null);
+      });
+
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, { id: 1, name: 'Project', start_date: '2024-01-01', end_date: '2024-06-30', status: 'active' });
+      });
+
+      const response = await request(app)
+        .put('/api/projects/1')
+        .send({ endDate: '2024-06-30' });
+
+      expect(response.status).toBe(200);
     });
   });
 

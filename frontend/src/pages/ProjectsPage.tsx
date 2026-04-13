@@ -40,6 +40,7 @@ interface ProjectFormData {
   description: string;
   clientId: string;
   startDate: string;
+  endDate: string;
   status: 'active' | 'completed' | 'on-hold';
 }
 
@@ -48,6 +49,7 @@ const emptyFormData: ProjectFormData = {
   description: '',
   clientId: '',
   startDate: '',
+  endDate: '',
   status: 'active',
 };
 
@@ -76,7 +78,7 @@ const ProjectsPage: React.FC = () => {
   });
 
   const createMutation = useMutation({
-    mutationFn: (projectData: { name: string; description?: string; clientId?: number | null; startDate?: string; status?: string }) =>
+    mutationFn: (projectData: { name: string; description?: string; clientId?: number | null; startDate?: string; endDate?: string; status?: string }) =>
       apiClient.createProject(projectData),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
@@ -89,7 +91,7 @@ const ProjectsPage: React.FC = () => {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: { name?: string; description?: string; clientId?: number | null; startDate?: string; status?: string } }) =>
+    mutationFn: ({ id, data }: { id: number; data: { name?: string; description?: string; clientId?: number | null; startDate?: string; endDate?: string; status?: string } }) =>
       apiClient.updateProject(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
@@ -134,6 +136,7 @@ const ProjectsPage: React.FC = () => {
         description: project.description || '',
         clientId: project.client_id ? String(project.client_id) : '',
         startDate: project.start_date || '',
+        endDate: project.end_date || '',
         status: project.status,
       });
     } else {
@@ -160,11 +163,17 @@ const ProjectsPage: React.FC = () => {
       return;
     }
 
+    if (formData.startDate && formData.endDate && formData.endDate < formData.startDate) {
+      setError('End date must not be before start date');
+      return;
+    }
+
     const projectPayload = {
       name: formData.name,
       description: formData.description || undefined,
       clientId: formData.clientId ? parseInt(formData.clientId) : null,
       startDate: formData.startDate || undefined,
+      endDate: formData.endDate || undefined,
       status: formData.status,
     };
 
@@ -243,6 +252,7 @@ const ProjectsPage: React.FC = () => {
                 <TableCell>Client</TableCell>
                 <TableCell>Status</TableCell>
                 <TableCell>Start Date</TableCell>
+                <TableCell>End Date</TableCell>
                 <TableCell>Description</TableCell>
                 <TableCell>Created</TableCell>
                 <TableCell align="right">Actions</TableCell>
@@ -283,6 +293,15 @@ const ProjectsPage: React.FC = () => {
                       )}
                     </TableCell>
                     <TableCell>
+                      {project.end_date ? (
+                        <Typography variant="body2" color="text.secondary">
+                          {new Date(project.end_date).toLocaleDateString()}
+                        </Typography>
+                      ) : (
+                        <Chip label="-" size="small" variant="outlined" />
+                      )}
+                    </TableCell>
+                    <TableCell>
                       {project.description ? (
                         <Typography variant="body2" color="text.secondary">
                           {project.description}
@@ -316,7 +335,7 @@ const ProjectsPage: React.FC = () => {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={7} align="center">
+                  <TableCell colSpan={8} align="center">
                     <Typography color="text.secondary" sx={{ py: 3 }}>
                       No projects found. Create your first project to get started.
                     </Typography>
@@ -382,6 +401,18 @@ const ProjectsPage: React.FC = () => {
               onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
               disabled={createMutation.isPending || updateMutation.isPending}
               slotProps={{ inputLabel: { shrink: true } }}
+            />
+            <TextField
+              margin="dense"
+              label="End Date"
+              fullWidth
+              type="date"
+              value={formData.endDate}
+              onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+              disabled={createMutation.isPending || updateMutation.isPending}
+              slotProps={{ inputLabel: { shrink: true } }}
+              error={!!(formData.startDate && formData.endDate && formData.endDate < formData.startDate)}
+              helperText={formData.startDate && formData.endDate && formData.endDate < formData.startDate ? 'End date must not be before start date' : ''}
             />
             <FormControl fullWidth margin="dense">
               <InputLabel id="status-select-label">Status</InputLabel>

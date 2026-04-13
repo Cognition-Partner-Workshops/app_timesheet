@@ -33,7 +33,16 @@ const projectSchema = Joi.object({
   description: Joi.string().trim().max(1000).optional().allow(''),
   clientId: Joi.number().integer().positive().optional().allow(null),
   startDate: Joi.date().iso().optional().allow(null, ''),
+  endDate: Joi.date().iso().optional().allow(null, '').custom((value, helpers) => {
+    const startDate = helpers.state.ancestors[0].startDate;
+    if (value && startDate && new Date(value) < new Date(startDate)) {
+      return helpers.error('date.endBeforeStart');
+    }
+    return value;
+  }),
   status: Joi.string().trim().valid('active', 'completed', 'on-hold').optional().default('active')
+}).messages({
+  'date.endBeforeStart': 'End date must not be before start date'
 });
 
 const updateProjectSchema = Joi.object({
@@ -41,8 +50,17 @@ const updateProjectSchema = Joi.object({
   description: Joi.string().trim().max(1000).optional().allow(''),
   clientId: Joi.number().integer().positive().optional().allow(null),
   startDate: Joi.date().iso().optional().allow(null, ''),
+  endDate: Joi.date().iso().optional().allow(null, '').custom((value, helpers) => {
+    const startDate = helpers.state.ancestors[0].startDate;
+    if (value && startDate && new Date(value) < new Date(startDate)) {
+      return helpers.error('date.endBeforeStart');
+    }
+    return value;
+  }),
   status: Joi.string().trim().valid('active', 'completed', 'on-hold').optional()
-}).min(1);
+}).min(1).messages({
+  'date.endBeforeStart': 'End date must not be before start date'
+});
 
 const emailSchema = Joi.object({
   email: Joi.string().email().required()
