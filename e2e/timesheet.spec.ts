@@ -51,7 +51,7 @@ test.describe('Timesheet App E2E', () => {
   test('should navigate to work entries page', async ({ page }) => {
     await page.getByRole('button', { name: 'Work Entries' }).click();
     await page.waitForURL('**/work-entries');
-    await expect(page.getByRole('heading', { name: 'Total Work Entries' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Work Entries', level: 4 })).toBeVisible();
   });
 
   test('should navigate to reports page', async ({ page }) => {
