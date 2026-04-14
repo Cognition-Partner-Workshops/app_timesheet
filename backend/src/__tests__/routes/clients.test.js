@@ -55,7 +55,7 @@ describe('Client Routes', () => {
       expect(response.body).toEqual({ clients: mockClients });
       expect(mockDb.all).toHaveBeenCalledWith(
         expect.stringContaining('SELECT id, name, description'),
-        ['test@example.com'],
+        [],
         expect.any(Function)
       );
     });
@@ -72,7 +72,7 @@ describe('Client Routes', () => {
     });
 
     test('should handle database error', async () => {
-      mockDb.all.mockImplementation((query, params, callback) => {
+      mockDb.all.mockImplementation((query, callback) => {
         callback(new Error('Database error'), null);
       });
 
