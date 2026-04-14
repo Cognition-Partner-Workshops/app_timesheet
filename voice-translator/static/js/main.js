@@ -18,7 +18,6 @@
         ttsQueue: [],
         isPlayingTTS: false,
         resultCounter: 0,
-        translationMode: "google",
         audioGain: 5.0,  // Software gain multiplier (default 5x for Stereo Mix)
         silenceInterval: 0.5,  // Silence interval for sentence boundary detection (seconds)
         recognizedTexts: [],  // Collect all recognized texts for summary
@@ -46,7 +45,6 @@
         ttsPlayer: document.getElementById("ttsPlayer"),
         audioVisualizer: document.getElementById("audioVisualizer"),
         visualizerCanvas: document.getElementById("visualizerCanvas"),
-        translationEngine: document.getElementById("translationEngine"),
         recognitionModel: document.getElementById("recognitionModel"),
         summaryBtn: document.getElementById("summaryBtn"),
         silenceIntervalSlider: document.getElementById("silenceIntervalSlider"),
@@ -483,7 +481,6 @@
             target_lang: elements.targetLang.value,
             enable_tts: interim ? false : elements.enableTTS.checked,
             tts_voice: elements.ttsVoice.value || null,
-            translation_mode: state.translationMode,
             enable_diarization: elements.enableDiarization.checked,
             interim: !!interim,
             silence_interval: state.silenceInterval,
@@ -744,16 +741,6 @@
             " → " +
             (data.target_label || data.target_lang || "");
 
-        var engineBadge = "";
-        if (data.engine) {
-            var engineLabel = data.engine === "ai" ? "AI" : "Google";
-            engineBadge =
-                '<span class="engine-badge engine-' +
-                data.engine +
-                '">' +
-                engineLabel +
-                "</span>";
-        }
 
         item.innerHTML =
             (speakerHtml ? '<div class="result-speaker">' + speakerHtml + "</div>" : "") +
@@ -763,7 +750,6 @@
             '<div class="result-meta">' +
             "<span>" +
             langInfo +
-            engineBadge +
             "</span>" +
             '<button class="tts-btn" onclick="window.VT.playText(\'' +
             escapeAttr(data.translated) +
@@ -930,7 +916,6 @@
                 texts: texts,
                 languages: languages,
                 target_lang: elements.targetLang.value,
-                translation_mode: state.translationMode,
             }),
         })
             .then(function (res) { return res.json(); })
@@ -1037,35 +1022,6 @@
                 if (state.socket && state.isConnected) {
                     state.socket.emit("reset_speakers");
                 }
-            });
-        }
-
-        // Translation engine select
-        if (elements.translationEngine) {
-            elements.translationEngine.addEventListener("change", function () {
-                var engine = elements.translationEngine.value;
-
-                // If switching to AI, trigger lazy init
-                if (engine === "ai") {
-                    showToast("AI翻译引擎加载中...", "info");
-                    fetch("/api/init-ai-translator", { method: "POST" })
-                        .then(function (res) { return res.json(); })
-                        .then(function (data) {
-                            var aiEngine = data.engines.find(
-                                function (e) { return e.id === "ai"; }
-                            );
-                            if (aiEngine && aiEngine.available) {
-                                showToast("AI翻译已就绪", "success");
-                            } else {
-                                showToast("AI翻译初始化中，请稍后再试", "info");
-                            }
-                        })
-                        .catch(function () {
-                            showToast("AI翻译初始化失败", "error");
-                        });
-                }
-
-                state.translationMode = engine;
             });
         }
 

@@ -84,18 +84,8 @@ def get_languages():
             ],
             "translation": translator.get_supported_languages(),
             "tts_voices": tts_engine.get_voice_options(),
-            "translation_engines": translator.get_available_engines(),
         }
     )
-
-
-@app.route("/api/init-ai-translator", methods=["POST"])
-def init_ai_translator():
-    """Initialize the AI translator (lazy loading)."""
-    translator.init_ai_translator(max_workers=2)
-    return jsonify({
-        "engines": translator.get_available_engines(),
-    })
 
 
 @app.route("/api/model-info")
@@ -139,8 +129,6 @@ def summarize():
     texts = data.get("texts", [])
     languages = data.get("languages", [])  # Detected language per text
     target_lang = data.get("target_lang", "zh")
-    translation_mode = data.get("translation_mode", "google")
-
     if not texts:
         return jsonify({"error": "No text to summarize"}), 400
 
@@ -173,7 +161,7 @@ def summarize():
         # otherwise fall back to "auto" (which only works with Google Translate)
         source_lang = languages[i - 1] if i - 1 < len(languages) and languages[i - 1] != "auto" else "auto"
         trans_result = translator.translate(
-            text, source_lang=source_lang, target_lang=target_lang, mode=translation_mode
+            text, source_lang=source_lang, target_lang=target_lang
         )
         translated = trans_result.get("translated", text)
         source_lang_detected = trans_result.get("source_lang", source_lang)
@@ -226,7 +214,6 @@ def handle_audio_data(data):
         "target_lang": "zh",     # Translation target language
         "enable_tts": true,      # Whether to generate TTS
         "tts_voice": null,       # Custom TTS voice (optional)
-        "translation_mode": "google",  # Translation engine
         "enable_diarization": true,    # Speaker diarization toggle
         "interim": false               # If true, skip translation/diarization for speed
     }
@@ -237,7 +224,6 @@ def handle_audio_data(data):
         target_lang = data.get("target_lang", "zh")
         enable_tts = data.get("enable_tts", True)
         tts_voice = data.get("tts_voice")
-        translation_mode = data.get("translation_mode", "google")
         enable_diarization = data.get("enable_diarization", True)
         is_interim = data.get("interim", False)
         silence_interval = data.get("silence_interval", 0.5)
@@ -252,8 +238,8 @@ def handle_audio_data(data):
         peak_energy = float(np.max(np.abs(audio_np_quick)))
         duration_sec = len(audio_np_quick) / 16000.0
         logger.info(
-            "Received audio: %d bytes, duration=%.2fs, rms=%.6f, peak=%.6f, lang=%s, target=%s, mode=%s, interim=%s",
-            len(audio_bytes), duration_sec, rms_energy, peak_energy, language, target_lang, translation_mode, is_interim,
+            "Received audio: %d bytes, duration=%.2fs, rms=%.6f, peak=%.6f, lang=%s, target=%s, interim=%s",
+            len(audio_bytes), duration_sec, rms_energy, peak_energy, language, target_lang, is_interim,
         )
         # Only skip pure digital silence (all zeros or near-zero)
         # Real silence filtering is handled by Whisper's VAD + safety params
@@ -324,13 +310,12 @@ def handle_audio_data(data):
 
         # Step 3: Translation (synchronous for immediate result) - only for final results
         detected_lang = result["language"]
-        logger.info("Starting translation: %s -> %s, mode=%s, text_len=%d",
-                     detected_lang, target_lang, translation_mode, len(result["text"]))
+        logger.info("Starting translation: %s -> %s, text_len=%d",
+                     detected_lang, target_lang, len(result["text"]))
         trans_result = translator.translate(
             result["text"],
             source_lang=detected_lang,
             target_lang=target_lang,
-            mode=translation_mode,
         )
         logger.info("Translation result: translated='%s', error=%s",
                      trans_result.get("translated", "")[:100],
