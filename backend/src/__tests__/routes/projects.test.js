@@ -128,16 +128,22 @@ describe('Project Routes', () => {
   });
 
   describe('POST /api/projects', () => {
-    test('should create new project with valid data', async () => {
+    test('should create new project with valid data and valid clientId', async () => {
       const newProject = { name: 'New Project', description: 'New Description', clientId: 1, startDate: '2024-06-01', status: 'active' };
       const createdProject = { id: 1, name: 'New Project', description: 'New Description', client_id: 1, start_date: '2024-06-01', status: 'active', client_name: 'Client A', created_at: '2024-01-01', updated_at: '2024-01-01' };
+
+      // First get: client ownership check
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, { id: 1 }); // Client exists and belongs to user
+      });
 
       mockDb.run.mockImplementation(function(query, params, callback) {
         this.lastID = 1;
         callback.call(this, null);
       });
 
-      mockDb.get.mockImplementation((query, params, callback) => {
+      // Second get: retrieve created project
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
         callback(null, createdProject);
       });
 
@@ -148,6 +154,32 @@ describe('Project Routes', () => {
       expect(response.status).toBe(201);
       expect(response.body.message).toBe('Project created successfully');
       expect(response.body.project).toEqual(createdProject);
+    });
+
+    test('should return 400 when clientId does not belong to user', async () => {
+      mockDb.get.mockImplementation((query, params, callback) => {
+        callback(null, null); // Client not found for this user
+      });
+
+      const response = await request(app)
+        .post('/api/projects')
+        .send({ name: 'Test', clientId: 999 });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({ error: 'Client not found or does not belong to user' });
+    });
+
+    test('should handle database error during client ownership check on create', async () => {
+      mockDb.get.mockImplementation((query, params, callback) => {
+        callback(new Error('Database error'), null);
+      });
+
+      const response = await request(app)
+        .post('/api/projects')
+        .send({ name: 'Test', clientId: 1 });
+
+      expect(response.status).toBe(500);
+      expect(response.body).toEqual({ error: 'Internal server error' });
     });
 
     test('should create project with only name', async () => {
@@ -381,6 +413,74 @@ describe('Project Routes', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.project).toEqual(updatedProject);
+    });
+
+    test('should return 400 when updating clientId to one that does not belong to user', async () => {
+      // First get: project exists
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, { id: 1 });
+      });
+
+      // Second get: client ownership check fails
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, null);
+      });
+
+      const response = await request(app)
+        .put('/api/projects/1')
+        .send({ clientId: 999 });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({ error: 'Client not found or does not belong to user' });
+    });
+
+    test('should update clientId when client belongs to user', async () => {
+      const updatedProject = { id: 1, name: 'Project', client_id: 2, client_name: 'Client B' };
+
+      // First get: project exists
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, { id: 1 });
+      });
+
+      // Second get: client ownership check passes
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, { id: 2 });
+      });
+
+      mockDb.run.mockImplementation((query, params, callback) => {
+        callback(null);
+      });
+
+      // Third get: retrieve updated project
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, updatedProject);
+      });
+
+      const response = await request(app)
+        .put('/api/projects/1')
+        .send({ clientId: 2 });
+
+      expect(response.status).toBe(200);
+      expect(response.body.project).toEqual(updatedProject);
+    });
+
+    test('should handle database error during client ownership check on update', async () => {
+      // First get: project exists
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, { id: 1 });
+      });
+
+      // Second get: client ownership check errors
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(new Error('Database error'), null);
+      });
+
+      const response = await request(app)
+        .put('/api/projects/1')
+        .send({ clientId: 1 });
+
+      expect(response.status).toBe(500);
+      expect(response.body).toEqual({ error: 'Internal server error' });
     });
   });
 
