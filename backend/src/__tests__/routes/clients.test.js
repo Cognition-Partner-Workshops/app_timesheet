@@ -72,7 +72,7 @@ describe('Client Routes', () => {
     });
 
     test('should handle database error', async () => {
-      mockDb.all.mockImplementation((query, callback) => {
+      mockDb.all.mockImplementation((query, params, callback) => {
         callback(new Error('Database error'), null);
       });
 
