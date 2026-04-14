@@ -54,12 +54,8 @@ tts_engine = TTSEngine(
 
 logger.info("All modules initialized successfully!")
 
-# Lock for thread-safe access to recognizer (final requests + model changes)
+# Lock for thread-safe access to recognizer
 recognizer_lock = threading.Lock()
-# Separate semaphore for interim requests — allows 1 concurrent interim
-# that does NOT compete with recognizer_lock. CTranslate2 is thread-safe
-# for inference, so interim and final can run simultaneously.
-_interim_sem = threading.Semaphore(1)
 
 
 # ==================== HTTP Routes ====================
@@ -179,7 +175,8 @@ def handle_disconnect():
 @socketio.on("audio_data")
 def handle_audio_data(data):
     """
-    Handle incoming audio data for recognition.
+    Handle incoming audio data for recognition (batch mode).
+    Audio is recorded on the client, then sent as a complete batch after recording stops.
 
     Expected data format:
     {
@@ -189,7 +186,6 @@ def handle_audio_data(data):
         "enable_tts": true,      # Whether to generate TTS
         "tts_voice": null,       # Custom TTS voice (optional)
         "enable_diarization": true,    # Speaker diarization toggle
-        "interim": false               # If true, skip translation/diarization for speed
     }
     """
     try:
@@ -199,24 +195,21 @@ def handle_audio_data(data):
         enable_tts = data.get("enable_tts", True)
         tts_voice = data.get("tts_voice")
         enable_diarization = data.get("enable_diarization", True)
-        is_interim = data.get("interim", False)
-        silence_interval = data.get("silence_interval", 0.5)
 
         if not audio_bytes:
             logger.warning("No audio bytes received")
             return
 
-        # Compute audio stats for logging and silence detection
+        # Compute audio stats for logging
         audio_np_quick = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
         rms_energy = float(np.sqrt(np.mean(audio_np_quick ** 2)))
         peak_energy = float(np.max(np.abs(audio_np_quick)))
         duration_sec = len(audio_np_quick) / 16000.0
         logger.info(
-            "Received audio: %d bytes, duration=%.2fs, rms=%.6f, peak=%.6f, lang=%s, target=%s, interim=%s",
-            len(audio_bytes), duration_sec, rms_energy, peak_energy, language, target_lang, is_interim,
+            "Received audio: %d bytes, duration=%.2fs, rms=%.6f, peak=%.6f, lang=%s, target=%s",
+            len(audio_bytes), duration_sec, rms_energy, peak_energy, language, target_lang,
         )
         # Only skip pure digital silence (all zeros or near-zero)
-        # Real silence filtering is handled by Whisper's VAD + safety params
         if rms_energy < 0.00001:
             logger.info("Skipping digital silence (rms=%.6f)", rms_energy)
             return
@@ -224,9 +217,9 @@ def handle_audio_data(data):
         # Capture sid while still in request context
         sid = request.sid
 
-        # Step 1: Speaker diarization (skip for interim requests - speed)
+        # Step 1: Speaker diarization
         speaker_info = None
-        if enable_diarization and not is_interim:
+        if enable_diarization:
             try:
                 logger.info("Starting speaker diarization...")
                 speaker_info = diarizer.identify_speaker(audio_bytes)
@@ -234,27 +227,12 @@ def handle_audio_data(data):
             except Exception as e:
                 logger.warning("Speaker diarization error: %s", e)
 
-        # Step 2: Speech Recognition
+        # Step 2: Speech Recognition (batch mode — process complete audio)
         lang_param = None if language == "auto" else language
-        if is_interim:
-            # Interim uses a separate semaphore (not recognizer_lock) so it
-            # can run concurrently with final requests. CTranslate2 is thread-safe
-            # for inference. Only 1 interim at a time (semaphore=1) to limit CPU load.
-            acquired = _interim_sem.acquire(blocking=False)
-            if not acquired:
-                logger.info("Interim already processing, skipping")
-                return
-            try:
-                logger.info("Processing interim (concurrent, no main lock)...")
-                result = recognizer.transcribe(audio_bytes, language=lang_param)
-            finally:
-                _interim_sem.release()
-        else:
-            # Final: blocking lock to serialize final results
-            logger.info("Waiting for recognizer lock (final)...")
-            with recognizer_lock:
-                logger.info("Lock acquired, starting transcription (final)...")
-                result = recognizer.transcribe(audio_bytes, language=lang_param)
+        logger.info("Waiting for recognizer lock...")
+        with recognizer_lock:
+            logger.info("Lock acquired, starting transcription...")
+            result = recognizer.transcribe(audio_bytes, language=lang_param)
         logger.info("Transcription complete: text_len=%d", len(result.get("text", "")))
 
         if not result["text"]:
@@ -267,21 +245,15 @@ def handle_audio_data(data):
             "language_name": result.get("language_name", ""),
             "confidence": result.get("language_probability", 0),
             "segments": result.get("segments", []),
-            "interim": is_interim,
         }
         if speaker_info:
             rec_data["speaker"] = speaker_info
 
-        # Emit recognition result immediately
-        if is_interim:
-            emit("interim_result", rec_data)
-            return  # Skip translation/TTS for interim results
-
         emit("recognition_result", rec_data)
-        logger.info("FINAL recognition emitted: lang=%s, target=%s, text='%s'",
+        logger.info("Recognition emitted: lang=%s, target=%s, text='%s'",
                      result["language"], target_lang, result["text"][:100])
 
-        # Step 3: Translation (synchronous for immediate result) - only for final results
+        # Step 3: Translation (synchronous for immediate result)
         detected_lang = result["language"]
         logger.info("Starting translation: %s -> %s, text_len=%d",
                      detected_lang, target_lang, len(result["text"]))

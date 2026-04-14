@@ -9,6 +9,7 @@
     // ==================== State ====================
     const state = {
         isRecording: false,
+        isProcessing: false,  // True while backend is processing audio
         isConnected: false,
         mediaStream: null,
         audioContext: null,
@@ -19,10 +20,9 @@
         isPlayingTTS: false,
         resultCounter: 0,
         audioGain: 5.0,  // Software gain multiplier (default 5x for Stereo Mix)
-        silenceInterval: 0.5,  // Silence interval for sentence boundary detection (seconds)
         recognizedTexts: [],  // Collect all recognized texts for summary
-        interimElement: null,  // Current interim result DOM element
-        interimTypingTimer: null,  // Timer for typing animation
+        recordedChunks: [],  // Accumulated audio chunks during recording
+        recordedSamples: 0,  // Total samples recorded (at 16kHz)
     };
 
     // ==================== DOM Elements ====================
@@ -46,8 +46,6 @@
         audioVisualizer: document.getElementById("audioVisualizer"),
         visualizerCanvas: document.getElementById("visualizerCanvas"),
         summaryBtn: document.getElementById("summaryBtn"),
-        silenceIntervalSlider: document.getElementById("silenceIntervalSlider"),
-        silenceIntervalValue: document.getElementById("silenceIntervalValue"),
     };
 
     // ==================== Socket.IO Connection ====================
@@ -82,10 +80,6 @@
 
         state.socket.on("status", function (data) {
             showToast(data.message, data.type || "info");
-        });
-
-        state.socket.on("interim_result", function (data) {
-            handleInterimResult(data);
         });
 
         state.socket.on("recognition_result", function (data) {
@@ -151,11 +145,8 @@
 
     async function startRecording() {
         try {
-            // Request microphone access (don't force sampleRate - let browser use native)
+            // Request microphone access
             // For Stereo Mix: ALL processing must be disabled
-            // - echoCancellation removes audio matching speaker output = removes everything
-            // - noiseSuppression aggressively filters speech
-            // - autoGainControl may reduce levels unpredictably
             state.mediaStream = await navigator.mediaDevices.getUserMedia({
                 audio: {
                     channelCount: 1,
@@ -197,55 +188,13 @@
                 1
             );
 
-            var audioChunks = [];
-            var collectedSamples = 0; // 16kHz equivalent samples
-
-            // Each frame = bufferSize samples at native rate
-            var frameDuration = bufferSize / nativeSampleRate; // seconds per frame
-
-            // --- Progressive recognition strategy ---
-            // Goal: show interim results quickly, then final complete result
-            // 1. During speech: send interim chunks every ~1s for progressive display
-            // 2. On sentence end (silence): send full accumulated audio as final
-            // 3. Force send after max accumulation (continuous speech)
-            // 4. Periodic fallback for non-speech (ambient audio)
-            var PERIODIC_SEND_SECONDS = 2; // Non-speech fallback: 2s
-            var periodicSendSamples = TARGET_SAMPLE_RATE * PERIODIC_SEND_SECONDS;
-            var MAX_ACCUMULATION_SECONDS = 8; // Max before force send during speech
-            var maxAccumulationSamples = TARGET_SAMPLE_RATE * MAX_ACCUMULATION_SECONDS;
-            // Minimum audio to send (~0.3s at 16kHz) - avoid sending tiny noise
-            var minSamplesToSend = TARGET_SAMPLE_RATE * 0.3;
-            // Interim send interval (~0.5s during speech for progressive display)
-            var INTERIM_SEND_SECONDS = 0.5;
-            var interimSendSamples = TARGET_SAMPLE_RATE * INTERIM_SEND_SECONDS;
-            var lastInterimSamples = 0; // Samples count at last interim send
-
-            // Keep a copy of ALL accumulated chunks for final send
-            var allAccumulatedChunks = [];
-            var totalAccumulatedSamples = 0;
-
-            // VAD for sentence boundary detection
-            // Thresholds are for GAINED signal (after software gain)
-            var vadSpeechThreshold = 0.008; // Speech detection (on gained signal)
-            var vadSilenceThreshold = 0.005; // Silence detection (on gained signal)
-            var isSpeaking = false;
-            var silenceFrames = 0;
-            var speechFrames = 0;
-            // Send after silence interval following speech (user-adjustable)
-            var silenceFramesNeeded = Math.ceil(state.silenceInterval / frameDuration);
-            // Minimum speech frames (~0.15s)
-            var minSpeechFrames = Math.ceil(0.15 / frameDuration);
+            // Reset accumulated audio
+            state.recordedChunks = [];
+            state.recordedSamples = 0;
 
             var frameCount = 0;
-            var maxRmsSeen = 0;
 
-            console.log("Audio config: frameDuration=", frameDuration.toFixed(3) + "s",
-                "periodicSend=" + PERIODIC_SEND_SECONDS + "s",
-                "maxAccumulation=" + MAX_ACCUMULATION_SECONDS + "s",
-                "interimSend=" + INTERIM_SEND_SECONDS + "s",
-                "silenceDetect=" + (silenceFramesNeeded * frameDuration).toFixed(2) + "s",
-                "vadSpeech=" + vadSpeechThreshold,
-                "vadSilence=" + vadSilenceThreshold,
+            console.log("Audio config: batch mode (record then process),",
                 "gain=" + state.audioGain + "x");
 
             state.processor.onaudioprocess = function (e) {
@@ -264,118 +213,26 @@
                     int16Data[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
                 }
 
-                // Calculate RMS energy for VAD using GAINED signal
-                // Raw Stereo Mix signal is too weak for VAD; gained signal matches thresholds
-                var sumSquares = 0;
-                for (var j = 0; j < resampled.length; j++) {
-                    var gained = resampled[j] * gain;
-                    sumSquares += gained * gained;
-                }
-                var rms = Math.sqrt(sumSquares / resampled.length);
-                if (rms > maxRmsSeen) maxRmsSeen = rms;
-
-                audioChunks.push(int16Data);
-                collectedSamples += resampled.length;
-                allAccumulatedChunks.push(int16Data);
-                totalAccumulatedSamples += resampled.length;
+                // Accumulate audio chunks (send after recording stops)
+                state.recordedChunks.push(int16Data);
+                state.recordedSamples += resampled.length;
 
                 // Periodic logging (every ~2 seconds)
                 frameCount++;
+                var frameDuration = bufferSize / nativeSampleRate;
                 var logInterval = Math.ceil(2.0 / frameDuration);
                 if (frameCount % logInterval === 0) {
-                    console.log("Audio: frame=" + frameCount +
+                    // Calculate RMS for logging
+                    var sumSquares = 0;
+                    for (var j = 0; j < resampled.length; j++) {
+                        var gained = resampled[j] * gain;
+                        sumSquares += gained * gained;
+                    }
+                    var rms = Math.sqrt(sumSquares / resampled.length);
+                    console.log("Recording: frame=" + frameCount +
                         " rms=" + rms.toFixed(6) +
-                        " maxRms=" + maxRmsSeen.toFixed(6) +
-                        " samples16k=" + collectedSamples +
-                        " accumulated=" + totalAccumulatedSamples +
-                        " speaking=" + isSpeaking +
-                        " speechF=" + speechFrames);
-                }
-
-                // Update silence frames needed dynamically from slider
-                silenceFramesNeeded = Math.ceil(state.silenceInterval / frameDuration);
-
-                // VAD tracking
-                if (rms > vadSpeechThreshold) {
-                    isSpeaking = true;
-                    speechFrames++;
-                    silenceFrames = 0;
-                } else if (isSpeaking && rms < vadSilenceThreshold) {
-                    silenceFrames++;
-                }
-
-                // --- Interim send: during speech, send partial audio every ~1s ---
-                if (isSpeaking && speechFrames >= minSpeechFrames &&
-                    (totalAccumulatedSamples - lastInterimSamples) >= interimSendSamples) {
-                    if (maxRmsSeen >= 0.000001) {
-                        console.log("Sending interim: accumulated=" +
-                            totalAccumulatedSamples +
-                            " duration=" + (totalAccumulatedSamples / TARGET_SAMPLE_RATE).toFixed(2) + "s" +
-                            " maxRms=" + maxRmsSeen.toFixed(6));
-                        // Send ALL accumulated audio so far as interim
-                        sendAudioData(allAccumulatedChunks.slice(), true);
-                        lastInterimSamples = totalAccumulatedSamples;
-                    }
-                }
-
-                // --- Final send decision ---
-                var shouldSend = false;
-                var sendReason = "";
-
-                // 1. VAD: speech ended (silence detected after speech)
-                //    This captures complete sentences by waiting for pause
-                if (isSpeaking && silenceFrames >= silenceFramesNeeded &&
-                    speechFrames >= minSpeechFrames &&
-                    collectedSamples >= minSamplesToSend) {
-                    shouldSend = true;
-                    sendReason = "speech_ended";
-                }
-                // 2. Max accumulation: force send during continuous speech
-                //    Prevents excessive delay when someone talks without pause
-                else if (isSpeaking && collectedSamples >= maxAccumulationSamples) {
-                    shouldSend = true;
-                    sendReason = "max_accumulation_" + MAX_ACCUMULATION_SECONDS + "s";
-                }
-                // 3. Periodic: ONLY when NOT speaking (flush non-speech audio)
-                //    Don't cut sentences - only send ambient/non-speech chunks
-                else if (!isSpeaking && collectedSamples >= periodicSendSamples) {
-                    shouldSend = true;
-                    sendReason = "periodic_" + PERIODIC_SEND_SECONDS + "s";
-                }
-
-                if (shouldSend) {
-                    // Only skip pure digital silence (all zeros)
-                    // Whisper's VAD handles real silence detection
-                    if (maxRmsSeen < 0.000001) {
-                        console.log("Skipping digital silence: maxRms=" + maxRmsSeen.toFixed(8));
-                        audioChunks = [];
-                        collectedSamples = 0;
-                        allAccumulatedChunks = [];
-                        totalAccumulatedSamples = 0;
-                        lastInterimSamples = 0;
-                        isSpeaking = false;
-                        silenceFrames = 0;
-                        speechFrames = 0;
-                        maxRmsSeen = 0;
-                        return;
-                    }
-
-                    console.log("Sending FINAL audio: reason=" + sendReason +
-                        " samples=" + totalAccumulatedSamples +
-                        " duration=" + (totalAccumulatedSamples / TARGET_SAMPLE_RATE).toFixed(2) + "s" +
-                        " speechFrames=" + speechFrames +
-                        " maxRms=" + maxRmsSeen.toFixed(6));
-                    // Send ALL accumulated audio as final (not just current chunk)
-                    sendAudioData(allAccumulatedChunks, false);
-                    audioChunks = [];
-                    collectedSamples = 0;
-                    allAccumulatedChunks = [];
-                    totalAccumulatedSamples = 0;
-                    lastInterimSamples = 0;
-                    isSpeaking = false;
-                    silenceFrames = 0;
-                    speechFrames = 0;
-                    maxRmsSeen = 0;
+                        " totalSamples=" + state.recordedSamples +
+                        " duration=" + (state.recordedSamples / TARGET_SAMPLE_RATE).toFixed(1) + "s");
                 }
             };
 
@@ -442,16 +299,42 @@
 
         // Update UI
         elements.recordBtn.classList.remove("recording");
-        elements.recordHint.textContent = "点击开始录音 / Click to start";
-        elements.recordHint.classList.remove("active");
         elements.audioVisualizer.classList.remove("active");
 
-        showToast("录音已停止 / Recording stopped", "info");
+        // Send accumulated audio to backend for processing
+        if (state.recordedChunks.length > 0 && state.recordedSamples > 0) {
+            var duration = (state.recordedSamples / 16000).toFixed(1);
+            console.log("Recording stopped. Sending " + state.recordedSamples +
+                " samples (" + duration + "s) for processing...");
+
+            // Show processing status
+            state.isProcessing = true;
+            elements.recordBtn.disabled = true;
+            elements.recordHint.textContent = "识别处理中... / Processing...";
+            elements.recordHint.classList.add("active");
+            showToast("录音结束，正在识别处理 (" + duration + "s)...", "info");
+
+            // Send all audio for processing
+            sendAudioData(state.recordedChunks);
+
+            // Clear accumulated audio
+            state.recordedChunks = [];
+            state.recordedSamples = 0;
+        } else {
+            elements.recordHint.textContent = "点击开始录音 / Click to start";
+            elements.recordHint.classList.remove("active");
+            showToast("没有录到音频 / No audio recorded", "info");
+        }
     }
 
-    function sendAudioData(chunks, interim) {
+    function sendAudioData(chunks) {
         if (!state.isConnected || !state.socket) {
             console.warn("Cannot send audio: connected=" + state.isConnected);
+            // Reset processing state
+            state.isProcessing = false;
+            elements.recordBtn.disabled = false;
+            elements.recordHint.textContent = "点击开始录音 / Click to start";
+            elements.recordHint.classList.remove("active");
             return;
         }
 
@@ -468,8 +351,7 @@
             offset += chunk.length;
         });
 
-        var typeLabel = interim ? "INTERIM" : "FINAL";
-        console.log("Emitting audio_data [" + typeLabel + "]: " + totalLength + " samples (" +
+        console.log("Emitting audio_data: " + totalLength + " samples (" +
             (totalLength / 16000).toFixed(2) + "s at 16kHz), " +
             merged.buffer.byteLength + " bytes");
 
@@ -478,11 +360,9 @@
             audio: merged.buffer,
             language: elements.recognitionLang.value,
             target_lang: elements.targetLang.value,
-            enable_tts: interim ? false : elements.enableTTS.checked,
+            enable_tts: elements.enableTTS.checked,
             tts_voice: elements.ttsVoice.value || null,
             enable_diarization: elements.enableDiarization.checked,
-            interim: !!interim,
-            silence_interval: state.silenceInterval,
         });
     }
 
@@ -538,93 +418,18 @@
     // ==================== Result Handlers ====================
 
     /**
-     * Handle interim (partial) recognition results.
-     * Shows text progressively with typing animation while speech continues.
-     */
-    function handleInterimResult(data) {
-        if (!data.text) return;
-
-        // Update language badge
-        if (data.language_name) {
-            elements.detectedLang.textContent = data.language_name;
-            elements.detectedLang.classList.add("visible");
-        }
-
-        // Clear placeholder
-        var placeholder =
-            elements.recognitionResults.querySelector(".placeholder-text");
-        if (placeholder) {
-            placeholder.remove();
-        }
-
-        // Create or reuse interim element
-        if (!state.interimElement) {
-            state.interimElement = document.createElement("div");
-            state.interimElement.className = "result-item interim";
-            state.interimElement.id = "interim-current";
-
-            state.interimElement.innerHTML =
-                '<div class="result-text interim-text"></div>' +
-                '<div class="result-meta">' +
-                '<span class="interim-label">识别中... / Recognizing...</span>' +
-                '<span>' + getCurrentTime() + '</span>' +
-                '</div>';
-
-            // Insert at top
-            elements.recognitionResults.insertBefore(
-                state.interimElement,
-                elements.recognitionResults.firstChild
-            );
-        }
-
-        // Animate typing: show text character by character
-        var textEl = state.interimElement.querySelector(".interim-text");
-        var currentText = textEl.textContent;
-        var newText = data.text;
-
-        // If new text is longer, animate the new characters
-        if (newText.length > currentText.length) {
-            // Clear any existing typing timer
-            if (state.interimTypingTimer) {
-                clearInterval(state.interimTypingTimer);
-            }
-
-            var charIndex = currentText.length;
-            var typingSpeed = 15; // ms per character (fast to sync with audio)
-
-            state.interimTypingTimer = setInterval(function () {
-                if (charIndex < newText.length) {
-                    textEl.textContent = newText.substring(0, charIndex + 1);
-                    charIndex++;
-                } else {
-                    clearInterval(state.interimTypingTimer);
-                    state.interimTypingTimer = null;
-                }
-            }, typingSpeed);
-        } else {
-            // Text is different (correction) - show immediately
-            textEl.textContent = newText;
-        }
-
-        // Auto-scroll
-        elements.recognitionResults.scrollTop = 0;
-    }
-
-    /**
-     * Handle final recognition results.
-     * Replaces interim display with final confirmed text, then triggers translation.
+     * Handle recognition results.
+     * Displays recognized text after batch processing completes.
      */
     function handleRecognitionResult(data) {
         if (!data.text) return;
 
-        // Clear interim element and typing timer
-        if (state.interimTypingTimer) {
-            clearInterval(state.interimTypingTimer);
-            state.interimTypingTimer = null;
-        }
-        if (state.interimElement) {
-            state.interimElement.remove();
-            state.interimElement = null;
+        // Reset processing state (batch processing is done)
+        if (state.isProcessing) {
+            state.isProcessing = false;
+            elements.recordBtn.disabled = false;
+            elements.recordHint.textContent = "点击开始录音 / Click to start";
+            elements.recordHint.classList.remove("active");
         }
 
         // Collect text and detected language for summary
@@ -874,13 +679,6 @@
     }
 
     function clearResults() {
-        // Clean up interim state
-        if (state.interimTypingTimer) {
-            clearInterval(state.interimTypingTimer);
-            state.interimTypingTimer = null;
-        }
-        state.interimElement = null;
-
         elements.recognitionResults.innerHTML =
             '<div class="placeholder-text">等待语音输入...</div>';
         elements.translationResults.innerHTML =
@@ -1038,18 +836,6 @@
                     elements.audioGainValue.textContent = val.toFixed(1) + "x";
                 }
                 console.log("Audio gain set to:", val);
-            });
-        }
-
-        // Silence interval slider
-        if (elements.silenceIntervalSlider) {
-            elements.silenceIntervalSlider.addEventListener("input", function () {
-                var val = parseFloat(elements.silenceIntervalSlider.value);
-                state.silenceInterval = val;
-                if (elements.silenceIntervalValue) {
-                    elements.silenceIntervalValue.textContent = val.toFixed(1) + "s";
-                }
-                console.log("Silence interval set to:", val);
             });
         }
 
