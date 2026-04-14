@@ -38,7 +38,7 @@ socketio = SocketIO(
 
 # Initialize modules
 logger.info("Initializing speech recognizer...")
-recognizer = SpeechRecognizer(model_size="base", device="cpu", compute_type="int8")
+recognizer = SpeechRecognizer(device="cpu", compute_type="int8")
 
 logger.info("Initializing translation manager...")
 translator = TranslationManager(max_workers=4)
@@ -94,32 +94,6 @@ def get_model_info():
     info = recognizer.get_model_info()
     info["diarization_neural"] = diarizer.is_neural()
     return jsonify(info)
-
-
-@app.route("/api/change-model", methods=["POST"])
-def change_model():
-    """Change the speech recognition model."""
-    data = request.get_json()
-    model_size = data.get("model_size", "base")
-    valid_models = ["tiny", "base", "small", "medium", "sense-voice"]
-    if model_size not in valid_models:
-        return jsonify({"error": f"Invalid model: {model_size}"}), 400
-
-    logger.info("Changing recognition model to: %s", model_size)
-    try:
-        with recognizer_lock:
-            result = recognizer.change_model(model_size)
-        return jsonify(result)
-    except FileNotFoundError as e:
-        logger.error("Model not found: %s", e)
-        return jsonify({
-            "error": str(e),
-            "hint": "SenseVoice model files need to be downloaded separately. "
-                    "Download from https://github.com/k2-fsa/sherpa-onnx/releases/tag/asr-models",
-        }), 400
-    except Exception as e:
-        logger.error("Model change failed: %s", e)
-        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/summarize", methods=["POST"])
@@ -276,8 +250,7 @@ def handle_audio_data(data):
             finally:
                 _interim_sem.release()
         else:
-            # Final: blocking lock to serialize final results and prevent
-            # concurrent final+model-change conflicts
+            # Final: blocking lock to serialize final results
             logger.info("Waiting for recognizer lock (final)...")
             with recognizer_lock:
                 logger.info("Lock acquired, starting transcription (final)...")

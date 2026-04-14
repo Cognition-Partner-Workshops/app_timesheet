@@ -45,7 +45,6 @@
         ttsPlayer: document.getElementById("ttsPlayer"),
         audioVisualizer: document.getElementById("audioVisualizer"),
         visualizerCanvas: document.getElementById("visualizerCanvas"),
-        recognitionModel: document.getElementById("recognitionModel"),
         summaryBtn: document.getElementById("summaryBtn"),
         silenceIntervalSlider: document.getElementById("silenceIntervalSlider"),
         silenceIntervalValue: document.getElementById("silenceIntervalValue"),
@@ -1022,50 +1021,6 @@
                 if (state.socket && state.isConnected) {
                     state.socket.emit("reset_speakers");
                 }
-            });
-        }
-
-        // Recognition model select
-        if (elements.recognitionModel) {
-            elements.recognitionModel.addEventListener("change", function () {
-                var modelSize = elements.recognitionModel.value;
-                var previousModel = state.currentModel || "base";
-                state.currentModel = modelSize;
-                elements.recognitionModel.disabled = true;
-                elements.recognitionModel.classList.add("model-loading");
-                showToast("正在切换模型: " + modelSize + "...", "info");
-
-                fetch("/api/change-model", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ model_size: modelSize }),
-                })
-                    .then(function (res) { return res.json(); })
-                    .then(function (data) {
-                        elements.recognitionModel.disabled = false;
-                        elements.recognitionModel.classList.remove("model-loading");
-                        if (data.error) {
-                            showToast("模型切换失败: " + data.error, "error");
-                            // Revert dropdown to previous model
-                            elements.recognitionModel.value = previousModel;
-                            state.currentModel = previousModel;
-                        } else {
-                            state.currentModel = data.model_size;
-                            showToast("模型已切换: " + data.model_size + " (" + (data.engine || "") + ")", "success");
-                            // Show ncnn Cantonese-specialized warning if present
-                            if (data.warning) {
-                                showToast(data.warning, "error");
-                            }
-                        }
-                    })
-                    .catch(function (err) {
-                        elements.recognitionModel.disabled = false;
-                        elements.recognitionModel.classList.remove("model-loading");
-                        showToast("模型切换失败: " + err.message, "error");
-                        // Revert dropdown to previous model
-                        elements.recognitionModel.value = previousModel;
-                        state.currentModel = previousModel;
-                    });
             });
         }
 
