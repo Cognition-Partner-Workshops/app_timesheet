@@ -170,7 +170,7 @@ router.put('/:id', (req, res, next) => {
           return res.status(404).json({ error: 'Work entry not found' });
         }
 
-        // If clientId is being updated, verify it belongs to user
+        // If clientId is being updated, verify the client exists
         if (value.clientId) {
           db.get(
             'SELECT id FROM clients WHERE id = ?',
