@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">LingoMaster</string>
+    <string name="login">Login</string>
+    <string name="register">Register</string>
+    <string name="email">Email</string>
+    <string name="password">Password</string>
+    <string name="nickname">Nickname</string>
+    <string name="confirm_password">Confirm Password</string>
+    <string name="home">Home</string>
+    <string name="wordbooks">Wordbooks</string>
+    <string name="learning">Learning</string>
+    <string name="statistics">Statistics</string>
+    <string name="profile">Profile</string>
+    <string name="search">Search</string>
+    <string name="logout">Logout</string>
+    <string name="start_learning">Start Learning</string>
+    <string name="review">Review</string>
+    <string name="words_learned">Words Learned</string>
+    <string name="streak_days">Streak Days</string>
+    <string name="accuracy">Accuracy</string>
+</resources>
