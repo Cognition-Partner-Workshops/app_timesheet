@@ -242,3 +242,245 @@ describe('calculateScore', () => {
     expect(result.obstacles).toEqual([]);
   });
 });
+
+// ═══════════════════════════════════════════════════════
+// NEGATIVE / EDGE-CASE TESTS
+// ═══════════════════════════════════════════════════════
+
+// ─── Negative: Gravity Edge Cases ───
+describe('applyGravity - negative cases', () => {
+  it('should handle extremely high velocity without crashing', () => {
+    const player = { ...createPlayer(), y: 0, velocityY: 9999, isJumping: true };
+    const result = applyGravity(player);
+    // Should clamp to ground, not go below it
+    expect(result.y).toBe(270); // GROUND_Y - PLAYER_HEIGHT
+    expect(result.velocityY).toBe(0);
+    expect(result.isJumping).toBe(false);
+  });
+
+  it('should handle extreme negative velocity (upward)', () => {
+    const player = { ...createPlayer(), y: 200, velocityY: -9999, isJumping: true };
+    const result = applyGravity(player);
+    // Player should go way above screen but not crash
+    expect(result.y).toBeLessThan(0);
+    expect(result.isJumping).toBe(true); // still in air
+  });
+
+  it('should handle player already below ground level', () => {
+    const player = { ...createPlayer(), y: 500, velocityY: 0, isJumping: true };
+    const result = applyGravity(player);
+    // Should snap back to ground
+    expect(result.y).toBe(270);
+    expect(result.velocityY).toBe(0);
+    expect(result.isJumping).toBe(false);
+  });
+
+  it('should handle zero-height player at ground', () => {
+    const player = { ...createPlayer(), height: 0, y: 320 };
+    const result = applyGravity(player);
+    // groundLevel = GROUND_Y - 0 = 320, newY = 320 + 0.6 = 320.6 >= 320
+    expect(result.y).toBe(320);
+    expect(result.velocityY).toBe(0);
+  });
+});
+
+// ─── Negative: Jump Edge Cases ───
+describe('jump - negative cases', () => {
+  it('should not allow jump when player is mid-air (high velocity)', () => {
+    const airbornePlayer = {
+      ...createPlayer(),
+      y: 50,
+      velocityY: -10,
+      isJumping: true,
+    };
+    const result = jump(airbornePlayer);
+    // Should return same reference - no jump allowed
+    expect(result).toBe(airbornePlayer);
+    expect(result.velocityY).toBe(-10); // unchanged
+  });
+
+  it('should not allow jump when player is falling', () => {
+    const fallingPlayer = {
+      ...createPlayer(),
+      y: 150,
+      velocityY: 8,
+      isJumping: true,
+    };
+    const result = jump(fallingPlayer);
+    expect(result).toBe(fallingPlayer);
+    expect(result.velocityY).toBe(8); // unchanged
+  });
+
+  it('should allow jump immediately after landing', () => {
+    const landedPlayer = {
+      ...createPlayer(),
+      y: 270,
+      velocityY: 0,
+      isJumping: false, // just landed
+    };
+    const result = jump(landedPlayer);
+    expect(result.velocityY).toBe(-12);
+    expect(result.isJumping).toBe(true);
+  });
+});
+
+// ─── Negative: Obstacle Creation Edge Cases ───
+describe('createObstacle - negative cases', () => {
+  it('should handle zero canvas width', () => {
+    const obstacle = createObstacle(0);
+    expect(obstacle.x).toBe(0);
+    expect(obstacle.width).toBe(30);
+    expect(obstacle.height).toBeGreaterThanOrEqual(30);
+  });
+
+  it('should handle negative canvas width', () => {
+    const obstacle = createObstacle(-100);
+    expect(obstacle.x).toBe(-100);
+    // Obstacle is still created, just at a negative x position
+    expect(obstacle.width).toBe(30);
+  });
+
+  it('should handle very large canvas width', () => {
+    const obstacle = createObstacle(999999);
+    expect(obstacle.x).toBe(999999);
+    expect(obstacle.width).toBe(30);
+  });
+});
+
+// ─── Negative: moveObstacles Edge Cases ───
+describe('moveObstacles - negative cases', () => {
+  it('should handle zero speed (obstacles do not move)', () => {
+    const obstacles = [
+      { x: 500, width: 30, height: 50, passed: false },
+    ];
+    const moved = moveObstacles(obstacles, 0);
+    expect(moved[0].x).toBe(500); // no change
+  });
+
+  it('should handle negative speed (obstacles move right)', () => {
+    const obstacles = [
+      { x: 500, width: 30, height: 50, passed: false },
+    ];
+    const moved = moveObstacles(obstacles, -5);
+    expect(moved[0].x).toBe(505); // moves right instead
+  });
+
+  it('should handle extremely high speed', () => {
+    const obstacles = [
+      { x: 500, width: 30, height: 50, passed: false },
+      { x: 100, width: 30, height: 40, passed: false },
+    ];
+    const moved = moveObstacles(obstacles, 99999);
+    // All obstacles should be removed (far off screen)
+    expect(moved.length).toBe(0);
+  });
+
+  it('should not mutate the original obstacles array', () => {
+    const obstacles = [
+      { x: 500, width: 30, height: 50, passed: false },
+    ];
+    const originalX = obstacles[0].x;
+    moveObstacles(obstacles, 5);
+    expect(obstacles[0].x).toBe(originalX); // unchanged
+  });
+});
+
+// ─── Negative: Collision Detection Edge Cases ───
+describe('checkCollision - negative cases', () => {
+  it('should not collide when player barely misses obstacle above', () => {
+    // Player bottom is exactly at obstacle top (no overlap)
+    const player = { ...createPlayer(), y: 220, height: 50 };
+    // obstacleTop = 320 - 50 = 270, playerBottom = 220 + 50 = 270
+    // playerBottom > obstacleTop → 270 > 270 is FALSE
+    const obstacle = { x: 85, width: 30, height: 50, passed: false };
+    expect(checkCollision(player, obstacle)).toBe(false);
+  });
+
+  it('should not collide with zero-height obstacle', () => {
+    const player = createPlayer();
+    const obstacle = { x: 85, width: 30, height: 0, passed: false };
+    // obstacleTop = 320 - 0 = 320, playerBottom = 320
+    // playerBottom > obstacleTop → 320 > 320 is FALSE
+    expect(checkCollision(player, obstacle)).toBe(false);
+  });
+
+  it('should not collide with zero-width obstacle (within padding)', () => {
+    const player = createPlayer();
+    const obstacle = { x: 85, width: 0, height: 60, passed: false };
+    // obstacle.x + 5 = 90, obstacle.x + width - 5 = 80
+    // player.x + 5 = 85 < 80? NO → no collision
+    expect(checkCollision(player, obstacle)).toBe(false);
+  });
+
+  it('should handle player at exact same position as obstacle', () => {
+    const player = createPlayer(); // x=80
+    const obstacle = { x: 80, width: 30, height: 60, passed: false };
+    // playerRight=115 > 85, player.x+5=85 < 105, playerBottom=320 > 260, player.y=270 < 320
+    expect(checkCollision(player, obstacle)).toBe(true);
+  });
+
+  it('should handle very tall obstacle (taller than canvas)', () => {
+    const player = { ...createPlayer(), y: 50 }; // high up
+    const obstacle = { x: 85, width: 30, height: 500, passed: false };
+    // obstacleTop = 320 - 500 = -180, playerBottom = 100
+    // playerBottom > -180 YES, player.y=50 < 320 YES
+    expect(checkCollision(player, obstacle)).toBe(true);
+  });
+
+  it('should handle collision with player at boundary of obstacle x-range', () => {
+    const player = createPlayer(); // x=80, width=40
+    // playerRight = 80+40-5 = 115, player.x+5 = 85
+    // obstacle.x+5 = 115, so playerRight > 115 is FALSE (exactly at boundary)
+    const obstacle = { x: 110, width: 30, height: 60, passed: false };
+    expect(checkCollision(player, obstacle)).toBe(false);
+  });
+});
+
+// ─── Negative: Score Calculation Edge Cases ───
+describe('calculateScore - negative cases', () => {
+  it('should not give negative score', () => {
+    const result = calculateScore([], 80, 0);
+    expect(result.score).toBeGreaterThanOrEqual(0);
+  });
+
+  it('should handle obstacle exactly at player position (not passed yet)', () => {
+    // obstacle x + width = 80 which equals playerX → not strictly less than
+    const obstacles = [
+      { x: 50, width: 30, height: 50, passed: false }, // 50+30=80 = playerX
+    ];
+    const result = calculateScore(obstacles, 80, 0);
+    // 80 < 80 is false, so should NOT be scored
+    expect(result.score).toBe(0);
+    expect(result.obstacles[0].passed).toBe(false);
+  });
+
+  it('should handle large number of obstacles without performance issue', () => {
+    const obstacles = Array.from({ length: 1000 }, (_, i) => ({
+      x: i,
+      width: 30,
+      height: 50,
+      passed: false,
+    }));
+    const result = calculateScore(obstacles, 500, 0);
+    // All obstacles where x + 30 < 500 → x < 470 → indices 0-469 = 470 obstacles
+    expect(result.score).toBe(470);
+  });
+
+  it('should preserve score when no new obstacles are passed', () => {
+    const obstacles = [
+      { x: 500, width: 30, height: 50, passed: false },
+      { x: 600, width: 30, height: 40, passed: false },
+    ];
+    const result = calculateScore(obstacles, 80, 42);
+    expect(result.score).toBe(42); // unchanged
+  });
+
+  it('should not re-score when called multiple times on same data', () => {
+    const obstacles = [
+      { x: 10, width: 30, height: 50, passed: false },
+    ];
+    const first = calculateScore(obstacles, 80, 0);
+    const second = calculateScore(first.obstacles, 80, first.score);
+    expect(second.score).toBe(1); // still 1, not 2
+  });
+});
