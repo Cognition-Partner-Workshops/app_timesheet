@@ -539,7 +539,6 @@ describe('Report Routes', () => {
 
       // Override the PDFDocument mock to start with y > 700
       const PDFDocument = require('pdfkit');
-      const originalImpl = PDFDocument.getMockImplementation();
       PDFDocument.mockImplementationOnce(() => {
         let pipedStream = null;
         let currentY = 750;
