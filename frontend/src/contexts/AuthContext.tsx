@@ -13,14 +13,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   useEffect(() => {
     const checkAuth = async () => {
-      const storedEmail = localStorage.getItem('userEmail');
+      const storedToken = localStorage.getItem('authToken');
       
-      if (storedEmail) {
+      if (storedToken) {
         try {
           const response = await apiClient.getCurrentUser();
           setUser(response.user);
         } catch (error) {
           console.error('Auth check failed:', error);
+          localStorage.removeItem('authToken');
           localStorage.removeItem('userEmail');
         }
       }

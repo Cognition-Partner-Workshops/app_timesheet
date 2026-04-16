@@ -68,15 +68,6 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
-// Strict rate limiting for auth endpoints (Fix #3)
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // limit each IP to 5 auth attempts per window
-  message: { error: 'Too many authentication attempts, please try again after 15 minutes' },
-  standardHeaders: true,
-  legacyHeaders: false
-});
-
 // Logging
 app.use(morgan('combined'));
 
@@ -89,8 +80,8 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
-// Routes - apply strict rate limiting to auth endpoints
-app.use('/api/auth', authLimiter, authRoutes);
+// Routes - auth rate limiting applied per-route inside auth.js for login/register only
+app.use('/api/auth', authRoutes);
 app.use('/api/clients', clientRoutes);
 app.use('/api/work-entries', workEntryRoutes);
 app.use('/api/reports', reportRoutes);

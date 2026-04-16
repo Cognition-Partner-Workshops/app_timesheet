@@ -1,6 +1,7 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
+const rateLimit = require('express-rate-limit');
 const { getDatabase } = require('../database/init');
 const { loginSchema, registerSchema } = require('../validation/schemas');
 const { authenticateUser, getJwtSecret } = require('../middleware/auth');
@@ -10,8 +11,21 @@ const router = express.Router();
 const BCRYPT_ROUNDS = 12;
 const JWT_EXPIRY = '24h';
 
+// Strict rate limiting for login/register only (Fix #3)
+// Not applied to GET /me to avoid locking out normal users
+const isTestEnv = process.env.NODE_ENV === 'test';
+const authLimiter = isTestEnv
+  ? (req, res, next) => next() // Skip rate limiting in tests
+  : rateLimit({
+      windowMs: 15 * 60 * 1000, // 15 minutes
+      max: 5, // limit each IP to 5 auth attempts per window
+      message: { error: 'Too many authentication attempts, please try again after 15 minutes' },
+      standardHeaders: true,
+      legacyHeaders: false
+    });
+
 // Register endpoint - creates a new user with password
-router.post('/register', async (req, res, next) => {
+router.post('/register', authLimiter, async (req, res, next) => {
   try {
     const { error, value } = registerSchema.validate(req.body);
     if (error) {
@@ -66,7 +80,7 @@ router.post('/register', async (req, res, next) => {
 });
 
 // Login endpoint - authenticates with email and password
-router.post('/login', async (req, res, next) => {
+router.post('/login', authLimiter, async (req, res, next) => {
   try {
     const { error, value } = loginSchema.validate(req.body);
     if (error) {
