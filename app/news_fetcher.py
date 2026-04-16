@@ -113,7 +113,9 @@ def _clean_summary(summary: str) -> str:
     return text
 
 
-async def fetch_feed(client: httpx.AsyncClient, feed_info: dict, category: str) -> list[dict]:
+async def fetch_feed(
+    client: httpx.AsyncClient, feed_info: dict, category: str
+) -> list[dict]:
     """Fetch and parse a single RSS feed."""
     articles = []
     try:
@@ -175,7 +177,9 @@ async def fetch_all_news() -> dict:
 
     # Sort by published date (newest first)
     all_articles.sort(
-        key=lambda x: x.get("published_dt") or datetime.min.replace(tzinfo=timezone.utc),
+        key=lambda x: (
+            x.get("published_dt") or datetime.min.replace(tzinfo=timezone.utc)
+        ),
         reverse=True,
     )
 

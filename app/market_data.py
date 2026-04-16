@@ -63,7 +63,9 @@ async def fetch_quotes_batch(client: httpx.AsyncClient) -> dict[str, dict]:
             symbol = item.get("symbol", "")
             price = item.get("regularMarketPrice", 0)
             prev_close = item.get("regularMarketPreviousClose", 0)
-            change = item.get("regularMarketChange", price - prev_close if prev_close else 0)
+            change = item.get(
+                "regularMarketChange", price - prev_close if prev_close else 0
+            )
             change_pct = item.get("regularMarketChangePercent", 0)
             quotes[symbol] = {
                 "price": round(price, 2),
@@ -73,13 +75,17 @@ async def fetch_quotes_batch(client: httpx.AsyncClient) -> dict[str, dict]:
             }
         logger.info(f"Batch quote fetch succeeded: {len(quotes)} symbols")
     except Exception as e:
-        logger.warning(f"Batch quote fetch failed: {e}, falling back to individual fetches")
+        logger.warning(
+            f"Batch quote fetch failed: {e}, falling back to individual fetches"
+        )
         quotes = await _fetch_quotes_individually(client)
 
     return quotes
 
 
-async def _fetch_single_quote(client: httpx.AsyncClient, symbol: str) -> tuple[str, dict | None]:
+async def _fetch_single_quote(
+    client: httpx.AsyncClient, symbol: str
+) -> tuple[str, dict | None]:
     """Fetch a single quote from Yahoo Finance v8 API."""
     url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
     params = {"range": "1d", "interval": "1d"}
@@ -133,7 +139,11 @@ async def fetch_market_overview() -> dict:
                     "change": quote["change"] if quote else None,
                     "change_pct": quote["change_pct"] if quote else None,
                     "currency": quote["currency"] if quote else "USD",
-                    "status": "up" if quote and quote["change"] >= 0 else "down" if quote else "unavailable",
+                    "status": "up"
+                    if quote and quote["change"] >= 0
+                    else "down"
+                    if quote
+                    else "unavailable",
                 }
                 section_data.append(entry)
             market_data[section] = section_data

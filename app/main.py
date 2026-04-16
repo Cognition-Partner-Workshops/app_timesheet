@@ -187,6 +187,10 @@ async def status():
     return {
         "status": "ok",
         "news_articles": _cache["news"]["total_count"] if _cache["news"] else 0,
-        "news_last_updated": _cache["news_updated"].isoformat() if _cache["news_updated"] else None,
-        "market_last_updated": _cache["market_updated"].isoformat() if _cache["market_updated"] else None,
+        "news_last_updated": _cache["news_updated"].isoformat()
+        if _cache["news_updated"]
+        else None,
+        "market_last_updated": _cache["market_updated"].isoformat()
+        if _cache["market_updated"]
+        else None,
     }
