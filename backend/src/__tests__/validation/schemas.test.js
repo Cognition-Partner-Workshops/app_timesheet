@@ -83,6 +83,36 @@ describe('Validation Schemas', () => {
       const { value } = clientSchema.validate(client);
       expect(value.name).toBe('Test Client');
     });
+
+    test('should validate client with department field', () => {
+      const { error } = clientSchema.validate({ name: 'Test', department: 'Engineering' });
+      expect(error).toBeUndefined();
+    });
+
+    test('should validate client with email field', () => {
+      const { error } = clientSchema.validate({ name: 'Test', email: 'client@example.com' });
+      expect(error).toBeUndefined();
+    });
+
+    test('should reject invalid email in client', () => {
+      const { error } = clientSchema.validate({ name: 'Test', email: 'not-an-email' });
+      expect(error).toBeDefined();
+    });
+
+    test('should reject department longer than 255 characters', () => {
+      const { error } = clientSchema.validate({ name: 'Test', department: 'a'.repeat(256) });
+      expect(error).toBeDefined();
+    });
+
+    test('should allow empty department', () => {
+      const { error } = clientSchema.validate({ name: 'Test', department: '' });
+      expect(error).toBeUndefined();
+    });
+
+    test('should allow empty email', () => {
+      const { error } = clientSchema.validate({ name: 'Test', email: '' });
+      expect(error).toBeUndefined();
+    });
   });
 
   describe('workEntrySchema', () => {
@@ -287,6 +317,21 @@ describe('Validation Schemas', () => {
 
       const { error } = updateClientSchema.validate(update);
       expect(error).toBeUndefined();
+    });
+
+    test('should validate department update', () => {
+      const { error } = updateClientSchema.validate({ department: 'New Dept' });
+      expect(error).toBeUndefined();
+    });
+
+    test('should validate email update', () => {
+      const { error } = updateClientSchema.validate({ email: 'new@example.com' });
+      expect(error).toBeUndefined();
+    });
+
+    test('should reject invalid email in update', () => {
+      const { error } = updateClientSchema.validate({ email: 'bad' });
+      expect(error).toBeDefined();
     });
   });
 
