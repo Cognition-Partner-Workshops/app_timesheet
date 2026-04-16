@@ -217,9 +217,9 @@ router.delete('/:id', (req, res) => {
   
   const db = getDatabase();
   
-  // Check if client exists
+  // Check if client exists and count affected work entries
   db.get(
-    'SELECT id FROM clients WHERE id = ?',
+    'SELECT c.id, (SELECT COUNT(*) FROM work_entries WHERE client_id = c.id) as work_entry_count FROM clients c WHERE c.id = ?',
     [clientId],
     (err, row) => {
       if (err) {
@@ -232,6 +232,7 @@ router.delete('/:id', (req, res) => {
       }
       
       // Delete client (work entries will be deleted due to CASCADE)
+      const affectedWorkEntries = row.work_entry_count;
       db.run(
         'DELETE FROM clients WHERE id = ?',
         [clientId],
@@ -241,7 +242,10 @@ router.delete('/:id', (req, res) => {
             return res.status(500).json({ error: 'Failed to delete client' });
           }
           
-          res.json({ message: 'Client deleted successfully' });
+          res.json({ 
+            message: 'Client deleted successfully',
+            deletedWorkEntries: affectedWorkEntries
+          });
         }
       );
     }
