@@ -51,6 +51,18 @@ describe('Authentication Middleware', () => {
       expect(next).not.toHaveBeenCalled();
     });
 
+    test('should return 401 if x-user-email header is empty string', () => {
+      req.headers['x-user-email'] = '';
+
+      authenticateUser(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith({
+        error: 'User email required in x-user-email header'
+      });
+      expect(next).not.toHaveBeenCalled();
+    });
+
     test('should accept valid email format', () => {
       req.headers['x-user-email'] = 'test@example.com';
       

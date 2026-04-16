@@ -142,6 +142,38 @@ describe('Database Initialization', () => {
 
       expect(consoleErrorSpy).not.toHaveBeenCalled();
     });
+
+    test('should resolve immediately if no database connection exists', async () => {
+      // Fresh module, no getDatabase called — db is null
+      const { closeDatabase: freshClose } = require('../../database/init');
+      await expect(freshClose()).resolves.toBeUndefined();
+    });
+
+    test('should resolve immediately if already closed', async () => {
+      jest.resetModules();
+
+      // Re-mock sqlite3 with working implementation for this test
+      jest.doMock('sqlite3', () => {
+        const mockDb = {
+          serialize: jest.fn((cb) => cb()),
+          run: jest.fn((q, cb) => { if (typeof cb === 'function') cb(null); }),
+          close: jest.fn((cb) => cb(null))
+        };
+        return {
+          verbose: jest.fn(() => ({
+            Database: jest.fn((path, callback) => {
+              callback(null);
+              return mockDb;
+            })
+          }))
+        };
+      });
+
+      const { getDatabase: freshGet, closeDatabase: freshClose } = require('../../database/init');
+      freshGet(); // create connection
+      await freshClose(); // close it
+      await expect(freshClose()).resolves.toBeUndefined(); // second call resolves immediately
+    });
   });
 
   describe('Database Schema', () => {
