@@ -30,10 +30,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     checkAuth();
   }, []);
 
-  const login = async (email: string) => {
+  const login = async (email: string, password: string) => {
     try {
-      const response = await apiClient.login(email);
+      const response = await apiClient.login(email, password);
       setUser(response.user);
+      localStorage.setItem('authToken', response.token);
       localStorage.setItem('userEmail', email);
     } catch (error) {
       console.error('Login failed:', error);
@@ -41,14 +42,28 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  const register = async (email: string, password: string) => {
+    try {
+      const response = await apiClient.register(email, password);
+      setUser(response.user);
+      localStorage.setItem('authToken', response.token);
+      localStorage.setItem('userEmail', email);
+    } catch (error) {
+      console.error('Registration failed:', error);
+      throw error;
+    }
+  };
+
   const logout = () => {
     setUser(null);
+    localStorage.removeItem('authToken');
     localStorage.removeItem('userEmail');
   };
 
   const value: AuthContextType = {
     user,
     login,
+    register,
     logout,
     isLoading,
     isAuthenticated: !!user,
