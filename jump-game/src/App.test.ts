@@ -7,7 +7,11 @@ import {
   moveObstacles,
   checkCollision,
   calculateScore,
+  getLevel,
+  getLevelTheme,
+  LEVEL_THEMES,
 } from './App';
+import type { LevelTheme } from './App';
 
 // ─── createPlayer Tests ───
 describe('createPlayer', () => {
@@ -482,5 +486,167 @@ describe('calculateScore - negative cases', () => {
     const first = calculateScore(obstacles, 80, 0);
     const second = calculateScore(first.obstacles, 80, first.score);
     expect(second.score).toBe(1); // still 1, not 2
+  });
+});
+
+// ═══════════════════════════════════════════════════════
+// LEVEL SYSTEM TESTS
+// ═══════════════════════════════════════════════════════
+
+// ─── getLevel Tests ───
+describe('getLevel', () => {
+  it('should return level 1 for score 0', () => {
+    expect(getLevel(0)).toBe(1);
+  });
+
+  it('should return level 1 for score 4', () => {
+    expect(getLevel(4)).toBe(1);
+  });
+
+  it('should return level 2 for score 5', () => {
+    expect(getLevel(5)).toBe(2);
+  });
+
+  it('should return level 2 for score 9', () => {
+    expect(getLevel(9)).toBe(2);
+  });
+
+  it('should return level 3 for score 10', () => {
+    expect(getLevel(10)).toBe(3);
+  });
+
+  it('should return level 4 for score 15', () => {
+    expect(getLevel(15)).toBe(4);
+  });
+
+  it('should return level 5 for score 20', () => {
+    expect(getLevel(20)).toBe(5);
+  });
+
+  it('should cap at level 5 for score 25 and above', () => {
+    expect(getLevel(25)).toBe(5);
+    expect(getLevel(100)).toBe(5);
+    expect(getLevel(9999)).toBe(5);
+  });
+
+  it('should handle negative score gracefully', () => {
+    const level = getLevel(-1);
+    expect(level).toBeGreaterThanOrEqual(1);
+  });
+});
+
+// ─── getLevelTheme Tests ───
+describe('getLevelTheme', () => {
+  it('should return Meadow theme for level 1', () => {
+    const theme = getLevelTheme(1);
+    expect(theme.name).toBe('Meadow');
+    expect(theme.speedMultiplier).toBe(1.0);
+    expect(theme.spawnMultiplier).toBe(1.0);
+    expect(theme.obstacleHeightBonus).toBe(0);
+  });
+
+  it('should return Desert theme for level 2', () => {
+    const theme = getLevelTheme(2);
+    expect(theme.name).toBe('Desert');
+    expect(theme.speedMultiplier).toBe(1.15);
+    expect(theme.spawnMultiplier).toBe(0.9);
+    expect(theme.obstacleHeightBonus).toBe(5);
+  });
+
+  it('should return Arctic theme for level 3', () => {
+    const theme = getLevelTheme(3);
+    expect(theme.name).toBe('Arctic');
+    expect(theme.speedMultiplier).toBe(1.3);
+  });
+
+  it('should return Volcano theme for level 4', () => {
+    const theme = getLevelTheme(4);
+    expect(theme.name).toBe('Volcano');
+    expect(theme.speedMultiplier).toBe(1.5);
+  });
+
+  it('should return Space theme for level 5', () => {
+    const theme = getLevelTheme(5);
+    expect(theme.name).toBe('Space');
+    expect(theme.speedMultiplier).toBe(1.7);
+    expect(theme.obstacleHeightBonus).toBe(20);
+  });
+
+  it('should clamp to first theme for level 0 or below', () => {
+    const theme = getLevelTheme(0);
+    expect(theme.name).toBe('Meadow');
+    const themeNeg = getLevelTheme(-5);
+    expect(themeNeg.name).toBe('Meadow');
+  });
+
+  it('should clamp to last theme for level above 5', () => {
+    const theme = getLevelTheme(99);
+    expect(theme.name).toBe('Space');
+  });
+
+  it('should have all required properties on every theme', () => {
+    for (let lvl = 1; lvl <= 5; lvl++) {
+      const theme: LevelTheme = getLevelTheme(lvl);
+      expect(theme.name).toBeDefined();
+      expect(theme.skyTop).toBeDefined();
+      expect(theme.groundColor).toBeDefined();
+      expect(theme.playerBody).toBeDefined();
+      expect(theme.speedMultiplier).toBeGreaterThan(0);
+      expect(theme.spawnMultiplier).toBeGreaterThan(0);
+      expect(theme.obstacleHeightBonus).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('should have increasing difficulty across levels', () => {
+    for (let lvl = 2; lvl <= 5; lvl++) {
+      const prev = getLevelTheme(lvl - 1);
+      const curr = getLevelTheme(lvl);
+      expect(curr.speedMultiplier).toBeGreaterThan(prev.speedMultiplier);
+      expect(curr.obstacleHeightBonus).toBeGreaterThanOrEqual(prev.obstacleHeightBonus);
+    }
+  });
+});
+
+// ─── LEVEL_THEMES Array Tests ───
+describe('LEVEL_THEMES', () => {
+  it('should have exactly 5 themes', () => {
+    expect(LEVEL_THEMES.length).toBe(5);
+  });
+
+  it('should have unique names for each theme', () => {
+    const names = LEVEL_THEMES.map(t => t.name);
+    expect(new Set(names).size).toBe(5);
+  });
+});
+
+// ─── createObstacle with Level Tests ───
+describe('createObstacle - with level parameter', () => {
+  it('should create obstacle with level 1 default height range', () => {
+    const obstacle = createObstacle(800, 1);
+    expect(obstacle.height).toBeGreaterThanOrEqual(30);
+    expect(obstacle.height).toBeLessThanOrEqual(70); // 70 + 0 bonus
+  });
+
+  it('should create taller obstacles at level 5', () => {
+    // Level 5 Space: obstacleHeightBonus = 20, so max height = 70 + 20 = 90
+    const obstacle = createObstacle(800, 5);
+    expect(obstacle.height).toBeGreaterThanOrEqual(30);
+    expect(obstacle.height).toBeLessThanOrEqual(90);
+  });
+
+  it('should default to level 1 when no level is provided', () => {
+    const obstacle = createObstacle(800);
+    expect(obstacle.height).toBeGreaterThanOrEqual(30);
+    expect(obstacle.height).toBeLessThanOrEqual(70);
+  });
+
+  it('should apply Desert level height bonus (+5)', () => {
+    const obstacle = createObstacle(800, 2);
+    expect(obstacle.height).toBeLessThanOrEqual(75); // 70 + 5
+  });
+
+  it('should apply Volcano level height bonus (+15)', () => {
+    const obstacle = createObstacle(800, 4);
+    expect(obstacle.height).toBeLessThanOrEqual(85); // 70 + 15
   });
 });
