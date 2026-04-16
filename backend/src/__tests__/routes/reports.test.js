@@ -428,7 +428,6 @@ describe('Report Routes', () => {
       testApp.use(express.json());
       testApp.use((req, res, next) => {
         // Patch res.download to just send a 200 response instead of trying to send a file
-        const originalDownload = res.download.bind(res);
         res.download = (filePath, filename, cb) => {
           res.status(200).json({ downloaded: true });
           if (cb) cb(null);
