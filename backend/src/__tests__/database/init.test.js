@@ -142,6 +142,89 @@ describe('Database Initialization', () => {
 
       expect(consoleErrorSpy).not.toHaveBeenCalled();
     });
+
+    test('should resolve immediately if already closed (isClosed = true)', async () => {
+      jest.resetModules();
+
+      jest.doMock('sqlite3', () => {
+        const mockDatabase = {
+          serialize: jest.fn((callback) => callback()),
+          run: jest.fn((query, callback) => {
+            if (typeof callback === 'function') callback(null);
+          }),
+          close: jest.fn((callback) => callback(null))
+        };
+
+        return {
+          verbose: jest.fn(() => ({
+            Database: jest.fn((path, callback) => {
+              callback(null);
+              return mockDatabase;
+            })
+          }))
+        };
+      });
+
+      const { getDatabase: getDb, closeDatabase: closeDb } = require('../../database/init');
+      getDb(); // Create database instance
+      await closeDb(); // First close
+      await closeDb(); // Second close - should resolve immediately (isClosed = true)
+    });
+
+    test('should resolve when db is null', async () => {
+      jest.resetModules();
+
+      jest.doMock('sqlite3', () => {
+        return {
+          verbose: jest.fn(() => ({
+            Database: jest.fn((path, callback) => {
+              callback(null);
+              return {};
+            })
+          }))
+        };
+      });
+
+      const { closeDatabase: closeDb } = require('../../database/init');
+      // Don't call getDatabase first - db is null
+      await closeDb(); // Should resolve without error
+    });
+
+    test('should handle concurrent close calls (isClosing branch)', async () => {
+      jest.resetModules();
+
+      jest.doMock('sqlite3', () => {
+        const mockDatabase = {
+          serialize: jest.fn((callback) => callback()),
+          run: jest.fn((query, callback) => {
+            if (typeof callback === 'function') callback(null);
+          }),
+          close: jest.fn((callback) => {
+            // Simulate a small delay in closing
+            setTimeout(() => callback(null), 50);
+          })
+        };
+
+        return {
+          verbose: jest.fn(() => ({
+            Database: jest.fn((path, callback) => {
+              callback(null);
+              return mockDatabase;
+            })
+          }))
+        };
+      });
+
+      const { getDatabase: getDb, closeDatabase: closeDb } = require('../../database/init');
+      getDb(); // Create database instance
+
+      // Call closeDatabase twice concurrently
+      const [result1, result2] = await Promise.all([closeDb(), closeDb()]);
+
+      // Both should resolve without error
+      expect(result1).toBeUndefined();
+      expect(result2).toBeUndefined();
+    });
   });
 
   describe('Database Schema', () => {
