@@ -75,6 +75,42 @@ describe('Validation Schemas', () => {
       expect(error).toBeDefined();
     });
 
+    test('should validate client with department field', () => {
+      const client = { name: 'Test', department: 'Engineering' };
+      const { error } = clientSchema.validate(client);
+      expect(error).toBeUndefined();
+    });
+
+    test('should validate client with email field', () => {
+      const client = { name: 'Test', email: 'client@example.com' };
+      const { error } = clientSchema.validate(client);
+      expect(error).toBeUndefined();
+    });
+
+    test('should reject invalid email in client', () => {
+      const client = { name: 'Test', email: 'not-an-email' };
+      const { error } = clientSchema.validate(client);
+      expect(error).toBeDefined();
+    });
+
+    test('should reject department longer than 255 characters', () => {
+      const client = { name: 'Test', department: 'a'.repeat(256) };
+      const { error } = clientSchema.validate(client);
+      expect(error).toBeDefined();
+    });
+
+    test('should allow empty department', () => {
+      const client = { name: 'Test', department: '' };
+      const { error } = clientSchema.validate(client);
+      expect(error).toBeUndefined();
+    });
+
+    test('should allow empty email', () => {
+      const client = { name: 'Test', email: '' };
+      const { error } = clientSchema.validate(client);
+      expect(error).toBeUndefined();
+    });
+
     test('should trim whitespace from name', () => {
       const client = {
         name: '  Test Client  '
@@ -285,6 +321,24 @@ describe('Validation Schemas', () => {
         description: 'New Description'
       };
 
+      const { error } = updateClientSchema.validate(update);
+      expect(error).toBeUndefined();
+    });
+
+    test('should validate department update', () => {
+      const update = { department: 'New Dept' };
+      const { error } = updateClientSchema.validate(update);
+      expect(error).toBeUndefined();
+    });
+
+    test('should validate email update', () => {
+      const update = { email: 'new@example.com' };
+      const { error } = updateClientSchema.validate(update);
+      expect(error).toBeUndefined();
+    });
+
+    test('should validate update with all fields', () => {
+      const update = { name: 'N', description: 'D', department: 'Dept', email: 'e@e.com' };
       const { error } = updateClientSchema.validate(update);
       expect(error).toBeUndefined();
     });
