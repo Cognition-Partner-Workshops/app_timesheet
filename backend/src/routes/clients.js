@@ -113,7 +113,7 @@ router.put('/:id', (req, res, next) => {
 
     const db = getDatabase();
 
-    // Check if client exists and belongs to user
+    // Check if client exists
     db.get(
       'SELECT id FROM clients WHERE id = ?',
       [clientId],
@@ -217,7 +217,7 @@ router.delete('/:id', (req, res) => {
   
   const db = getDatabase();
   
-  // Check if client exists and belongs to user
+  // Check if client exists
   db.get(
     'SELECT id FROM clients WHERE id = ?',
     [clientId],
