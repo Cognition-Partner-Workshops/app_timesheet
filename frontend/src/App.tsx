@@ -15,10 +15,44 @@ import ReportsPage from './pages/ReportsPage';
 const theme = createTheme({
   palette: {
     primary: {
-      main: '#1976d2',
+      main: '#063E27',
+      light: '#166A44',
+      dark: '#042D1C',
+      contrastText: '#ffffff',
     },
     secondary: {
-      main: '#dc004e',
+      main: '#166A44',
+      light: '#1B8A56',
+      dark: '#0F4F33',
+      contrastText: '#ffffff',
+    },
+    background: {
+      default: '#f5f5f5',
+      paper: '#ffffff',
+    },
+  },
+  typography: {
+    fontFamily: '"Inter", "Segoe UI", "Roboto", "Helvetica", "Arial", sans-serif',
+  },
+  components: {
+    MuiAppBar: {
+      styleOverrides: {
+        root: {
+          backgroundColor: '#063E27',
+        },
+      },
+    },
+    MuiButton: {
+      styleOverrides: {
+        contained: {
+          textTransform: 'none',
+          fontWeight: 600,
+        },
+        outlined: {
+          textTransform: 'none',
+          fontWeight: 600,
+        },
+      },
     },
   },
 });

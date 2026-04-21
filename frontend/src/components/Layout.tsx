@@ -51,19 +51,48 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
   const drawer = (
     <div>
-      <Toolbar>
-        <Typography variant="h6" noWrap component="div">
+      <Toolbar
+        sx={{
+          backgroundColor: '#063E27',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1.5,
+          px: 2,
+        }}
+      >
+        <Box
+          component="img"
+          src="/ksu-logo.png"
+          alt="KSU Logo"
+          sx={{ height: 40, width: 'auto' }}
+        />
+        <Typography variant="subtitle1" noWrap component="div" sx={{ color: '#ffffff', fontWeight: 600 }}>
           Time Tracker
         </Typography>
       </Toolbar>
-      <List>
+      <List sx={{ pt: 1 }}>
         {menuItems.map((item) => (
           <ListItem key={item.text} disablePadding>
             <ListItemButton
               selected={location.pathname === item.path}
               onClick={() => navigate(item.path)}
+              sx={{
+                mx: 1,
+                borderRadius: 1,
+                mb: 0.5,
+                '&.Mui-selected': {
+                  backgroundColor: 'rgba(6, 62, 39, 0.08)',
+                  color: '#063E27',
+                  '& .MuiListItemIcon-root': {
+                    color: '#063E27',
+                  },
+                },
+                '&:hover': {
+                  backgroundColor: 'rgba(6, 62, 39, 0.04)',
+                },
+              }}
             >
-              <ListItemIcon>{item.icon}</ListItemIcon>
+              <ListItemIcon sx={{ minWidth: 40 }}>{item.icon}</ListItemIcon>
               <ListItemText primary={item.text} />
             </ListItemButton>
           </ListItem>
