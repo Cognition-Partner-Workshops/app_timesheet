@@ -33,6 +33,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { format } from 'date-fns';
 import apiClient from '../api/client';
 import { type Project } from '../types/api';
 
@@ -119,7 +120,7 @@ const ProjectsPage: React.FC = () => {
         name: project.name,
         description: project.description || '',
         clientId: project.client_id,
-        startDate: new Date(project.start_date),
+        startDate: new Date(project.start_date + 'T00:00:00'),
         status: project.status,
       });
     } else {
@@ -172,7 +173,7 @@ const ProjectsPage: React.FC = () => {
       name: formData.name,
       description: formData.description || undefined,
       clientId: formData.clientId,
-      startDate: formData.startDate.toISOString().split('T')[0],
+      startDate: format(formData.startDate, 'yyyy-MM-dd'),
       status: formData.status,
     };
 
@@ -255,7 +256,7 @@ const ProjectsPage: React.FC = () => {
                         </TableCell>
                         <TableCell>
                           <Typography variant="body2">
-                            {new Date(project.start_date).toLocaleDateString()}
+                            {new Date(project.start_date + 'T00:00:00').toLocaleDateString()}
                           </Typography>
                         </TableCell>
                         <TableCell>
