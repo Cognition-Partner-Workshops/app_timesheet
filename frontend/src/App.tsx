@@ -8,6 +8,7 @@ interface RegulationDoc {
   url: string
   source: string
   source_page: string
+  issuer: string
 }
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -20,75 +21,88 @@ const SOURCE_LABELS: Record<string, string> = {
   chairs: 'وكالة الكراسي البحثية',
 }
 
+const ISSUER_LABELS: Record<string, string> = {
+  ksu: 'جامعة الملك سعود',
+  uni_system: 'نظام الجامعات',
+  civil_service: 'نظام الخدمة المدنية',
+  labor_law: 'نظام العمل',
+  rdia: 'هيئة تنمية البحث والتطوير والابتكار',
+  higher_edu: 'مجلس التعليم العالي',
+  procurement: 'نظام المنافسات والمشتريات الحكومية',
+  health_jobs: 'لائحة الوظائف الصحية',
+  edu_jobs: 'لائحة الوظائف التعليمية',
+  govt_general: 'أنظمة حكومية عامة',
+}
+
 const ALL_DOCS: RegulationDoc[] = [
-  { id: 1, title: 'ضوابط الأمانة العلمية', url: 'http://grant.ksu.edu.sa/sites/npst.ksu.edu.sa/files/imce_images/integrity_a.pdf', source: 'dsrs', source_page: 'dsrs.ksu.edu.sa/ar/node/1248' },
-  { id: 2, title: 'ضوابط الملكية الفكرية', url: 'http://grant.ksu.edu.sa/sites/npst.ksu.edu.sa/files/imce_images/property_a.pdf', source: 'dsrs', source_page: 'dsrs.ksu.edu.sa/ar/node/1248' },
-  { id: 3, title: 'ضوابط إرسال العينات الحيوية لخارج المملكة', url: 'http://grant.ksu.edu.sa/sites/npst.ksu.edu.sa/files/imce_images/genetic_a.pdf', source: 'dsrs', source_page: 'dsrs.ksu.edu.sa/ar/node/1248' },
-  { id: 4, title: 'متطلبات الموافقة بعد التبصير', url: 'http://grant.ksu.edu.sa/sites/npst.ksu.edu.sa/files/imce_images/informed_consent_a.pdf', source: 'dsrs', source_page: 'dsrs.ksu.edu.sa/ar/node/1248' },
-  { id: 5, title: 'نظام أخلاقيات البحث على المخلوقات الحية', url: 'http://grant.ksu.edu.sa/sites/npst.ksu.edu.sa/files/imce_images/research_ethics_a.pdf', source: 'dsrs', source_page: 'dsrs.ksu.edu.sa/ar/node/1248' },
-  { id: 6, title: 'لائحة دعم البحوث', url: 'http://grant.ksu.edu.sa/sites/npst.ksu.edu.sa/files/imce_images/regulations_of_research_funding_a.pdf', source: 'dsrs', source_page: 'dsrs.ksu.edu.sa/ar/node/1248' },
-  { id: 7, title: 'لائحة هيئة تنمية البحث والتطوير والابتكار', url: 'https://dsrs.ksu.edu.sa/sites/dsrs.ksu.edu.sa/files/users/user1009/%D9%84%D8%A7%D8%A6%D8%AD%D9%80%D8%A9-%D9%85%D9%86%D8%AD-%D8%A7%D9%84%D8%A8%D8%AD%D9%88%D8%AB-%D8%A7%D9%84%D9%85%D9%85%D9%88%D9%84%D8%A9-%D9%85%D9%86-%D9%87%D9%8A%D8%A6%D8%A9-%D8%AA%D9%86%D9%85%D9%8A%D8%A9-%D8%A7%D9%84%D8%A8%D8%AD%D8%AB-%D9%88%D8%A7%D9%84%D8%AA%D8%B7%D9%88%D9%8A%D8%B1-%D9%88%D8%A7%D9%84%D8%A7%D8%A8%D8%AA%D9%83%D8%A7%D8%B1-10.pdf', source: 'dsrs', source_page: 'dsrs.ksu.edu.sa/ar/node/4239' },
-  { id: 8, title: 'Research Grants Regulation Funded by the RDIA (English)', url: 'https://dsrs.ksu.edu.sa/sites/dsrs.ksu.edu.sa/files/users/user1009/Research%20Grants%20Regulation%20Funded%20by%20the%20RDIA.pdf', source: 'dsrs', source_page: 'dsrs.ksu.edu.sa/ar/node/4239' },
-  { id: 9, title: 'اتفاقية حوكمة الدعم المالي للأبحاث العلمية في الجهات البحثية', url: 'https://dsrs.ksu.edu.sa/sites/dsrs.ksu.edu.sa/files/users/user1009/%D8%AD%D9%88%D9%83%D9%85%D8%A9%20%D8%A7%D9%84%D8%AF%D8%B9%D9%85%20%D8%A7%D9%84%D9%85%D8%A7%D9%84%D9%8A.pdf', source: 'dsrs', source_page: 'dsrs.ksu.edu.sa/ar/node/4239' },
-  { id: 10, title: 'أطر العمل التنظيمية للائحة التنفيذية للموارد البشرية', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/2025-07/The%20Regulatory%20Frameworks%20for%20the%20Implementing%20Regulations%20for%20Human%20Resources_arabic_0.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/regulationsandrulesinksu' },
-  { id: 11, title: 'الاجازات الاستثنائية', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/2025-07/Exceptional%20leave%20Rules.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/regulationsandrulesinksu' },
-  { id: 12, title: 'بدل راحات', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/2025-07/compensation%20time_arabic.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/regulationsandrulesinksu' },
-  { id: 13, title: 'لائحة المعينين على بند الأجور في الجهات الإدارية', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/2025-07/Regulations%20for%20those%20Appointed%20under%20Wages%20System%20in%20Government%20Entities_arabic.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/regulationsandrulesinksu' },
-  { id: 14, title: 'لائحة استقطاب الباحثين غير السعوديين بجامعة الملك سعود', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/2025-07/Attracting%20outstanding%20non-saudi%20researchers%20regulation%20in%20KSU.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/regulationsandrulesinksu' },
-  { id: 15, title: 'لائحة الحقوق والمزايا المالية', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/2025-07/Financial_rights_and_Benefits_arabic.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/regulationsandrulesinksu' },
-  { id: 16, title: 'لائحة المستخدمين', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/2025-07/Servants_Regulations_arabic.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/regulationsandrulesinksu' },
-  { id: 17, title: 'لائحة الوظائف التعليمية', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/2025-07/Educational%20Jobs%20Regulations_arabic.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/regulationsandrulesinksu' },
-  { id: 18, title: 'لائحة الوظائف الصحية', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/2025-07/Health%20Jobs%20Regulation_arabic.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/regulationsandrulesinksu' },
-  { id: 19, title: 'اللائحة المنظمة لشؤون منسوبي الجامعات السعوديين من أعضاء هيئة التدريس ومن في حكمهم', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/2025-07/Saudi%20Faculties%20members%20Regulations%20and%20rules.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/regulationsandrulesinksu' },
-  { id: 20, title: 'لائحة توظيف غير السعوديين في الجامعات', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/2025-07/University%20Employment%20Regulations%20for%20Non-Saudi.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/regulationsandrulesinksu' },
-  { id: 21, title: 'ضوابط ولوائح التدريب', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/2025-07/training%20Regulations%20and%20rules.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/regulationsandrulesinksu' },
-  { id: 22, title: 'نظام الجامعات', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/2025-07/Universties%20Rules.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/regulationsandrulesinksu' },
-  { id: 23, title: 'القواعد المنظمة لبرنامج الإشراف الخارجي', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/2025-07/External%20Joint%20Supervision%20Program%20regulations.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/regulationsandrulesinksu' },
-  { id: 24, title: 'لائحة الابتعاث والتدريب لمنسوبي الجامعات', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/2025-07/Scholarship%20and%20training%20regulations%20for%20University%20members.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/regulationsandrulesinksu' },
-  { id: 25, title: 'نظام الجامعات الطبعة الاولى', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/2025-07/Universities%20Rules%20First%20Version.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/regulationsandrulesinksu' },
-  { id: 26, title: 'اللائحة التنفيذية للموارد البشرية', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/2025-07/implementing%20regulation%20for%20human%20resources%20in%20civil%20service.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/regulationsandrulesinksu' },
-  { id: 27, title: 'لائحة تفويض الصلاحيات', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/1.docx', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff' },
-  { id: 28, title: 'لائحة توظيف غير السعوديين', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/2.doc', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff' },
-  { id: 29, title: 'لائحة انتهاء الخدمة', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/3.doc', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff' },
-  { id: 30, title: 'لائحة الوظائف الصحية', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/4.doc', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff' },
-  { id: 31, title: 'لائحة الوظائف التعليمية', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/5.doc', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff' },
-  { id: 32, title: 'لائحة الواجبات الوظيفية', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/6.doc', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff' },
-  { id: 33, title: 'لائحة المعينين على بند الاجور', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/7.doc', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff' },
-  { id: 34, title: 'قواعد اثبات العجز الصحي عن العمل', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/8.docx', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff' },
-  { id: 35, title: 'لائحة النقل', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/9.docx', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff' },
-  { id: 36, title: 'لائحة تقارير منح الاجازات المرضية', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/10.docx', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff' },
-  { id: 37, title: 'لائحة المستخدمين', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/11.doc', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff' },
-  { id: 38, title: 'لائحة التكليف', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/12.doc', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff' },
-  { id: 39, title: 'لائحة التعيين في الوظائف العامة', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/13.doc', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff' },
-  { id: 40, title: 'لائحة الترقيات', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/14.doc', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff' },
-  { id: 41, title: 'لائحة الإعارة', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/15.doc', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff' },
-  { id: 42, title: 'لائحة تقويم الأداء الوظيفي', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/16.doc', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff' },
-  { id: 43, title: 'نظام الخدمة المدنية وسلم الرواتب', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/17.doc', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff' },
-  { id: 44, title: 'تنظيم علاج موظفي الدولة المنتدبين إلى الخارج', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/18.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff' },
-  { id: 45, title: 'قواعد تعيين الموظفين الذين يفصلون بطريقة غير نظامية', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/19.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff' },
-  { id: 46, title: 'لائحة اللياقة الصحية لشغل الوظيفة العامة', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/20.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff' },
-  { id: 47, title: 'نظام العمل بالمملكة العربية السعودية', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/21.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff' },
-  { id: 48, title: 'مرشد الموظف الجديد', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/22.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff' },
-  { id: 49, title: 'لائحة الاجازات', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/23.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff' },
-  { id: 50, title: 'لائحة ادارة الممتلكات الجامعية', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/24.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff' },
-  { id: 51, title: 'لائحة الايفاد والابتعاث', url: 'https://sa.ksu.edu.sa/sites/sa.ksu.edu.sa/files/imce_images/%D9%84%D8%A7%D8%A6%D8%AD%D8%A9%20%D8%A7%D9%84%D8%A7%D9%8A%D9%81%D8%A7%D8%AF%20%D9%88%D8%A7%D9%84%D8%A7%D8%A8%D8%AA%D8%B9%D8%A7%D8%AB.pdf', source: 'sa', source_page: 'sa.ksu.edu.sa/ar/node/3127' },
-  { id: 52, title: 'اللائحة التنظيمية لبعثات التعليم العالي', url: 'https://sa.ksu.edu.sa/sites/sa.ksu.edu.sa/files/imce_images/%D8%A7%D9%84%D9%84%D8%A7%D8%A6%D8%AD%D8%A9%20%D8%A7%D9%84%D8%AA%D9%86%D8%B8%D9%8A%D9%85%D9%8A%D8%A9%20%D9%84%D8%A8%D8%B9%D8%AB%D8%A7%D8%AA%20%D8%A7%D9%84%D8%AA%D8%B9%D9%84%D9%8A%D9%85%20%D8%A7%D9%84%D8%B9%D8%A7%D9%84%D9%8A.pdf', source: 'sa', source_page: 'sa.ksu.edu.sa/ar/node/3127' },
-  { id: 53, title: 'لائحة التأديب بالميثاق', url: 'https://sa.ksu.edu.sa/sites/sa.ksu.edu.sa/files/imce_images/%D9%84%D8%A7%D8%A6%D8%AD%D8%A9%20%D8%A7%D9%84%D8%AA%D8%A7%D8%AF%D9%8A%D8%A8%20%D8%A8%D8%A7%D9%84%D9%85%D9%8A%D8%AB%D8%A7%D9%82.pdf', source: 'sa', source_page: 'sa.ksu.edu.sa/ar/node/3127' },
-  { id: 54, title: 'نظام مجلس التعليم العالي والجامعات', url: 'https://sa.ksu.edu.sa/sites/sa.ksu.edu.sa/files/imce_images/%D9%86%D8%B8%D8%A7%D9%85%20%D9%85%D8%AC%D9%84%D8%B3%20%D8%A7%D9%84%D8%AA%D8%B9%D9%84%D9%8A%D9%85%20%D8%A7%D9%84%D8%B9%D8%A7%D9%84%D9%8A%20%D9%88%D8%A7%D9%84%D8%AC%D8%A7%D9%85%D8%B9%D8%A7%D8%AA.pdf', source: 'sa', source_page: 'sa.ksu.edu.sa/ar/node/3127' },
-  { id: 55, title: 'القواعد التنفيذية لنظام الجامعات- الطبعة الأولى', url: 'https://dar.ksu.edu.sa/sites/dar.ksu.edu.sa/files/2024-10/%D8%A7%D9%84%D9%82%D9%88%D8%A7%D8%B9%D8%AF%20%D8%A7%D9%84%D8%AA%D9%86%D9%81%D9%8A%D8%B0%D9%8A%D8%A9%20%D9%84%D9%86%D8%B8%D8%A7%D9%85%20%D8%A7%D9%84%D8%AC%D8%A7%D9%85%D8%B9%D8%A7%D8%AA-%20%D8%A7%D9%84%D8%B7%D8%A8%D8%B9%D8%A9%20%D8%A7%D9%84%D8%A3%D9%88%D9%84%D9%89.pdf', source: 'dar', source_page: 'dar.ksu.edu.sa/ar/node/4260' },
-  { id: 56, title: 'اللائحة التنظيمية للتعليم الالكتروني والتعليم عن بُعد في الجامعات', url: 'https://dar.ksu.edu.sa/sites/dar.ksu.edu.sa/files/2024-10/%D8%A7%D9%84%D9%84%D8%A7%D8%A6%D8%AD%D8%A9%20%D8%A7%D9%84%D8%AA%D9%86%D8%B8%D9%8A%D9%85%D9%8A%D8%A9%20%D9%84%D9%84%D8%AA%D8%B9%D9%84%D9%8A%D9%85%20%D8%A7%D9%84%D8%A7%D9%84%D9%83%D8%AA%D8%B1%D9%88%D9%86%D9%8A.pdf', source: 'dar', source_page: 'dar.ksu.edu.sa/ar/node/4260' },
-  { id: 57, title: 'اللائحة الموحدة للدراسات العليا في الجامعات', url: 'https://dar.ksu.edu.sa/sites/dar.ksu.edu.sa/files/2024-10/%D8%A7%D9%84%D9%84%D8%A7%D8%A6%D8%AD%D8%A9%20%D8%A7%D9%84%D9%85%D9%88%D8%AD%D8%AF%D8%A9%20%D9%84%D9%84%D8%AF%D8%B1%D8%A7%D8%B3%D8%A7%D8%AA%20%D8%A7%D9%84%D8%B9%D9%84%D9%8A%D8%A7%20%D9%81%D9%8A%20%D8%A7%D9%84%D8%AC%D8%A7%D9%85%D8%B9%D8%A7%D8%AA.pdf', source: 'dar', source_page: 'dar.ksu.edu.sa/ar/node/4260' },
-  { id: 58, title: 'اللائحة الموحدة للدراسة والاختبارات للمرحلة الجامعية في الجامعات', url: 'https://dar.ksu.edu.sa/sites/dar.ksu.edu.sa/files/2024-10/%D8%A7%D9%84%D9%84%D8%A7%D8%A6%D8%AD%D8%A9%20%D8%A7%D9%84%D9%85%D9%88%D8%AD%D8%AF%D8%A9%20%D9%84%D9%84%D8%AF%D8%B1%D8%A7%D8%B3%D8%A9%20%D9%88%D8%A7%D9%84%D8%A7%D8%AE%D8%AA%D8%A8%D8%A7%D8%B1%D8%A7%D8%AA%20%D9%84%D9%84%D9%85%D8%B1%D8%AD%D9%84%D8%A9%20%D8%A7%D9%84%D8%AC%D8%A7%D9%85%D8%B9%D9%8A%D8%A9.pdf', source: 'dar', source_page: 'dar.ksu.edu.sa/ar/node/4260' },
-  { id: 59, title: 'لائحة المستودعات و المشتريات الحكومية', url: 'https://ps.ksu.edu.sa/sites/ps.ksu.edu.sa/files/imce_images/%D9%84%D8%A7%D8%A6%D8%AD%D8%A9%20%D8%A7%D9%84%D9%85%D8%B3%D8%AA%D9%88%D8%AF%D8%B9%D8%A7%D8%AA%20%D9%88%20%D8%A7%D9%84%D9%85%D8%B4%D8%AA%D8%B1%D9%8A%D8%A7%D8%AA%20%D8%A7%D9%84%D8%AD%D9%83%D9%88%D9%85%D9%8A%D8%A9.pdf', source: 'ps', source_page: 'ps.ksu.edu.sa/ar/node/921' },
-  { id: 60, title: 'نظام المنافسات والمشتريات الحكومية', url: 'https://ps.ksu.edu.sa/sites/ps.ksu.edu.sa/files/imce_images/%D9%86%D8%B8%D8%A7%D9%85%20%D8%A7%D9%84%D9%85%D9%86%D8%A7%D9%81%D8%B3%D8%A7%D8%AA%20%D9%88%D8%A7%D9%84%D9%85%D8%B4%D8%AA%D8%B1%D9%8A%D8%A7%D8%AA%20%D8%A7%D9%84%D8%AD%D9%83%D9%88%D9%85%D9%8A%D8%A9.pdf', source: 'ps', source_page: 'ps.ksu.edu.sa/ar/node/921' },
-  { id: 61, title: 'سياسة الشراء', url: 'https://ps.ksu.edu.sa/sites/ps.ksu.edu.sa/files/2024-10/%D8%B3%D9%8A%D8%A7%D8%B3%D8%A9%20%D8%A7%D9%84%D8%B4%D8%B1%D8%A7%D8%A1.pdf', source: 'ps', source_page: 'ps.ksu.edu.sa/ar/node/921' },
-  { id: 62, title: 'اجراءات العمل بادارة المشتريات', url: 'https://ps.ksu.edu.sa/sites/ps.ksu.edu.sa/files/2024-10/%D8%A7%D8%AC%D8%B1%D8%A7%D8%A1%D8%A7%D8%AA%20%D8%A7%D9%84%D8%B9%D9%85%D9%84%20%D8%A8%D8%A7%D8%AF%D8%A7%D8%B1%D8%A9%20%D8%A7%D9%84%D9%85%D8%B4%D8%AA%D8%B1%D9%8A%D8%A7%D8%AA.pdf', source: 'ps', source_page: 'ps.ksu.edu.sa/ar/node/921' },
-  { id: 63, title: 'اللائحة التنفيذية لنظام المنافسات والمشتريات الحكومية', url: 'https://ps.ksu.edu.sa/sites/ps.ksu.edu.sa/files/2024-10/%D8%A7%D9%84%D9%84%D8%A7%D8%A6%D8%AD%D8%A9%20%D8%A7%D9%84%D8%AA%D9%86%D9%81%D9%8A%D8%B0%D9%8A%D8%A9%20%D9%84%D9%86%D8%B8%D8%A7%D9%85%20%D8%A7%D9%84%D9%85%D9%86%D8%A7%D9%81%D8%B3%D8%A7%D8%AA%20%D9%88%D8%A7%D9%84%D9%85%D8%B4%D8%AA%D8%B1%D9%8A%D8%A7%D8%AA%20%D8%A7%D9%84%D8%AD%D9%83%D9%88%D9%85%D9%8A%D8%A9.pdf', source: 'ps', source_page: 'ps.ksu.edu.sa/ar/node/921' },
-  { id: 64, title: 'دليل اجراءات نظام المنافسات والمشتريات الحكومية', url: 'https://ps.ksu.edu.sa/sites/ps.ksu.edu.sa/files/2024-10/%D8%AF%D9%84%D9%8A%D9%84%20%D8%A7%D8%AC%D8%B1%D8%A7%D8%A1%D8%A7%D8%AA%20%D9%86%D8%B8%D8%A7%D9%85%20%D8%A7%D9%84%D9%85%D9%86%D8%A7%D9%81%D8%B3%D8%A7%D8%AA%20%D9%88%D8%A7%D9%84%D9%85%D8%B4%D8%AA%D8%B1%D9%8A%D8%A7%D8%AA%20%D8%A7%D9%84%D8%AD%D9%83%D9%88%D9%85%D9%8A%D8%A9.pdf', source: 'ps', source_page: 'ps.ksu.edu.sa/ar/node/921' },
-  { id: 65, title: 'لائحة الإسكان', url: 'https://housing.ksu.edu.sa/sites/housing.ksu.edu.sa/files/2024-04/6-%D9%84%D8%A7%D8%A6%D8%AD%D8%A9%20%D8%A7%D9%84%D8%A5%D8%B3%D9%83%D8%A7%D9%86.pdf', source: 'housing', source_page: 'housing.ksu.edu.sa/ar/node/916' },
-  { id: 66, title: 'لائحة الكراسي البحثية بجامعة الملك سعود', url: 'https://chairs.ksu.edu.sa/sites/chairs.ksu.edu.sa/files/2023-10/%D9%84%D8%A7%D8%A6%D8%AD%D8%A9%20%D8%A7%D9%84%D9%83%D8%B1%D8%A7%D8%B3%D9%8A%20%D8%A7%D9%84%D8%A8%D8%AD%D8%AB%D9%8A%D8%A9%20%D8%A8%D8%AC%D8%A7%D9%85%D8%B9%D8%A9%20%D8%A7%D9%84%D9%85%D9%84%D9%83%20%D8%B3%D8%B9%D9%88%D8%AF.pdf', source: 'chairs', source_page: 'chairs.ksu.edu.sa/ar/node/893' },
-  { id: 67, title: 'نموذج طلب إنشاء كرسي بحثي', url: 'https://chairs.ksu.edu.sa/sites/chairs.ksu.edu.sa/files/2023-10/%D9%86%D9%85%D9%88%D8%B0%D8%AC%20%D8%B7%D9%84%D8%A8%20%D8%A5%D9%86%D8%B4%D8%A7%D8%A1%20%D9%83%D8%B1%D8%B3%D9%8A%20%D8%A8%D8%AD%D8%AB%D9%8A.pdf', source: 'chairs', source_page: 'chairs.ksu.edu.sa/ar/node/893' },
-  { id: 68, title: 'الدليل الإرشادي للكراسي البحثية في جامعة الملك سعود', url: 'https://chairs.ksu.edu.sa/sites/chairs.ksu.edu.sa/files/2023-10/%D8%A7%D9%84%D8%AF%D9%84%D9%8A%D9%84%20%D8%A7%D9%84%D8%A5%D8%B1%D8%B4%D8%A7%D8%AF%D9%8A%20%D9%84%D9%84%D9%83%D8%B1%D8%A7%D8%B3%D9%8A%20%D8%A7%D9%84%D8%A8%D8%AD%D8%AB%D9%8A%D8%A9.pdf', source: 'chairs', source_page: 'chairs.ksu.edu.sa/ar/node/893' },
+  { id: 1, title: 'ضوابط الأمانة العلمية', url: 'http://grant.ksu.edu.sa/sites/npst.ksu.edu.sa/files/imce_images/integrity_a.pdf', source: 'dsrs', source_page: 'dsrs.ksu.edu.sa/ar/node/1248', issuer: 'ksu' },
+  { id: 2, title: 'ضوابط الملكية الفكرية', url: 'http://grant.ksu.edu.sa/sites/npst.ksu.edu.sa/files/imce_images/property_a.pdf', source: 'dsrs', source_page: 'dsrs.ksu.edu.sa/ar/node/1248', issuer: 'ksu' },
+  { id: 3, title: 'ضوابط إرسال العينات الحيوية لخارج المملكة', url: 'http://grant.ksu.edu.sa/sites/npst.ksu.edu.sa/files/imce_images/genetic_a.pdf', source: 'dsrs', source_page: 'dsrs.ksu.edu.sa/ar/node/1248', issuer: 'ksu' },
+  { id: 4, title: 'متطلبات الموافقة بعد التبصير', url: 'http://grant.ksu.edu.sa/sites/npst.ksu.edu.sa/files/imce_images/informed_consent_a.pdf', source: 'dsrs', source_page: 'dsrs.ksu.edu.sa/ar/node/1248', issuer: 'ksu' },
+  { id: 5, title: 'نظام أخلاقيات البحث على المخلوقات الحية', url: 'http://grant.ksu.edu.sa/sites/npst.ksu.edu.sa/files/imce_images/research_ethics_a.pdf', source: 'dsrs', source_page: 'dsrs.ksu.edu.sa/ar/node/1248', issuer: 'govt_general' },
+  { id: 6, title: 'لائحة دعم البحوث', url: 'http://grant.ksu.edu.sa/sites/npst.ksu.edu.sa/files/imce_images/regulations_of_research_funding_a.pdf', source: 'dsrs', source_page: 'dsrs.ksu.edu.sa/ar/node/1248', issuer: 'ksu' },
+  { id: 7, title: 'لائحة هيئة تنمية البحث والتطوير والابتكار', url: 'https://dsrs.ksu.edu.sa/sites/dsrs.ksu.edu.sa/files/users/user1009/%D9%84%D8%A7%D8%A6%D8%AD%D9%80%D8%A9-%D9%85%D9%86%D8%AD-%D8%A7%D9%84%D8%A8%D8%AD%D9%88%D8%AB-%D8%A7%D9%84%D9%85%D9%85%D9%88%D9%84%D8%A9-%D9%85%D9%86-%D9%87%D9%8A%D8%A6%D8%A9-%D8%AA%D9%86%D9%85%D9%8A%D8%A9-%D8%A7%D9%84%D8%A8%D8%AD%D8%AB-%D9%88%D8%A7%D9%84%D8%AA%D8%B7%D9%88%D9%8A%D8%B1-%D9%88%D8%A7%D9%84%D8%A7%D8%A8%D8%AA%D9%83%D8%A7%D8%B1-10.pdf', source: 'dsrs', source_page: 'dsrs.ksu.edu.sa/ar/node/4239', issuer: 'rdia' },
+  { id: 8, title: 'Research Grants Regulation Funded by the RDIA (English)', url: 'https://dsrs.ksu.edu.sa/sites/dsrs.ksu.edu.sa/files/users/user1009/Research%20Grants%20Regulation%20Funded%20by%20the%20RDIA.pdf', source: 'dsrs', source_page: 'dsrs.ksu.edu.sa/ar/node/4239', issuer: 'rdia' },
+  { id: 9, title: 'اتفاقية حوكمة الدعم المالي للأبحاث العلمية في الجهات البحثية', url: 'https://dsrs.ksu.edu.sa/sites/dsrs.ksu.edu.sa/files/users/user1009/%D8%AD%D9%88%D9%83%D9%85%D8%A9%20%D8%A7%D9%84%D8%AF%D8%B9%D9%85%20%D8%A7%D9%84%D9%85%D8%A7%D9%84%D9%8A.pdf', source: 'dsrs', source_page: 'dsrs.ksu.edu.sa/ar/node/4239', issuer: 'rdia' },
+  { id: 10, title: 'أطر العمل التنظيمية للائحة التنفيذية للموارد البشرية', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/2025-07/The%20Regulatory%20Frameworks%20for%20the%20Implementing%20Regulations%20for%20Human%20Resources_arabic_0.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/regulationsandrulesinksu', issuer: 'civil_service' },
+  { id: 11, title: 'الاجازات الاستثنائية', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/2025-07/Exceptional%20leave%20Rules.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/regulationsandrulesinksu', issuer: 'civil_service' },
+  { id: 12, title: 'بدل راحات', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/2025-07/compensation%20time_arabic.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/regulationsandrulesinksu', issuer: 'civil_service' },
+  { id: 13, title: 'لائحة المعينين على بند الأجور في الجهات الإدارية', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/2025-07/Regulations%20for%20those%20Appointed%20under%20Wages%20System%20in%20Government%20Entities_arabic.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/regulationsandrulesinksu', issuer: 'civil_service' },
+  { id: 14, title: 'لائحة استقطاب الباحثين غير السعوديين بجامعة الملك سعود', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/2025-07/Attracting%20outstanding%20non-saudi%20researchers%20regulation%20in%20KSU.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/regulationsandrulesinksu', issuer: 'ksu' },
+  { id: 15, title: 'لائحة الحقوق والمزايا المالية', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/2025-07/Financial_rights_and_Benefits_arabic.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/regulationsandrulesinksu', issuer: 'civil_service' },
+  { id: 16, title: 'لائحة المستخدمين', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/2025-07/Servants_Regulations_arabic.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/regulationsandrulesinksu', issuer: 'civil_service' },
+  { id: 17, title: 'لائحة الوظائف التعليمية', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/2025-07/Educational%20Jobs%20Regulations_arabic.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/regulationsandrulesinksu', issuer: 'edu_jobs' },
+  { id: 18, title: 'لائحة الوظائف الصحية', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/2025-07/Health%20Jobs%20Regulation_arabic.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/regulationsandrulesinksu', issuer: 'health_jobs' },
+  { id: 19, title: 'اللائحة المنظمة لشؤون منسوبي الجامعات السعوديين من أعضاء هيئة التدريس ومن في حكمهم', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/2025-07/Saudi%20Faculties%20members%20Regulations%20and%20rules.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/regulationsandrulesinksu', issuer: 'uni_system' },
+  { id: 20, title: 'لائحة توظيف غير السعوديين في الجامعات', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/2025-07/University%20Employment%20Regulations%20for%20Non-Saudi.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/regulationsandrulesinksu', issuer: 'uni_system' },
+  { id: 21, title: 'ضوابط ولوائح التدريب', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/2025-07/training%20Regulations%20and%20rules.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/regulationsandrulesinksu', issuer: 'ksu' },
+  { id: 22, title: 'نظام الجامعات', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/2025-07/Universties%20Rules.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/regulationsandrulesinksu', issuer: 'uni_system' },
+  { id: 23, title: 'القواعد المنظمة لبرنامج الإشراف الخارجي', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/2025-07/External%20Joint%20Supervision%20Program%20regulations.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/regulationsandrulesinksu', issuer: 'ksu' },
+  { id: 24, title: 'لائحة الابتعاث والتدريب لمنسوبي الجامعات', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/2025-07/Scholarship%20and%20training%20regulations%20for%20University%20members.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/regulationsandrulesinksu', issuer: 'uni_system' },
+  { id: 25, title: 'نظام الجامعات الطبعة الاولى', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/2025-07/Universities%20Rules%20First%20Version.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/regulationsandrulesinksu', issuer: 'uni_system' },
+  { id: 26, title: 'اللائحة التنفيذية للموارد البشرية', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/2025-07/implementing%20regulation%20for%20human%20resources%20in%20civil%20service.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/regulationsandrulesinksu', issuer: 'civil_service' },
+  { id: 27, title: 'لائحة تفويض الصلاحيات', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/1.docx', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff', issuer: 'ksu' },
+  { id: 28, title: 'لائحة توظيف غير السعوديين', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/2.doc', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff', issuer: 'civil_service' },
+  { id: 29, title: 'لائحة انتهاء الخدمة', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/3.doc', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff', issuer: 'civil_service' },
+  { id: 30, title: 'لائحة الوظائف الصحية', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/4.doc', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff', issuer: 'health_jobs' },
+  { id: 31, title: 'لائحة الوظائف التعليمية', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/5.doc', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff', issuer: 'edu_jobs' },
+  { id: 32, title: 'لائحة الواجبات الوظيفية', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/6.doc', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff', issuer: 'civil_service' },
+  { id: 33, title: 'لائحة المعينين على بند الاجور', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/7.doc', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff', issuer: 'civil_service' },
+  { id: 34, title: 'قواعد اثبات العجز الصحي عن العمل', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/8.docx', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff', issuer: 'civil_service' },
+  { id: 35, title: 'لائحة النقل', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/9.docx', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff', issuer: 'civil_service' },
+  { id: 36, title: 'لائحة تقارير منح الاجازات المرضية', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/10.docx', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff', issuer: 'civil_service' },
+  { id: 37, title: 'لائحة المستخدمين', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/11.doc', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff', issuer: 'civil_service' },
+  { id: 38, title: 'لائحة التكليف', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/12.doc', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff', issuer: 'civil_service' },
+  { id: 39, title: 'لائحة التعيين في الوظائف العامة', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/13.doc', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff', issuer: 'civil_service' },
+  { id: 40, title: 'لائحة الترقيات', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/14.doc', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff', issuer: 'civil_service' },
+  { id: 41, title: 'لائحة الإعارة', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/15.doc', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff', issuer: 'civil_service' },
+  { id: 42, title: 'لائحة تقويم الأداء الوظيفي', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/16.doc', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff', issuer: 'civil_service' },
+  { id: 43, title: 'نظام الخدمة المدنية وسلم الرواتب', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/17.doc', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff', issuer: 'civil_service' },
+  { id: 44, title: 'تنظيم علاج موظفي الدولة المنتدبين إلى الخارج', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/18.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff', issuer: 'govt_general' },
+  { id: 45, title: 'قواعد تعيين الموظفين الذين يفصلون بطريقة غير نظامية', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/19.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff', issuer: 'civil_service' },
+  { id: 46, title: 'لائحة اللياقة الصحية لشغل الوظيفة العامة', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/20.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff', issuer: 'civil_service' },
+  { id: 47, title: 'نظام العمل بالمملكة العربية السعودية', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/21.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff', issuer: 'labor_law' },
+  { id: 48, title: 'مرشد الموظف الجديد', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/22.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff', issuer: 'ksu' },
+  { id: 49, title: 'لائحة الاجازات', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/23.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff', issuer: 'civil_service' },
+  { id: 50, title: 'لائحة ادارة الممتلكات الجامعية', url: 'https://dfpa.ksu.edu.sa/sites/dfpa.ksu.edu.sa/files/imce_images/24.pdf', source: 'dfpa', source_page: 'dfpa.ksu.edu.sa/ar/lists-staff', issuer: 'ksu' },
+  { id: 51, title: 'لائحة الايفاد والابتعاث', url: 'https://sa.ksu.edu.sa/sites/sa.ksu.edu.sa/files/imce_images/%D9%84%D8%A7%D8%A6%D8%AD%D8%A9%20%D8%A7%D9%84%D8%A7%D9%8A%D9%81%D8%A7%D8%AF%20%D9%88%D8%A7%D9%84%D8%A7%D8%A8%D8%AA%D8%B9%D8%A7%D8%AB.pdf', source: 'sa', source_page: 'sa.ksu.edu.sa/ar/node/3127', issuer: 'higher_edu' },
+  { id: 52, title: 'اللائحة التنظيمية لبعثات التعليم العالي', url: 'https://sa.ksu.edu.sa/sites/sa.ksu.edu.sa/files/imce_images/%D8%A7%D9%84%D9%84%D8%A7%D8%A6%D8%AD%D8%A9%20%D8%A7%D9%84%D8%AA%D9%86%D8%B8%D9%8A%D9%85%D9%8A%D8%A9%20%D9%84%D8%A8%D8%B9%D8%AB%D8%A7%D8%AA%20%D8%A7%D9%84%D8%AA%D8%B9%D9%84%D9%8A%D9%85%20%D8%A7%D9%84%D8%B9%D8%A7%D9%84%D9%8A.pdf', source: 'sa', source_page: 'sa.ksu.edu.sa/ar/node/3127', issuer: 'higher_edu' },
+  { id: 53, title: 'لائحة التأديب بالميثاق', url: 'https://sa.ksu.edu.sa/sites/sa.ksu.edu.sa/files/imce_images/%D9%84%D8%A7%D8%A6%D8%AD%D8%A9%20%D8%A7%D9%84%D8%AA%D8%A7%D8%AF%D9%8A%D8%A8%20%D8%A8%D8%A7%D9%84%D9%85%D9%8A%D8%AB%D8%A7%D9%82.pdf', source: 'sa', source_page: 'sa.ksu.edu.sa/ar/node/3127', issuer: 'higher_edu' },
+  { id: 54, title: 'نظام مجلس التعليم العالي والجامعات', url: 'https://sa.ksu.edu.sa/sites/sa.ksu.edu.sa/files/imce_images/%D9%86%D8%B8%D8%A7%D9%85%20%D9%85%D8%AC%D9%84%D8%B3%20%D8%A7%D9%84%D8%AA%D8%B9%D9%84%D9%8A%D9%85%20%D8%A7%D9%84%D8%B9%D8%A7%D9%84%D9%8A%20%D9%88%D8%A7%D9%84%D8%AC%D8%A7%D9%85%D8%B9%D8%A7%D8%AA.pdf', source: 'sa', source_page: 'sa.ksu.edu.sa/ar/node/3127', issuer: 'higher_edu' },
+  { id: 55, title: 'القواعد التنفيذية لنظام الجامعات- الطبعة الأولى', url: 'https://dar.ksu.edu.sa/sites/dar.ksu.edu.sa/files/2024-10/%D8%A7%D9%84%D9%82%D9%88%D8%A7%D8%B9%D8%AF%20%D8%A7%D9%84%D8%AA%D9%86%D9%81%D9%8A%D8%B0%D9%8A%D8%A9%20%D9%84%D9%86%D8%B8%D8%A7%D9%85%20%D8%A7%D9%84%D8%AC%D8%A7%D9%85%D8%B9%D8%A7%D8%AA-%20%D8%A7%D9%84%D8%B7%D8%A8%D8%B9%D8%A9%20%D8%A7%D9%84%D8%A3%D9%88%D9%84%D9%89.pdf', source: 'dar', source_page: 'dar.ksu.edu.sa/ar/node/4260', issuer: 'uni_system' },
+  { id: 56, title: 'اللائحة التنظيمية للتعليم الالكتروني والتعليم عن بُعد في الجامعات', url: 'https://dar.ksu.edu.sa/sites/dar.ksu.edu.sa/files/2024-10/%D8%A7%D9%84%D9%84%D8%A7%D8%A6%D8%AD%D8%A9%20%D8%A7%D9%84%D8%AA%D9%86%D8%B8%D9%8A%D9%85%D9%8A%D8%A9%20%D9%84%D9%84%D8%AA%D8%B9%D9%84%D9%8A%D9%85%20%D8%A7%D9%84%D8%A7%D9%84%D9%83%D8%AA%D8%B1%D9%88%D9%86%D9%8A.pdf', source: 'dar', source_page: 'dar.ksu.edu.sa/ar/node/4260', issuer: 'higher_edu' },
+  { id: 57, title: 'اللائحة الموحدة للدراسات العليا في الجامعات', url: 'https://dar.ksu.edu.sa/sites/dar.ksu.edu.sa/files/2024-10/%D8%A7%D9%84%D9%84%D8%A7%D8%A6%D8%AD%D8%A9%20%D8%A7%D9%84%D9%85%D9%88%D8%AD%D8%AF%D8%A9%20%D9%84%D9%84%D8%AF%D8%B1%D8%A7%D8%B3%D8%A7%D8%AA%20%D8%A7%D9%84%D8%B9%D9%84%D9%8A%D8%A7%20%D9%81%D9%8A%20%D8%A7%D9%84%D8%AC%D8%A7%D9%85%D8%B9%D8%A7%D8%AA.pdf', source: 'dar', source_page: 'dar.ksu.edu.sa/ar/node/4260', issuer: 'higher_edu' },
+  { id: 58, title: 'اللائحة الموحدة للدراسة والاختبارات للمرحلة الجامعية في الجامعات', url: 'https://dar.ksu.edu.sa/sites/dar.ksu.edu.sa/files/2024-10/%D8%A7%D9%84%D9%84%D8%A7%D8%A6%D8%AD%D8%A9%20%D8%A7%D9%84%D9%85%D9%88%D8%AD%D8%AF%D8%A9%20%D9%84%D9%84%D8%AF%D8%B1%D8%A7%D8%B3%D8%A9%20%D9%88%D8%A7%D9%84%D8%A7%D8%AE%D8%AA%D8%A8%D8%A7%D8%B1%D8%A7%D8%AA%20%D9%84%D9%84%D9%85%D8%B1%D8%AD%D9%84%D8%A9%20%D8%A7%D9%84%D8%AC%D8%A7%D9%85%D8%B9%D9%8A%D8%A9.pdf', source: 'dar', source_page: 'dar.ksu.edu.sa/ar/node/4260', issuer: 'higher_edu' },
+  { id: 59, title: 'لائحة المستودعات و المشتريات الحكومية', url: 'https://ps.ksu.edu.sa/sites/ps.ksu.edu.sa/files/imce_images/%D9%84%D8%A7%D8%A6%D8%AD%D8%A9%20%D8%A7%D9%84%D9%85%D8%B3%D8%AA%D9%88%D8%AF%D8%B9%D8%A7%D8%AA%20%D9%88%20%D8%A7%D9%84%D9%85%D8%B4%D8%AA%D8%B1%D9%8A%D8%A7%D8%AA%20%D8%A7%D9%84%D8%AD%D9%83%D9%88%D9%85%D9%8A%D8%A9.pdf', source: 'ps', source_page: 'ps.ksu.edu.sa/ar/node/921', issuer: 'procurement' },
+  { id: 60, title: 'نظام المنافسات والمشتريات الحكومية', url: 'https://ps.ksu.edu.sa/sites/ps.ksu.edu.sa/files/imce_images/%D9%86%D8%B8%D8%A7%D9%85%20%D8%A7%D9%84%D9%85%D9%86%D8%A7%D9%81%D8%B3%D8%A7%D8%AA%20%D9%88%D8%A7%D9%84%D9%85%D8%B4%D8%AA%D8%B1%D9%8A%D8%A7%D8%AA%20%D8%A7%D9%84%D8%AD%D9%83%D9%88%D9%85%D9%8A%D8%A9.pdf', source: 'ps', source_page: 'ps.ksu.edu.sa/ar/node/921', issuer: 'procurement' },
+  { id: 61, title: 'سياسة الشراء', url: 'https://ps.ksu.edu.sa/sites/ps.ksu.edu.sa/files/2024-10/%D8%B3%D9%8A%D8%A7%D8%B3%D8%A9%20%D8%A7%D9%84%D8%B4%D8%B1%D8%A7%D8%A1.pdf', source: 'ps', source_page: 'ps.ksu.edu.sa/ar/node/921', issuer: 'ksu' },
+  { id: 62, title: 'اجراءات العمل بادارة المشتريات', url: 'https://ps.ksu.edu.sa/sites/ps.ksu.edu.sa/files/2024-10/%D8%A7%D8%AC%D8%B1%D8%A7%D8%A1%D8%A7%D8%AA%20%D8%A7%D9%84%D8%B9%D9%85%D9%84%20%D8%A8%D8%A7%D8%AF%D8%A7%D8%B1%D8%A9%20%D8%A7%D9%84%D9%85%D8%B4%D8%AA%D8%B1%D9%8A%D8%A7%D8%AA.pdf', source: 'ps', source_page: 'ps.ksu.edu.sa/ar/node/921', issuer: 'ksu' },
+  { id: 63, title: 'اللائحة التنفيذية لنظام المنافسات والمشتريات الحكومية', url: 'https://ps.ksu.edu.sa/sites/ps.ksu.edu.sa/files/2024-10/%D8%A7%D9%84%D9%84%D8%A7%D8%A6%D8%AD%D8%A9%20%D8%A7%D9%84%D8%AA%D9%86%D9%81%D9%8A%D8%B0%D9%8A%D8%A9%20%D9%84%D9%86%D8%B8%D8%A7%D9%85%20%D8%A7%D9%84%D9%85%D9%86%D8%A7%D9%81%D8%B3%D8%A7%D8%AA%20%D9%88%D8%A7%D9%84%D9%85%D8%B4%D8%AA%D8%B1%D9%8A%D8%A7%D8%AA%20%D8%A7%D9%84%D8%AD%D9%83%D9%88%D9%85%D9%8A%D8%A9.pdf', source: 'ps', source_page: 'ps.ksu.edu.sa/ar/node/921', issuer: 'procurement' },
+  { id: 64, title: 'دليل اجراءات نظام المنافسات والمشتريات الحكومية', url: 'https://ps.ksu.edu.sa/sites/ps.ksu.edu.sa/files/2024-10/%D8%AF%D9%84%D9%8A%D9%84%20%D8%A7%D8%AC%D8%B1%D8%A7%D8%A1%D8%A7%D8%AA%20%D9%86%D8%B8%D8%A7%D9%85%20%D8%A7%D9%84%D9%85%D9%86%D8%A7%D9%81%D8%B3%D8%A7%D8%AA%20%D9%88%D8%A7%D9%84%D9%85%D8%B4%D8%AA%D8%B1%D9%8A%D8%A7%D8%AA%20%D8%A7%D9%84%D8%AD%D9%83%D9%88%D9%85%D9%8A%D8%A9.pdf', source: 'ps', source_page: 'ps.ksu.edu.sa/ar/node/921', issuer: 'procurement' },
+  { id: 65, title: 'لائحة الإسكان', url: 'https://housing.ksu.edu.sa/sites/housing.ksu.edu.sa/files/2024-04/6-%D9%84%D8%A7%D8%A6%D8%AD%D8%A9%20%D8%A7%D9%84%D8%A5%D8%B3%D9%83%D8%A7%D9%86.pdf', source: 'housing', source_page: 'housing.ksu.edu.sa/ar/node/916', issuer: 'ksu' },
+  { id: 66, title: 'لائحة الكراسي البحثية بجامعة الملك سعود', url: 'https://chairs.ksu.edu.sa/sites/chairs.ksu.edu.sa/files/2023-10/%D9%84%D8%A7%D8%A6%D8%AD%D8%A9%20%D8%A7%D9%84%D9%83%D8%B1%D8%A7%D8%B3%D9%8A%20%D8%A7%D9%84%D8%A8%D8%AD%D8%AB%D9%8A%D8%A9%20%D8%A8%D8%AC%D8%A7%D9%85%D8%B9%D8%A9%20%D8%A7%D9%84%D9%85%D9%84%D9%83%20%D8%B3%D8%B9%D9%88%D8%AF.pdf', source: 'chairs', source_page: 'chairs.ksu.edu.sa/ar/node/893', issuer: 'ksu' },
+  { id: 67, title: 'نموذج طلب إنشاء كرسي بحثي', url: 'https://chairs.ksu.edu.sa/sites/chairs.ksu.edu.sa/files/2023-10/%D9%86%D9%85%D9%88%D8%B0%D8%AC%20%D8%B7%D9%84%D8%A8%20%D8%A5%D9%86%D8%B4%D8%A7%D8%A1%20%D9%83%D8%B1%D8%B3%D9%8A%20%D8%A8%D8%AD%D8%AB%D9%8A.pdf', source: 'chairs', source_page: 'chairs.ksu.edu.sa/ar/node/893', issuer: 'ksu' },
+  { id: 68, title: 'الدليل الإرشادي للكراسي البحثية في جامعة الملك سعود', url: 'https://chairs.ksu.edu.sa/sites/chairs.ksu.edu.sa/files/2023-10/%D8%A7%D9%84%D8%AF%D9%84%D9%8A%D9%84%20%D8%A7%D9%84%D8%A5%D8%B1%D8%B4%D8%A7%D8%AF%D9%8A%20%D9%84%D9%84%D9%83%D8%B1%D8%A7%D8%B3%D9%8A%20%D8%A7%D9%84%D8%A8%D8%AD%D8%AB%D9%8A%D8%A9.pdf', source: 'chairs', source_page: 'chairs.ksu.edu.sa/ar/node/893', issuer: 'ksu' },
 ]
 
 const KSU_LOGO = 'https://ksu.edu.sa/ksu_logo.png'
@@ -212,18 +226,22 @@ function Breadcrumb() {
   )
 }
 
-function SourceFilterDropdown({
-  selectedSource,
-  setSelectedSource,
+function FilterDropdown({
+  selected,
+  setSelected,
   isOpen,
   setIsOpen,
+  labels,
+  allLabel,
 }: {
-  selectedSource: string
-  setSelectedSource: (s: string) => void
+  selected: string
+  setSelected: (s: string) => void
   isOpen: boolean
   setIsOpen: (b: boolean) => void
+  labels: Record<string, string>
+  allLabel: string
 }) {
-  const sources = Object.entries(SOURCE_LABELS)
+  const entries = Object.entries(labels)
 
   return (
     <div className="relative">
@@ -232,21 +250,21 @@ function SourceFilterDropdown({
         className="w-full flex items-center justify-between bg-white border border-gray-300 rounded-lg px-4 py-3 text-sm text-gray-700 hover:border-emerald-400 transition-colors"
       >
         <ChevronDown className={`h-4 w-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-        <span>{selectedSource ? SOURCE_LABELS[selectedSource] : 'جميع الجهات'}</span>
+        <span>{selected ? labels[selected] : allLabel}</span>
       </button>
       {isOpen && (
         <div className="absolute top-full right-0 left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 max-h-64 overflow-auto">
           <button
-            onClick={() => { setSelectedSource(''); setIsOpen(false) }}
-            className={`block w-full text-right px-4 py-2.5 text-sm hover:bg-emerald-50 ${!selectedSource ? 'bg-emerald-50 text-emerald-800 font-medium' : 'text-gray-700'}`}
+            onClick={() => { setSelected(''); setIsOpen(false) }}
+            className={`block w-full text-right px-4 py-2.5 text-sm hover:bg-emerald-50 ${!selected ? 'bg-emerald-50 text-emerald-800 font-medium' : 'text-gray-700'}`}
           >
-            جميع الجهات
+            {allLabel}
           </button>
-          {sources.map(([key, label]) => (
+          {entries.map(([key, label]) => (
             <button
               key={key}
-              onClick={() => { setSelectedSource(key); setIsOpen(false) }}
-              className={`block w-full text-right px-4 py-2.5 text-sm hover:bg-emerald-50 ${selectedSource === key ? 'bg-emerald-50 text-emerald-800 font-medium' : 'text-gray-700'}`}
+              onClick={() => { setSelected(key); setIsOpen(false) }}
+              className={`block w-full text-right px-4 py-2.5 text-sm hover:bg-emerald-50 ${selected === key ? 'bg-emerald-50 text-emerald-800 font-medium' : 'text-gray-700'}`}
             >
               {label}
             </button>
@@ -269,6 +287,9 @@ function RegulationCard({ doc }: { doc: RegulationDoc }) {
             {doc.title}
           </h3>
           <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-xs font-medium">
+              {ISSUER_LABELS[doc.issuer]}
+            </span>
             <span className="inline-flex items-center bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full text-xs font-medium">
               {SOURCE_LABELS[doc.source]}
             </span>
@@ -309,7 +330,9 @@ function RegulationCard({ doc }: { doc: RegulationDoc }) {
 function RegulationsPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedSource, setSelectedSource] = useState('')
+  const [selectedIssuer, setSelectedIssuer] = useState('')
   const [dropdownOpen, setDropdownOpen] = useState(false)
+  const [issuerDropdownOpen, setIssuerDropdownOpen] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const ITEMS_PER_PAGE = 12
 
@@ -317,9 +340,10 @@ function RegulationsPage() {
     return ALL_DOCS.filter((doc) => {
       const matchesSearch = !searchQuery || doc.title.includes(searchQuery)
       const matchesSource = !selectedSource || doc.source === selectedSource
-      return matchesSearch && matchesSource
+      const matchesIssuer = !selectedIssuer || doc.issuer === selectedIssuer
+      return matchesSearch && matchesSource && matchesIssuer
     })
-  }, [searchQuery, selectedSource])
+  }, [searchQuery, selectedSource, selectedIssuer])
 
   const totalPages = Math.ceil(filteredDocs.length / ITEMS_PER_PAGE)
   const paginatedDocs = filteredDocs.slice(
@@ -330,10 +354,11 @@ function RegulationsPage() {
   const clearFilters = () => {
     setSearchQuery('')
     setSelectedSource('')
+    setSelectedIssuer('')
     setCurrentPage(1)
   }
 
-  const hasActiveFilters = searchQuery || selectedSource
+  const hasActiveFilters = searchQuery || selectedSource || selectedIssuer
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -361,7 +386,7 @@ function RegulationsPage() {
       <div className="bg-white border-b border-gray-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 py-5">
           <div className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-            <div className="md:col-span-6">
+            <div className="md:col-span-4">
               <label className="block text-sm font-medium text-gray-700 mb-1.5">العنوان</label>
               <div className="relative">
                 <input
@@ -374,13 +399,26 @@ function RegulationsPage() {
                 <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
               </div>
             </div>
-            <div className="md:col-span-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">الجهة</label>
-              <SourceFilterDropdown
-                selectedSource={selectedSource}
-                setSelectedSource={(s) => { setSelectedSource(s); setCurrentPage(1) }}
+            <div className="md:col-span-3">
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">الجهة المصدرة</label>
+              <FilterDropdown
+                selected={selectedIssuer}
+                setSelected={(s) => { setSelectedIssuer(s); setCurrentPage(1) }}
+                isOpen={issuerDropdownOpen}
+                setIsOpen={(b) => { setIssuerDropdownOpen(b); if (b) setDropdownOpen(false) }}
+                labels={ISSUER_LABELS}
+                allLabel="جميع الجهات المصدرة"
+              />
+            </div>
+            <div className="md:col-span-3">
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">القسم بالجامعة</label>
+              <FilterDropdown
+                selected={selectedSource}
+                setSelected={(s) => { setSelectedSource(s); setCurrentPage(1) }}
                 isOpen={dropdownOpen}
-                setIsOpen={setDropdownOpen}
+                setIsOpen={(b) => { setDropdownOpen(b); if (b) setIssuerDropdownOpen(false) }}
+                labels={SOURCE_LABELS}
+                allLabel="جميع الأقسام"
               />
             </div>
             <div className="md:col-span-2">
