@@ -344,7 +344,7 @@ function RegulationsPage() {
         <div className="max-w-7xl mx-auto px-4">
           <h1 className="text-3xl font-bold mb-2">اللوائح والأنظمة</h1>
           <p className="text-emerald-100 text-base">
-            كافة الوثائق واللوائح والأنظمة الرسمية لجامعة الملك سعود، إضافةً إلى المواد ذات الصلة أو الأهمية لمنسوبي الجامعة.
+            جميع الوثائق واللوائح والأنظمة الرسمية لجامعة الملك سعود
           </p>
           <div className="mt-4 flex items-center gap-4 text-emerald-200 text-sm">
             <span className="flex items-center gap-1">
@@ -509,7 +509,7 @@ function HomePage({ setCurrentPage }: { setCurrentPage: (p: string) => void }) {
               <div>
                 <h2 className="text-2xl font-bold mb-3">اللوائح والأنظمة</h2>
                 <p className="text-emerald-100 text-base leading-7">
-                  تصفح كافة الوثائق واللوائح والأنظمة الرسمية لجامعة الملك سعود، إضافةً إلى المواد ذات الصلة أو الأهمية لمنسوبي الجامعة.
+                  تصفح جميع الوثائق واللوائح والأنظمة الرسمية لجامعة الملك سعود من مختلف الجهات والعمادات.
                   تضم المكتبة {ALL_DOCS.length} وثيقة من {Object.keys(SOURCE_LABELS).length} جهات مختلفة.
                 </p>
               </div>
