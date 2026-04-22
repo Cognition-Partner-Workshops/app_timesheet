@@ -60,6 +60,8 @@ const ProjectsPage: React.FC = () => {
     status: 'active' as 'active' | 'completed' | 'on-hold',
   });
   const [error, setError] = useState('');
+  const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [filterClientId, setFilterClientId] = useState<number>(0);
 
   const queryClient = useQueryClient();
 
@@ -110,8 +112,14 @@ const ProjectsPage: React.FC = () => {
     },
   });
 
-  const projects = projectsData?.projects || [];
+  const allProjects = projectsData?.projects || [];
   const clients = clientsData?.clients || [];
+
+  const projects = allProjects.filter((project: Project) => {
+    if (filterStatus !== 'all' && project.status !== filterStatus) return false;
+    if (filterClientId !== 0 && project.client_id !== filterClientId) return false;
+    return true;
+  });
 
   const handleOpen = (project?: Project) => {
     if (project) {
@@ -215,6 +223,39 @@ const ProjectsPage: React.FC = () => {
           <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
             {error}
           </Alert>
+        )}
+
+        {clients.length > 0 && (
+          <Box display="flex" gap={2} mb={2}>
+            <FormControl size="small" sx={{ minWidth: 160 }}>
+              <InputLabel>Status</InputLabel>
+              <Select
+                value={filterStatus}
+                label="Status"
+                onChange={(e) => setFilterStatus(e.target.value)}
+              >
+                <MenuItem value="all">All Statuses</MenuItem>
+                <MenuItem value="active">Active</MenuItem>
+                <MenuItem value="completed">Completed</MenuItem>
+                <MenuItem value="on-hold">On Hold</MenuItem>
+              </Select>
+            </FormControl>
+            <FormControl size="small" sx={{ minWidth: 160 }}>
+              <InputLabel>Client</InputLabel>
+              <Select
+                value={filterClientId}
+                label="Client"
+                onChange={(e) => setFilterClientId(Number(e.target.value))}
+              >
+                <MenuItem value={0}>All Clients</MenuItem>
+                {clients.map((client: { id: number; name: string }) => (
+                  <MenuItem key={client.id} value={client.id}>
+                    {client.name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
         )}
 
         {clients.length === 0 ? (
