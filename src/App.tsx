@@ -7,7 +7,8 @@ import {
 } from 'recharts'
 import {
   GraduationCap, Users, BookOpen, Award, TrendingUp, Building2,
-  Globe, FlaskConical, ChevronDown, ChevronUp, BarChart3, Target
+  Globe, FlaskConical, ChevronDown, ChevronUp, BarChart3, Target,
+  Search, UserCheck
 } from 'lucide-react'
 
 const KSU_GREEN = '#006747'
@@ -73,6 +74,101 @@ const partnershipData = [
   { year: '2025', industry: 34, academic: 30, international: 24 },
 ]
 
+interface FacultyMember {
+  name: string
+  rank: string
+  office?: string
+  tel?: string
+  url?: string
+}
+
+const facultyMembers: FacultyMember[] = [
+  { name: 'Prof. Dr. Abdulrahman Mirza', rank: 'Professor', office: '31|2099', tel: '4676606', url: 'http://faculty.ksu.edu.sa/amirza' },
+  { name: 'Prof. Dr. Ahmed Al Sanad', rank: 'Professor', office: '31|2043', tel: '4676606', url: 'http://fac.ksu.edu.sa/aasanad' },
+  { name: 'Prof. Dr. Alaaedin Mokhtar', rank: 'Professor', office: '31|2034', tel: '4676591', url: 'http://faculty.ksu.edu.sa/ahafez' },
+  { name: 'Prof. Dr. Hmood Al-Dossari', rank: 'Professor', office: '31|2052', tel: '4697333', url: 'http://fac.ksu.edu.sa/hzaldossari' },
+  { name: 'Prof. Dr. Hussam Ramadhan', rank: 'Professor', office: '31|2111', tel: '4696195', url: 'http://faculty.ksu.edu.sa/hussam' },
+  { name: 'Prof. Dr. Jawad A Berri', rank: 'Professor', office: '31|2028', tel: '4676750', url: 'https://staff.ksu.edu.sa/jberri/' },
+  { name: 'Prof. Dr. Majed AlSaud', rank: 'Professor', office: '31|2019', tel: '4676605', url: 'http://faculty.ksu.edu.sa/8977' },
+  { name: 'Prof. Dr. Mehmet Sabih Aksoy', rank: 'Professor', office: '31|2108', tel: '4677697', url: 'http://faculty.ksu.edu.sa/msaksoy/home' },
+  { name: 'Prof. Dr. Mohammad Mehedi Hassan', rank: 'Professor', office: '31|2098', tel: '4695202' },
+  { name: 'Prof. Dr. Murad Ykhlef', rank: 'Professor', office: '31|2035', tel: '4675188', url: 'http://fac.ksu.edu.sa/ykhlef' },
+  { name: 'Prof. Dr. Sultan AlYahya', rank: 'Professor', office: '31|2031', tel: '4676583', url: 'http://fac.ksu.edu.sa/sualyahya/home' },
+  { name: 'Dr. Ahmed AlTurki', rank: 'Associate Professor', office: '31|2038', url: 'http://fac.ksu.edu.sa/ahmalturki' },
+  { name: 'Dr. AlMetwally Mostafa', rank: 'Associate Professor', office: '31|2054', tel: '4696192', url: 'http://fac.ksu.edu.sa/almetwaly/home' },
+  { name: 'Dr. Amerah Abdulrahman Alobrah', rank: 'Associate Professor', office: '06|T028', tel: '8056841' },
+  { name: 'Dr. Areej A. Alhogail', rank: 'Associate Professor', office: '06|108', tel: '8055515', url: 'https://faculty.ksu.edu.sa/Aalhogail/' },
+  { name: 'Dr. Bader Al Khamis', rank: 'Associate Professor', office: '31|2152', tel: '4696315', url: 'http://fac.ksu.edu.sa/balkhamees' },
+  { name: 'Dr. Hessah AlSalamah', rank: 'Associate Professor', office: '06|T011', tel: '8052668', url: 'http://fac.ksu.edu.sa/halsalamah' },
+  { name: 'Dr. Mohammed AlNuem', rank: 'Associate Professor', office: '31|2101', tel: '4676394', url: 'http://faculty.ksu.edu.sa/malnuem' },
+  { name: 'Dr. Shada AlSalamah', rank: 'Associate Professor', office: '06|6B96', tel: '8056547', url: 'http://fac.ksu.edu.sa/saalsalamah' },
+  { name: 'Dr. AbdulAziz Saleh AlAjaji', rank: 'Assistant Professor' },
+  { name: 'Dr. AbdulAziz Saleh AlMaslukh', rank: 'Assistant Professor', office: '31|2030' },
+  { name: 'Dr. Abdulrhman A. Bin Rabiah', rank: 'Assistant Professor', url: 'http://fac.ksu.edu.sa/abalrabiah' },
+  { name: 'Dr. Abdulrahman AlOthaim', rank: 'Assistant Professor', office: '31|2026', tel: '4695203', url: 'http://fac.ksu.edu.sa/othaim' },
+  { name: 'Dr. Abdulrahman AlShareef', rank: 'Assistant Professor' },
+  { name: 'Dr. Abdulsalam AlSunaidi', rank: 'Assistant Professor' },
+  { name: 'Dr. Ahmed Abdullah Alhamed', rank: 'Assistant Professor', office: '31|2038', tel: '4676605', url: 'https://portal.ksu.edu.sa/aalhamed' },
+  { name: 'Dr. Amal Abdulrahman Alazba', rank: 'Assistant Professor' },
+  { name: 'Dr. Areej AlOkaili', rank: 'Assistant Professor', office: '6T23', tel: '8052732', url: 'http://fac.ksu.edu.sa/aalokaili/home' },
+  { name: 'Dr. Arwa AlTameem', rank: 'Assistant Professor', office: '6T24', tel: '8055275', url: 'http://fac.ksu.edu.sa/araltameem/home' },
+  { name: 'Dr. Arwa AlRomih', rank: 'Assistant Professor' },
+  { name: 'Dr. Aseel AlTurki', rank: 'Assistant Professor', office: '6T66', tel: '8052672', url: 'http://fac.ksu.edu.sa/afalturki' },
+  { name: 'Dr. Faisal AlMisned', rank: 'Assistant Professor', office: '31|2030', url: 'http://fac.ksu.edu.sa/falmisned/home' },
+  { name: 'Dr. Hamad Abdulrahman AlSaleh', rank: 'Assistant Professor' },
+  { name: 'Dr. Mohammed AlRokayan', rank: 'Assistant Professor', office: '31|2038', url: 'http://fac.ksu.edu.sa/malrokayan' },
+  { name: 'Dr. Mohammed Basil AlMukaynizi', rank: 'Assistant Professor', url: 'https://fac.ksu.edu.sa/malmukaynizi/' },
+  { name: 'Dr. Muhammad Shoaib', rank: 'Assistant Professor', office: '31|2042', tel: '4698722', url: 'https://fac.ksu.edu.sa/muhshoaib/home' },
+  { name: 'Dr. Nasser Ibrahim Al-Lheeib', rank: 'Assistant Professor', url: 'https://fac.ksu.edu.sa/nallheeib/' },
+  { name: 'Dr. Nouf AlDreas', rank: 'Assistant Professor', office: '6T53', url: 'https://faculty.ksu.edu.sa/ar/nmaldrees' },
+  { name: 'Dr. Ohoud AlYemni', rank: 'Assistant Professor', office: '6S6', tel: '8052753' },
+  { name: 'Dr. Omar AlRwais', rank: 'Assistant Professor', office: '31|2080', tel: '4697412', url: 'http://fac.ksu.edu.sa/oalrwais' },
+  { name: 'Dr. Rana Abaalkhail', rank: 'Assistant Professor', office: '06|T39', tel: '8059025', url: 'https://fac.ksu.edu.sa/rabaalkhail/' },
+  { name: 'Dr. Saad Saleh Al-Aboodi', rank: 'Assistant Professor', office: '31|2025', tel: '4695201', url: 'http://fac.ksu.edu.sa/salaboodi' },
+  { name: 'Dr. Sarah AlBassam', rank: 'Assistant Professor', office: '06|109', url: 'https://faculty.ksu.edu.sa/salbassam/' },
+  { name: 'Dr. Shatha AlTammami', rank: 'Assistant Professor' },
+  { name: 'Dr. Yazeed Ibrahim AlAbdulkarim', rank: 'Assistant Professor', office: '31|2101', url: 'https://faculty.ksu.edu.sa/yalabdulkarim/' },
+  { name: 'L. Abdallah AlNajim', rank: 'Lecturer' },
+  { name: 'L. Abdulaziz AlHadlag', rank: 'Lecturer' },
+  { name: 'L. Abdulrhman M. AlDkheel', rank: 'Lecturer' },
+  { name: 'L. Afnan AlSadhan', rank: 'Lecturer', office: '6S6', tel: '8052589', url: 'http://faculty.ksu.edu.sa/aalsadhan' },
+  { name: 'L. Aseel AlDabjan', rank: 'Lecturer', url: 'https://faculty.ksu.edu.sa/ar/aaldabjan' },
+  { name: 'L. Ashraf Youssef', rank: 'Lecturer', office: '31|2118', url: 'http://fac.ksu.edu.sa/ashraf' },
+  { name: 'L. Bodoor AlFares', rank: 'Lecturer', office: '6T66', tel: '8052960', url: 'http://fac.ksu.edu.sa/balfares/home' },
+  { name: 'L. Gamal Al-Sayed', rank: 'Lecturer', office: '31|2155', tel: '4675964', url: 'http://faculty.ksu.edu.sa/Gamal' },
+  { name: 'L. Hussain Ali Hazazi', rank: 'Lecturer' },
+  { name: 'L. Lubna Yousef AlKhalil', rank: 'Lecturer', office: '6S31', tel: '8058689', url: 'https://faculty.ksu.edu.sa/ar/lalkhalil' },
+  { name: 'L. Maram Ahmad AlAmri', rank: 'Lecturer', office: '6T90', tel: '8058462', url: 'https://fac.ksu.edu.sa/maalamri/home' },
+  { name: 'L. Meshal Nasser Binnasban', rank: 'Lecturer', office: '31|63' },
+  { name: 'L. Monirah Abdullah AlAjlan', rank: 'Lecturer', office: '6S6', tel: '8052590', url: 'https://faculty.ksu.edu.sa/ar/maalajlan' },
+  { name: 'L. Mourad Benchikh', rank: 'Lecturer', office: '31|2118', url: 'http://faculty.ksu.edu.sa/benchikhm' },
+  { name: 'L. Nora Ibrahim AlAqeel', rank: 'Lecturer', office: '6S13', tel: '8051336', url: 'http://fac.ksu.edu.sa/nialaqeel/home' },
+  { name: 'L. Nourah AlQahtani', rank: 'Lecturer', office: '6T52', tel: '8055079', url: 'https://faculty.ksu.edu.sa/en/noalqahtani' },
+  { name: 'L. Tahani AlManie', rank: 'Lecturer' },
+  { name: 'L. Yasser Ali Reyad Ali', rank: 'Lecturer', office: '31|2080', tel: '4699526', url: 'http://fac.ksu.edu.sa/yasali/home' },
+  { name: 'TA. Abdullah Adel AlGhofaili', rank: 'Teaching Assistant' },
+  { name: 'TA. Areej AlAbduljabbar', rank: 'Teaching Assistant', office: '6S6', tel: '8052589', url: 'http://faculty.ksu.edu.sa/24872/default.aspx' },
+  { name: 'TA. Asma AlMutairi', rank: 'Teaching Assistant', office: '6S13' },
+  { name: 'TA. Asma AlZyadi', rank: 'Teaching Assistant', office: '6S11', url: 'https://faculty.ksu.edu.sa/ar/aalzyadi' },
+  { name: 'TA. Ghada AlRabeah', rank: 'Teaching Assistant' },
+  { name: 'TA. Ghada AlSebayel', rank: 'Teaching Assistant', office: '6S6' },
+  { name: 'TA. Ghayda AlRabeah', rank: 'Teaching Assistant' },
+  { name: 'TA. Maram AlSuhaibani', rank: 'Teaching Assistant', office: '6S21', url: 'https://faculty.ksu.edu.sa/ar/malsuhaibani' },
+  { name: 'TA. Reem AlRabeeah', rank: 'Teaching Assistant', office: '6T122', tel: '8058284', url: 'http://faculty.ksu.edu.sa/ralrabeeah/home' },
+  { name: 'TA. Waleed AlHarbi', rank: 'Teaching Assistant' },
+  { name: 'TA. Yazeed AlJarboa', rank: 'Teaching Assistant' },
+  { name: 'Mr. Fatoh Alqershi', rank: 'Researcher' },
+]
+
+const rankColors: Record<string, string> = {
+  'Professor': '#006747',
+  'Associate Professor': '#0098A6',
+  'Assistant Professor': '#C4972F',
+  'Lecturer': '#2E7D32',
+  'Teaching Assistant': '#FF8F00',
+  'Researcher': '#00695C',
+}
+
 interface StatCardProps {
   icon: React.ReactNode
   title: string
@@ -128,16 +224,28 @@ const milestones = [
   { year: '2025', event: 'Ranked among Top 150 IS departments globally by QS', icon: <Globe size={20} /> },
 ]
 
-type NavSection = 'overview' | 'enrollment' | 'faculty' | 'research' | 'graduation' | 'partnerships' | 'milestones'
+type NavSection = 'overview' | 'enrollment' | 'faculty' | 'faculty-directory' | 'research' | 'graduation' | 'partnerships' | 'milestones'
 
 function App() {
   const [activeSection, setActiveSection] = useState<NavSection>('overview')
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
+  const [facultySearch, setFacultySearch] = useState('')
+  const [selectedRank, setSelectedRank] = useState('All')
+
+  const filteredFaculty = facultyMembers.filter(member => {
+    const matchesSearch = member.name.toLowerCase().includes(facultySearch.toLowerCase())
+    const matchesRank = selectedRank === 'All' || member.rank === selectedRank
+    return matchesSearch && matchesRank
+  })
+
+  const ranks = ['All', 'Professor', 'Associate Professor', 'Assistant Professor', 'Lecturer', 'Teaching Assistant', 'Researcher']
+
   const navItems: { id: NavSection; label: string }[] = [
     { id: 'overview', label: 'Overview' },
     { id: 'enrollment', label: 'Enrollment' },
     { id: 'faculty', label: 'Faculty' },
+    { id: 'faculty-directory', label: 'Directory' },
     { id: 'research', label: 'Research' },
     { id: 'graduation', label: 'Graduates' },
     { id: 'partnerships', label: 'Partnerships' },
@@ -435,6 +543,99 @@ function App() {
           </div>
         </Section>
       </div>
+
+      {/* Faculty Directory Section */}
+      <Section id="faculty-directory" title="Faculty Directory" subtitle={`All ${facultyMembers.length} faculty and staff members of the IS department`}>
+        <div className="mb-8 flex flex-col sm:flex-row gap-4">
+          <div className="relative flex-1">
+            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search faculty by name..."
+              value={facultySearch}
+              onChange={e => setFacultySearch(e.target.value)}
+              className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm"
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {ranks.map(rank => (
+              <button
+                key={rank}
+                onClick={() => setSelectedRank(rank)}
+                className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                  selectedRank === rank
+                    ? 'text-white shadow-md'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+                style={selectedRank === rank ? { backgroundColor: rankColors[rank] || KSU_GREEN } : {}}
+              >
+                {rank} {rank !== 'All' ? `(${facultyMembers.filter(m => m.rank === rank).length})` : ''}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="mb-4 text-sm text-gray-500">
+          <UserCheck size={16} className="inline mr-1" />
+          Showing {filteredFaculty.length} of {facultyMembers.length} members
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredFaculty.map(member => (
+            <div
+              key={member.name}
+              className="bg-white rounded-xl border border-gray-100 p-5 shadow-sm hover:shadow-lg transition-all duration-300 hover:-translate-y-0.5"
+            >
+              <div className="flex items-start gap-3">
+                <div
+                  className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
+                  style={{ backgroundColor: rankColors[member.rank] || KSU_GREEN }}
+                >
+                  {member.name.split(' ').pop()?.charAt(0) || '?'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  {member.url ? (
+                    <a
+                      href={member.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-semibold text-sm hover:underline block truncate"
+                      style={{ color: KSU_GREEN }}
+                    >
+                      {member.name}
+                    </a>
+                  ) : (
+                    <p className="font-semibold text-sm text-gray-800 truncate">{member.name}</p>
+                  )}
+                  <span
+                    className="inline-block mt-1 text-xs font-medium px-2 py-0.5 rounded-full text-white"
+                    style={{ backgroundColor: rankColors[member.rank] || KSU_GREEN }}
+                  >
+                    {member.rank}
+                  </span>
+                  {(member.office || member.tel) && (
+                    <div className="mt-2 text-xs text-gray-400 space-y-0.5">
+                      {member.office && <p>Office: {member.office}</p>}
+                      {member.tel && <p>Tel: {member.tel}</p>}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {filteredFaculty.length === 0 && (
+          <div className="text-center py-12 text-gray-400">
+            <Search size={48} className="mx-auto mb-4 opacity-50" />
+            <p className="text-lg">No faculty members found matching your search.</p>
+          </div>
+        )}
+
+        <div className="mt-8 text-center text-xs text-gray-400">
+          Source: <a href="https://ccis.ksu.edu.sa/en/node/891" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600">KSU CCIS IS Department Faculty Page</a>
+        </div>
+      </Section>
 
       {/* Research Section */}
       <Section id="research" title="Research & Innovation" subtitle="Driving cutting-edge research in data science, AI, cybersecurity, and enterprise systems">
