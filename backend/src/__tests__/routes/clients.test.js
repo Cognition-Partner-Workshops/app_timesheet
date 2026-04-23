@@ -454,6 +454,7 @@ describe('Client Routes', () => {
       expect(response.status).toBe(200);
     });
 
+    // Covers the department field in the dynamic SET clause of PUT /api/clients/:id
     test('should update department', async () => {
       const updatedClient = { id: 1, name: 'Client', department: 'Engineering' };
 
@@ -477,6 +478,7 @@ describe('Client Routes', () => {
       expect(response.body.client).toEqual(updatedClient);
     });
 
+    // Covers the email field in the dynamic SET clause of PUT /api/clients/:id
     test('should update email', async () => {
       const updatedClient = { id: 1, name: 'Client', email: 'client@example.com' };
 
@@ -500,6 +502,7 @@ describe('Client Routes', () => {
       expect(response.body.client).toEqual(updatedClient);
     });
 
+    // Verifies all four updatable fields (name, description, department, email) in a single request
     test('should update all fields at once', async () => {
       const updatedClient = { id: 1, name: 'New Name', description: 'New Desc', department: 'Sales', email: 'new@example.com' };
 
@@ -524,6 +527,9 @@ describe('Client Routes', () => {
     });
   });
 
+  // Tests for DELETE /api/clients/ (bulk delete) — lines 190-208 of clients.js.
+  // Uses function() syntax (not arrow) so `this.changes` is correctly bound via
+  // callback.call(this, null), matching how sqlite3's db.run exposes row counts.
   describe('DELETE /api/clients/ (bulk delete)', () => {
     test('should delete all clients successfully', async () => {
       mockDb.run.mockImplementation(function(query, params, callback) {
@@ -561,6 +567,8 @@ describe('Client Routes', () => {
     });
   });
 
+  // Verifies POST /api/clients accepts the optional department and email columns
+  // that were added alongside name and description.
   describe('POST /api/clients - with department and email', () => {
     test('should create client with all optional fields', async () => {
       const newClient = { name: 'X', description: 'Y', department: 'Z', email: 'a@b.com' };
@@ -585,6 +593,8 @@ describe('Client Routes', () => {
     });
   });
 
+  // Exercises the outer try-catch in POST /api/clients by making getDatabase()
+  // throw synchronously, which is not reachable via normal db callback errors.
   describe('POST /api/clients - unexpected error (try-catch)', () => {
     test('should handle unexpected error from getDatabase', async () => {
       getDatabase.mockImplementation(() => {
