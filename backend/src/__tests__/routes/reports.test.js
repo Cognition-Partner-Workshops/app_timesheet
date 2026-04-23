@@ -11,6 +11,9 @@ jest.mock('csv-writer', () => ({
     writeRecords: jest.fn().mockResolvedValue(undefined)
   }))
 }));
+// PDFKit mock: captures the output stream in pipe() and closes it in end().
+// This is required so supertest receives a completed HTTP response; without it,
+// PDF export tests hang until the Jest timeout is reached.
 jest.mock('pdfkit', () => {
   return jest.fn().mockImplementation(() => {
     let outputStream;
@@ -304,7 +307,11 @@ describe('Report Routes', () => {
     });
   });
 
+  // Tests for the CSV export happy path — verifies csv-writer header config,
+  // writeRecords invocation, and post-download fs.unlink cleanup.
   describe('CSV Export Success Path', () => {
+    // Verify the CSV writer is configured with the expected column headers
+    // and that writeRecords receives the raw work entries from the database.
     test('should call createObjectCsvWriter with correct header config and writeRecords with entries', async () => {
       const { Readable } = require('stream');
       const mockClient = { id: 1, name: 'Test Client' };
@@ -321,7 +328,8 @@ describe('Report Routes', () => {
         callback(null, mockWorkEntries);
       });
 
-      // Mock fs.stat and fs.createReadStream so Express res.download can complete
+      // Mock fs.stat and fs.createReadStream so Express res.download() can
+      // stat the temp file and stream it back to the client via supertest.
       fs.stat = jest.fn().mockImplementation((filePath, callback) => {
         callback(null, {
           isFile: () => true,
@@ -356,6 +364,7 @@ describe('Report Routes', () => {
       expect(mockWriteRecords).toHaveBeenCalledWith(mockWorkEntries);
     });
 
+    // Verify the temporary CSV file is cleaned up after the download completes
     test('should call fs.unlink for cleanup after download', async () => {
       const { Readable } = require('stream');
       const mockClient = { id: 1, name: 'Test Client' };
@@ -496,7 +505,10 @@ describe('Report Routes', () => {
   });
 
 
+  // Tests for the PDF export happy path — covers basic generation, empty entries,
+  // page overflow (y > 700), separator lines (every 5 entries), and null description fallback.
   describe('PDF Export Success Path', () => {
+    // Verify that PDFDocument is instantiated, piped to the response, and ended
     test('should generate PDF with work entries successfully', async () => {
       const PDFDocument = require('pdfkit');
       const mockClient = { id: 1, name: 'Test Client' };
@@ -523,6 +535,7 @@ describe('Report Routes', () => {
       expect(response.headers['content-disposition']).toMatch(/attachment; filename=".*\.pdf"/);
     });
 
+    // Edge case: PDF should still be generated even with zero work entries
     test('should generate PDF with empty work entries', async () => {
       const PDFDocument = require('pdfkit');
       const mockClient = { id: 1, name: 'Empty Client' };
@@ -543,6 +556,8 @@ describe('Report Routes', () => {
       expect(mockDoc.end).toHaveBeenCalled();
     });
 
+    // When the PDF cursor (doc.y) exceeds 700px, a new page should be added.
+    // Uses a custom mock with y: 750 to trigger the addPage branch.
     test('should add new page when y position exceeds 700', async () => {
       const PDFDocument = require('pdfkit');
       PDFDocument.mockImplementation(() => {
@@ -581,6 +596,8 @@ describe('Report Routes', () => {
       expect(mockDoc.addPage).toHaveBeenCalled();
     });
 
+    // Every 5th entry should trigger a horizontal separator line via moveTo/lineTo/stroke.
+    // We generate 6 entries to ensure at least one separator is drawn.
     test('should render separator lines every 5 entries', async () => {
       const PDFDocument = require('pdfkit');
       PDFDocument.mockImplementation(() => {
@@ -621,6 +638,7 @@ describe('Report Routes', () => {
       expect(mockDoc.stroke.mock.calls.length).toBeGreaterThanOrEqual(2);
     });
 
+    // Entries with a null description should render as 'No description' in the PDF
     test('should render No description for entry with null description', async () => {
       const PDFDocument = require('pdfkit');
       PDFDocument.mockImplementation(() => {

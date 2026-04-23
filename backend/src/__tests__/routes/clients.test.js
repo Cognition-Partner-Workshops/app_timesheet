@@ -186,6 +186,7 @@ describe('Client Routes', () => {
       expect(response.status).toBe(400);
     });
 
+    // Verify that all optional fields (description, department, email) are accepted on creation
     test('should create client with all optional fields', async () => {
       const newClient = {
         name: 'Full Client',
@@ -303,7 +304,9 @@ describe('Client Routes', () => {
     });
   });
 
+  // Tests for the bulk DELETE /api/clients/ route (deletes all clients for the authenticated user)
   describe('DELETE /api/clients', () => {
+    // Mock db.run with this.changes to simulate SQLite's rows-affected count
     test('should bulk delete all clients for authenticated user', async () => {
       mockDb.run.mockImplementation(function(query, params, callback) {
         this.changes = 3;
@@ -324,6 +327,7 @@ describe('Client Routes', () => {
       );
     });
 
+    // Edge case: bulk delete when user has no clients should still return 200
     test('should return 200 with deletedCount 0 when no clients exist', async () => {
       mockDb.run.mockImplementation(function(query, params, callback) {
         this.changes = 0;
@@ -339,6 +343,7 @@ describe('Client Routes', () => {
       });
     });
 
+    // Verify 500 response when the database encounters an error during bulk delete
     test('should handle database error on bulk delete', async () => {
       mockDb.run.mockImplementation(function(query, params, callback) {
         callback.call(this, new Error('Delete failed'));
@@ -529,6 +534,7 @@ describe('Client Routes', () => {
       expect(response.status).toBe(200);
     });
 
+    // Verify that the optional 'department' field can be updated independently
     test('should update client department field', async () => {
       const updatedClient = { id: 1, name: 'Client', department: 'Marketing' };
 
@@ -552,6 +558,7 @@ describe('Client Routes', () => {
       expect(response.body.client).toEqual(updatedClient);
     });
 
+    // Verify that the optional 'email' field can be updated independently
     test('should update client email field', async () => {
       const updatedClient = { id: 1, name: 'Client', email: 'new@example.com' };
 

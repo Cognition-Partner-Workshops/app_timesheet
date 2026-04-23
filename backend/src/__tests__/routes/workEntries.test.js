@@ -55,6 +55,7 @@ describe('Work Entry Routes', () => {
       expect(response.body).toEqual({ workEntries: mockEntries });
     });
 
+    // Verify the SQL query does NOT include a client_id filter when no clientId param is provided
     test('should return work entries without clientId filter', async () => {
       const mockEntries = [
         { id: 1, client_id: 1, hours: 5, description: 'Work 1', date: '2024-01-01', client_name: 'Client A' },
@@ -209,6 +210,7 @@ describe('Work Entry Routes', () => {
       expect(response.status).toBe(400);
     });
 
+    // Description is optional — verify creation succeeds when it is omitted
     test('should create work entry without description (optional field)', async () => {
       const newEntry = {
         clientId: 1,
@@ -237,6 +239,7 @@ describe('Work Entry Routes', () => {
       expect(response.body.message).toBe('Work entry created successfully');
     });
 
+    // Covers the try-catch in POST: if getDatabase() itself throws, the route should return 500
     test('should return 500 when getDatabase throws in POST', async () => {
       getDatabase.mockImplementation(() => { throw new Error('DB connection failed'); });
 
@@ -565,6 +568,7 @@ describe('Work Entry Routes', () => {
       expect(response.body).toEqual({ error: 'Work entry updated but failed to retrieve' });
     });
 
+    // Covers the try-catch in PUT: if getDatabase() throws after Joi validation passes
     test('should return 500 when getDatabase throws in PUT after validation passes', async () => {
       getDatabase.mockImplementation(() => { throw new Error('DB connection failed'); });
 

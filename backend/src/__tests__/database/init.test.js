@@ -144,7 +144,10 @@ describe('Database Initialization', () => {
     });
   });
 
+  // Edge-case tests for closeDatabase() — each test resets the module to get a
+  // fresh singleton, then exercises a specific branch in the close logic.
   describe('closeDatabase - Edge Cases', () => {
+    // When getDatabase() was never called, the internal db reference is null
     test('should resolve immediately when no database connection exists', async () => {
       jest.resetModules();
 
@@ -168,6 +171,7 @@ describe('Database Initialization', () => {
       await expect(closeFresh()).resolves.toBeUndefined();
     });
 
+    // After a successful close, the isClosed flag prevents a second db.close() call
     test('should resolve immediately when already closed', async () => {
       jest.resetModules();
 
@@ -193,6 +197,9 @@ describe('Database Initialization', () => {
       await expect(closeFresh()).resolves.toBeUndefined();
     });
 
+    // Simulates two concurrent closeDatabase() calls. The first call holds the
+    // db.close callback in a deferred variable; the second call hits the isClosing
+    // branch and polls until the first finishes. Resolving the callback unblocks both.
     test('should handle concurrent close calls via isClosing branch', async () => {
       jest.resetModules();
 
