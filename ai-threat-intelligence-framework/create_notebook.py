@@ -1,817 +1,803 @@
-"""Generate an expanded research experiments Jupyter notebook.
+"""Generate Q1-journal-quality research experiments notebook.
 
-Fully self-contained — no framework imports required.
-Compares multiple LLMs (including code-specialized models) on CrossVul and CVEfixes.
-Reports per-dataset results with justification for merged analysis.
-Includes rich descriptions and justifications in markdown cells.
+Implements all 17 methodological requirements for defensible empirical results.
 """
 import nbformat as nbf
 
 nb = nbf.v4.new_notebook()
 nb.metadata = {
-    "kernelspec": {
-        "display_name": "Python 3",
-        "language": "python",
-        "name": "python3",
+    "kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},
+    "language_info": {"name": "python", "version": "3.12.0"},
+}
+cells = []
+
+
+def md(text):
+    cells.append(nbf.v4.new_markdown_cell(text))
+
+
+def code(text):
+    cells.append(nbf.v4.new_code_cell(text))
+
+
+# ── TITLE & ABSTRACT ──
+md("""# AI-Driven Threat Intelligence Framework: Empirical Evaluation
+
+**Project:** AI-Driven Threat Intelligence Framework for Real-Time Cyber Defense Against Vulnerabilities
+**Period:** Jan 2025 -- Dec 2025
+**Methodology:** Comparative evaluation of multiple LLMs for vulnerability detection using established benchmark datasets with rigorous statistical analysis
+
+---
+
+### Abstract
+
+This notebook presents a rigorous empirical evaluation of large language models (LLMs) for automated vulnerability detection in source code. We compare six state-of-the-art LLMs -- including general-purpose and code-specialized models -- against multiple baselines (regex patterns, Semgrep, Bandit). The evaluation uses two established benchmark datasets (CrossVul and CVEfixes) with both vulnerable and non-vulnerable (fixed) samples. We report results per-dataset and merged with statistical justification, include repeated runs with confidence intervals, ablation studies, and comprehensive cost analysis.
+
+**Key methodological features:**
+- Centralized experiment configuration for full reproducibility
+- Both vulnerable and non-vulnerable samples for proper precision/specificity evaluation
+- Multiple baselines of increasing strength
+- Prompt versioning and registry
+- Repeated runs (configurable) with mean +/- std and 95% CI
+- Statistical tests: McNemar's test, bootstrap CI, effect sizes
+- Ablation study: prompt variants, temperature, code truncation
+- Runtime and cost analysis per model
+- Clear separation of real vs. simulated results
+
+---
+
+## Research Questions
+
+| # | Research Question | Section |
+|---|---|---|
+| **RQ1** | How do different LLMs compare in detecting known vulnerability types vs. pattern-based and tool-based static analysis? | S10 |
+| **RQ2** | What is the detection performance across different programming languages, and does it vary by model? | S11 |
+| **RQ3** | How does vulnerability severity/type distribution from LLM analysis compare to historical CVE data? | S12 |
+| **RQ4** | What is the quality and actionability of LLM-generated mitigation recommendations? | S13 |
+| **RQ5** | What are the latency, throughput, and cost characteristics of each model? | S14 |
+| **RQ6** | Do code-specialized LLMs outperform general-purpose LLMs on vulnerability detection? | S15 |
+
+---""")
+
+# ── S1: IMPORTS ──
+md("## 1. Imports")
+
+code("""# Install required packages (uncomment and run once)
+# !pip install datasets openai anthropic google-generativeai matplotlib pandas numpy scipy scikit-learn
+
+import hashlib, json, os, random, re, subprocess, shutil, time, warnings
+from collections import Counter, defaultdict
+from dataclasses import dataclass, field, asdict
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from IPython.display import display, HTML, Markdown
+from scipy import stats
+from sklearn.metrics import (
+    confusion_matrix, classification_report, matthews_corrcoef,
+    balanced_accuracy_score, f1_score, accuracy_score,
+)
+
+matplotlib.rcParams.update({
+    "figure.figsize": (10, 6), "figure.dpi": 150, "font.size": 11,
+    "axes.titlesize": 13, "axes.labelsize": 11,
+    "xtick.labelsize": 10, "ytick.labelsize": 10,
+    "legend.fontsize": 10, "figure.facecolor": "white",
+    "axes.facecolor": "white", "axes.grid": True, "grid.alpha": 0.3,
+})
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+print("Imports loaded.")""")
+
+# ── S2: CONFIGURATION ──
+md("""## 2. Experiment Configuration
+
+**Justification:** A centralized configuration class ensures full reproducibility and eliminates scattered hard-coded values. All experiment parameters are defined here and referenced throughout the notebook. This follows best practices for empirical software engineering experiments (Wohlin et al., 2012).""")
+
+code("""@dataclass
+class ExperimentConfig:
+    \"\"\"Centralized experiment configuration.\"\"\"
+    random_seed: int = 42
+    dataset_crossvul: str = "hitoshura25/crossvul"
+    dataset_cvefixes: str = "hitoshura25/cvefixes"
+    max_samples_per_dataset: int = 200
+    code_length_min: int = 20
+    code_length_max: int = 5000
+    supported_languages: tuple = (
+        "python", "javascript", "java", "php", "go", "c", "cpp", "typescript", "ruby"
+    )
+    include_non_vulnerable: bool = True
+    models: list = field(default_factory=lambda: [
+        {"name": "GPT-4o",            "provider": "openai",    "model_id": "gpt-4o",                     "type": "general"},
+        {"name": "GPT-4-Turbo",       "provider": "openai",    "model_id": "gpt-4-turbo",                "type": "general"},
+        {"name": "Claude 3.5 Sonnet", "provider": "anthropic", "model_id": "claude-3-5-sonnet-20241022", "type": "general"},
+        {"name": "Gemini 1.5 Pro",    "provider": "google",    "model_id": "gemini-1.5-pro",             "type": "general"},
+        {"name": "DeepSeek-Coder-V2", "provider": "deepseek",  "model_id": "deepseek-coder",             "type": "code"},
+        {"name": "CodeLlama-70B",     "provider": "together",  "model_id": "codellama/CodeLlama-70b-Instruct-hf", "type": "code"},
+    ])
+    temperature: float = 0.1
+    max_tokens: int = 2000
+    num_repeated_runs: int = 3
+    prompt_version: str = "v1.0"
+    USE_REAL_LLMS_ONLY: bool = True
+    ALLOW_SIMULATION: bool = False
+    output_dir: str = "results"
+    figure_dpi: int = 300
+
+CFG = ExperimentConfig()
+Path(CFG.output_dir).mkdir(exist_ok=True)
+cfg_dict = asdict(CFG)
+with open(f"{CFG.output_dir}/experiment_config.json", "w") as f:
+    json.dump(cfg_dict, f, indent=2, default=str)
+print("Experiment Configuration:")
+for k, v in cfg_dict.items():
+    if k != "models":
+        print(f"  {k}: {v}")
+print(f"  models: {[m['name'] for m in CFG.models]}")""")
+
+# ── S3: REPRODUCIBILITY ──
+md("""## 3. Reproducibility Controls
+
+**Justification:** Fixing all random seeds ensures that dataset sampling, model evaluation order, and any stochastic components produce identical results across runs. This is a requirement for reproducible empirical research.""")
+
+code("""def seed_everything(seed: int) -> None:
+    \"\"\"Fix all random seeds for reproducibility.\"\"\"
+    random.seed(seed)
+    np.random.seed(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
+    print(f"All seeds fixed to {seed}")
+
+seed_everything(CFG.random_seed)""")
+
+
+# ── S4: DATASET CONSTRUCTION ──
+md("""## 4. Dataset Construction
+
+### 4.1 Design Rationale
+
+**Justification:** A major methodological requirement for vulnerability detection evaluation is the inclusion of both **vulnerable** and **non-vulnerable** (fixed/patched) samples. Without non-vulnerable samples, precision, specificity, false positive rate, and accuracy metrics are undefined or meaningless (Croft et al., 2023; Chakraborty et al., 2021).
+
+We construct our benchmark from two established datasets:
+- **CrossVul** (Nikitopoulos et al., 2021): Real-world vulnerability-fixing commits across 40+ languages
+- **CVEfixes** (Bhandari et al., 2021): CVE-linked vulnerability fixes with CVSS severity scores
+
+For each dataset, we extract:
+1. **Vulnerable** code: the code *before* the fix (pre-commit)
+2. **Non-vulnerable** code: the code *after* the fix (post-commit)
+
+This paired design ensures balanced classes and realistic evaluation conditions.""")
+
+md("### 4.2 CWE Mapping and Vulnerability Taxonomy")
+
+code("""CWE_TO_VULN_TYPE = {
+    "CWE-79": "xss", "CWE-89": "sql_injection", "CWE-78": "command_injection",
+    "CWE-22": "path_traversal", "CWE-352": "csrf", "CWE-287": "auth_bypass",
+    "CWE-119": "buffer_overflow", "CWE-120": "buffer_overflow",
+    "CWE-125": "buffer_overflow", "CWE-787": "buffer_overflow",
+    "CWE-190": "integer_overflow", "CWE-416": "use_after_free",
+    "CWE-476": "null_dereference", "CWE-20": "input_validation",
+    "CWE-94": "code_injection", "CWE-502": "deserialization",
+    "CWE-611": "xxe", "CWE-918": "ssrf", "CWE-200": "info_exposure",
+    "CWE-269": "privilege_escalation", "CWE-434": "file_upload",
+    "CWE-77": "command_injection", "CWE-74": "injection",
+    "CWE-732": "permission_issue", "CWE-362": "race_condition",
+    "CWE-798": "hardcoded_credentials", "CWE-327": "weak_crypto",
+    "CWE-295": "improper_cert_validation",
+}
+
+def classify_cwe(cwe_str) -> str:
+    if not cwe_str or (isinstance(cwe_str, float) and np.isnan(cwe_str)):
+        return "unknown"
+    cwe_str = str(cwe_str).strip()
+    if cwe_str in CWE_TO_VULN_TYPE:
+        return CWE_TO_VULN_TYPE[cwe_str]
+    match = re.search(r"CWE-\\d+", cwe_str)
+    if match and match.group() in CWE_TO_VULN_TYPE:
+        return CWE_TO_VULN_TYPE[match.group()]
+    return "other"
+
+print(f"CWE mapping covers {len(CWE_TO_VULN_TYPE)} CWE entries")""")
+
+md("""### 4.3 Dataset Loading: CrossVul
+
+CrossVul provides vulnerability-fixing commits with pre/post-fix code. We use the `code` column for vulnerable versions and extract non-vulnerable versions from the same commits where available.""")
+
+code("""from datasets import load_dataset
+
+print("Loading CrossVul dataset via HuggingFace streaming...")
+crossvul_samples = []
+crossvul_filter_log = []
+crossvul_raw_count = 0
+crossvul_vuln_count = 0
+crossvul_nonvuln_count = 0
+
+try:
+    ds = load_dataset(CFG.dataset_crossvul, split="train", streaming=True)
+    for row in ds:
+        crossvul_raw_count += 1
+        if len(crossvul_samples) >= CFG.max_samples_per_dataset * 2:
+            break
+        code_text = row.get("code", row.get("func", ""))
+        if not code_text or not isinstance(code_text, str):
+            crossvul_filter_log.append({"id": f"cv-{crossvul_raw_count}", "reason": "empty_code"})
+            continue
+        lang = str(row.get("language", row.get("lang", "unknown"))).lower().strip()
+        if lang in ("c++", "c/c++"):
+            lang = "cpp"
+        if lang not in CFG.supported_languages:
+            crossvul_filter_log.append({"id": f"cv-{crossvul_raw_count}", "reason": f"unsupported_language:{lang}"})
+            continue
+        code_len = len(code_text.strip())
+        if code_len < CFG.code_length_min:
+            crossvul_filter_log.append({"id": f"cv-{crossvul_raw_count}", "reason": "too_short"})
+            continue
+        if code_len > CFG.code_length_max:
+            crossvul_filter_log.append({"id": f"cv-{crossvul_raw_count}", "reason": "too_long"})
+            continue
+        cwe = str(row.get("cwe", row.get("cwe_id", ""))).strip()
+        cve = str(row.get("cve", row.get("cve_id", ""))).strip()
+        vuln_type = classify_cwe(cwe)
+        severity = str(row.get("severity", "unknown")).lower().strip()
+        if severity not in ("low", "medium", "high", "critical"):
+            severity = "unknown"
+        crossvul_samples.append({
+            "id": f"crossvul-vuln-{crossvul_vuln_count}",
+            "source": "crossvul", "language": lang, "code": code_text.strip(),
+            "is_vulnerable": True, "ground_truth": vuln_type,
+            "cwe": cwe or "unknown", "cve": cve or "N/A",
+            "severity": severity, "code_length": code_len,
+        })
+        crossvul_vuln_count += 1
+        if CFG.include_non_vulnerable:
+            fixed_code = row.get("fixed_code", row.get("code_after", None))
+            if fixed_code and isinstance(fixed_code, str) and len(fixed_code.strip()) >= CFG.code_length_min:
+                crossvul_samples.append({
+                    "id": f"crossvul-fixed-{crossvul_nonvuln_count}",
+                    "source": "crossvul", "language": lang, "code": fixed_code.strip(),
+                    "is_vulnerable": False, "ground_truth": "none",
+                    "cwe": "N/A", "cve": "N/A", "severity": "none",
+                    "code_length": len(fixed_code.strip()),
+                })
+                crossvul_nonvuln_count += 1
+        if crossvul_raw_count % 500 == 0:
+            print(f"  Scanned {crossvul_raw_count} rows, collected {len(crossvul_samples)} samples...")
+    print(f"\\nCrossVul: {crossvul_raw_count} inspected, {crossvul_vuln_count} vuln, "
+          f"{crossvul_nonvuln_count} non-vuln, {len(crossvul_filter_log)} excluded")
+except Exception as e:
+    print(f"Error loading CrossVul: {e}")""")
+
+
+md("""### 4.4 Dataset Loading: CVEfixes
+
+CVEfixes links CVE records to Git fix commits, providing both vulnerable (pre-fix) and patched (post-fix) code with CVSS severity scores.""")
+
+code("""print("Loading CVEfixes dataset via HuggingFace streaming...")
+cvefixes_samples = []
+cvefixes_filter_log = []
+cvefixes_raw_count = 0
+cvefixes_vuln_count = 0
+cvefixes_nonvuln_count = 0
+
+def parse_cvss(val):
+    try:
+        score = float(val)
+    except (TypeError, ValueError):
+        return (None, "unknown")
+    if score < 4.0: return (score, "low")
+    elif score < 7.0: return (score, "medium")
+    elif score < 9.0: return (score, "high")
+    else: return (score, "critical")
+
+try:
+    ds2 = load_dataset(CFG.dataset_cvefixes, split="train", streaming=True)
+    for row in ds2:
+        cvefixes_raw_count += 1
+        if len(cvefixes_samples) >= CFG.max_samples_per_dataset * 2:
+            break
+        code_text = row.get("code", row.get("func_before", row.get("func", "")))
+        if not code_text or not isinstance(code_text, str):
+            cvefixes_filter_log.append({"id": f"cvf-{cvefixes_raw_count}", "reason": "empty_code"})
+            continue
+        lang = str(row.get("language", row.get("lang", "unknown"))).lower().strip()
+        if lang in ("c++", "c/c++"):
+            lang = "cpp"
+        if lang not in CFG.supported_languages:
+            cvefixes_filter_log.append({"id": f"cvf-{cvefixes_raw_count}", "reason": f"unsupported_language:{lang}"})
+            continue
+        code_len = len(code_text.strip())
+        if code_len < CFG.code_length_min:
+            cvefixes_filter_log.append({"id": f"cvf-{cvefixes_raw_count}", "reason": "too_short"})
+            continue
+        if code_len > CFG.code_length_max:
+            cvefixes_filter_log.append({"id": f"cvf-{cvefixes_raw_count}", "reason": "too_long"})
+            continue
+        cwe = str(row.get("cwe", row.get("cwe_id", ""))).strip()
+        cve = str(row.get("cve_id", row.get("cve", ""))).strip()
+        vuln_type = classify_cwe(cwe)
+        cvss = row.get("cvss3_base_score", row.get("cvss_score", None))
+        _, severity = parse_cvss(cvss)
+        cvefixes_samples.append({
+            "id": f"cvefixes-vuln-{cvefixes_vuln_count}",
+            "source": "cvefixes", "language": lang, "code": code_text.strip(),
+            "is_vulnerable": True, "ground_truth": vuln_type,
+            "cwe": cwe or "unknown", "cve": cve or "N/A",
+            "severity": severity, "code_length": code_len,
+        })
+        cvefixes_vuln_count += 1
+        if CFG.include_non_vulnerable:
+            fixed_code = row.get("func_after", row.get("fixed_code", row.get("code_after", None)))
+            if fixed_code and isinstance(fixed_code, str) and len(fixed_code.strip()) >= CFG.code_length_min:
+                cvefixes_samples.append({
+                    "id": f"cvefixes-fixed-{cvefixes_nonvuln_count}",
+                    "source": "cvefixes", "language": lang, "code": fixed_code.strip(),
+                    "is_vulnerable": False, "ground_truth": "none",
+                    "cwe": "N/A", "cve": "N/A", "severity": "none",
+                    "code_length": len(fixed_code.strip()),
+                })
+                cvefixes_nonvuln_count += 1
+        if cvefixes_raw_count % 500 == 0:
+            print(f"  Scanned {cvefixes_raw_count} rows, collected {len(cvefixes_samples)} samples...")
+    print(f"\\nCVEfixes: {cvefixes_raw_count} inspected, {cvefixes_vuln_count} vuln, "
+          f"{cvefixes_nonvuln_count} non-vuln, {len(cvefixes_filter_log)} excluded")
+except Exception as e:
+    print(f"Error loading CVEfixes: {e}")""")
+
+md("""### 4.5 Dataset Sample Inspection
+
+**Justification:** Printing representative samples allows reviewers to assess data quality and verify that the dataset construction is sound.""")
+
+code("""def display_sample(sample, index):
+    code_preview = sample["code"][:300]
+    if len(sample["code"]) > 300:
+        code_preview += "\\n... (truncated)"
+    label = "VULNERABLE" if sample["is_vulnerable"] else "NON-VULNERABLE (fixed)"
+    print(f"\\n--- Sample {index}: {sample['id']} [{label}] ---")
+    print(f"  Source: {sample['source']}, Language: {sample['language']}")
+    print(f"  CWE: {sample['cwe']}, CVE: {sample['cve']}, Severity: {sample['severity']}")
+    print(f"  Code length: {sample['code_length']} chars")
+    print(f"  Code preview:\\n{code_preview}")
+
+print("=== CrossVul Samples ===")
+for i, s in enumerate(crossvul_samples[:6]):
+    display_sample(s, i)
+
+print("\\n\\n=== CVEfixes Samples ===")
+for i, s in enumerate(cvefixes_samples[:6]):
+    display_sample(s, i)""")
+
+md("""### 4.6 Dataset Summary Tables
+
+**Justification:** Summary tables provide a concise overview of the benchmark composition, required for the methodology section of the paper.""")
+
+code("""ALL_SAMPLES = crossvul_samples + cvefixes_samples
+random.shuffle(ALL_SAMPLES)
+print(f"Total benchmark samples: {len(ALL_SAMPLES)}")
+print(f"  Vulnerable: {sum(1 for s in ALL_SAMPLES if s['is_vulnerable'])}")
+print(f"  Non-vulnerable: {sum(1 for s in ALL_SAMPLES if not s['is_vulnerable'])}")
+
+summary_rows = []
+for src_name, src_samples, raw_ct, flog in [
+    ("CrossVul", crossvul_samples, crossvul_raw_count, crossvul_filter_log),
+    ("CVEfixes", cvefixes_samples, cvefixes_raw_count, cvefixes_filter_log),
+]:
+    vuln_ct = sum(1 for s in src_samples if s["is_vulnerable"])
+    nonvuln_ct = sum(1 for s in src_samples if not s["is_vulnerable"])
+    langs = len(set(s["language"] for s in src_samples))
+    cwes = len(set(s["cwe"] for s in src_samples if s["cwe"] not in ("N/A", "unknown")))
+    summary_rows.append({
+        "Dataset": src_name, "Raw inspected": raw_ct,
+        "Included": len(src_samples), "Excluded": len(flog),
+        "Vulnerable": vuln_ct, "Non-vulnerable": nonvuln_ct,
+        "Languages": langs, "CWE categories": cwes,
+    })
+
+df_summary = pd.DataFrame(summary_rows)
+display(df_summary)
+df_summary.to_csv(f"{CFG.output_dir}/dataset_summary.csv", index=False)
+
+dist_rows = [{"source": s["source"], "language": s["language"], "cwe": s["cwe"], "is_vulnerable": s["is_vulnerable"]} for s in ALL_SAMPLES]
+df_dist = pd.DataFrame(dist_rows)
+class_table = df_dist.groupby(["source", "language"]).agg(
+    vulnerable=("is_vulnerable", "sum"),
+    non_vulnerable=("is_vulnerable", lambda x: (~x).sum()),
+    total=("is_vulnerable", "count"),
+).reset_index()
+display(class_table)
+class_table.to_csv(f"{CFG.output_dir}/class_distribution.csv", index=False)
+
+filter_log = crossvul_filter_log + cvefixes_filter_log
+if filter_log:
+    df_filter = pd.DataFrame(filter_log)
+    df_filter.to_csv(f"{CFG.output_dir}/filtering_log.csv", index=False)
+    print(f"\\nFiltering reasons:")
+    print(df_filter["reason"].value_counts().to_string())""")
+
+md("""### 4.7 Fixed Benchmark Construction
+
+**Justification:** The evaluation set must be fixed and reproducible. Using stratified sampling ensures representation across datasets, languages, and vulnerability types. The identical sample order is used for all models.""")
+
+code("""ALL_SAMPLES.sort(key=lambda s: s["id"])
+seed_everything(CFG.random_seed)
+random.shuffle(ALL_SAMPLES)
+
+BENCHMARK = ALL_SAMPLES.copy()
+benchmark_hash = hashlib.sha256(json.dumps([s["id"] for s in BENCHMARK]).encode()).hexdigest()[:16]
+print(f"Benchmark size: {len(BENCHMARK)} samples")
+print(f"Benchmark hash: {benchmark_hash}")
+
+benchmark_df = pd.DataFrame([{k: v for k, v in s.items() if k != "code"} for s in BENCHMARK])
+benchmark_df.to_csv(f"{CFG.output_dir}/benchmark_samples.csv", index=False)
+print(f"Saved benchmark manifest to {CFG.output_dir}/benchmark_samples.csv")
+
+print(f"\\nBenchmark composition:")
+print(f"  By source: {Counter(s['source'] for s in BENCHMARK)}")
+print(f"  By language: {Counter(s['language'] for s in BENCHMARK)}")
+print(f"  Vulnerable: {sum(1 for s in BENCHMARK if s['is_vulnerable'])}, "
+      f"Non-vulnerable: {sum(1 for s in BENCHMARK if not s['is_vulnerable'])}")""")
+
+
+# ── S5: PROMPT DESIGN ──
+md("""## 5. Prompt Design and Versioning
+
+**Justification:** A formal prompt registry ensures that all models receive identical instructions, eliminating prompt variation as a confound. Each prompt is versioned and exported for reproducibility.""")
+
+code("""PROMPT_REGISTRY = {
+    "v1.0": {
+        "id": "v1.0",
+        "name": "detection_with_mitigation",
+        "date": "2025-01-15",
+        "description": "Full detection prompt requesting vulnerability identification and mitigation suggestions",
+        "temperature": CFG.temperature,
+        "max_tokens": CFG.max_tokens,
+        "expected_schema": {
+            "vulnerabilities": [{"type": "str", "severity": "str", "confidence": "float", "line": "int", "description": "str"}],
+            "mitigations": [{"title": "str", "description": "str", "suggested_fix": "str"}],
+        },
+        "template": (
+            "You are an expert security code reviewer. Analyze the following {language} code for security vulnerabilities.\\n\\n"
+            "Return a JSON object with exactly this structure:\\n"
+            "{{\\n"
+            '  "vulnerabilities": [\\n'
+            '    {{"type": "<vulnerability_type>", "severity": "<low|medium|high|critical>", "confidence": <0.0-1.0>, "line": <line_number>, "description": "<brief description>"}}\\n'
+            "  ],\\n"
+            '  "mitigations": [\\n'
+            '    {{"title": "<mitigation title>", "description": "<what to do>", "suggested_fix": "<code fix suggestion>"}}\\n'
+            "  ]\\n"
+            "}}\\n\\n"
+            'If no vulnerabilities are found, return {{"vulnerabilities": [], "mitigations": []}}.\\n\\n'
+            "Code to analyze:\\n```{language}\\n{code}\\n```"
+        ),
     },
-    "language_info": {
-        "name": "python",
-        "version": "3.12.0",
+    "v1.1-detection-only": {
+        "id": "v1.1-detection-only",
+        "name": "detection_only",
+        "date": "2025-01-15",
+        "description": "Detection-only prompt without mitigation request (for ablation)",
+        "temperature": CFG.temperature,
+        "max_tokens": CFG.max_tokens,
+        "expected_schema": {
+            "vulnerabilities": [{"type": "str", "severity": "str", "confidence": "float"}],
+        },
+        "template": (
+            "You are an expert security code reviewer. Analyze the following {language} code for security vulnerabilities.\\n\\n"
+            "Return a JSON object:\\n"
+            "{{\\n"
+            '  "vulnerabilities": [\\n'
+            '    {{"type": "<vulnerability_type>", "severity": "<low|medium|high|critical>", "confidence": <0.0-1.0>}}\\n'
+            "  ]\\n"
+            "}}\\n\\n"
+            'If no vulnerabilities are found, return {{"vulnerabilities": []}}.\\n\\n'
+            "Code:\\n```{language}\\n{code}\\n```"
+        ),
+    },
+    "v1.2-with-cwe-hint": {
+        "id": "v1.2-with-cwe-hint",
+        "name": "detection_with_cwe_hint",
+        "date": "2025-01-15",
+        "description": "Detection prompt with CWE hint provided (for ablation)",
+        "temperature": CFG.temperature,
+        "max_tokens": CFG.max_tokens,
+        "expected_schema": {
+            "vulnerabilities": [{"type": "str", "severity": "str", "confidence": "float"}],
+        },
+        "template": (
+            "You are an expert security code reviewer. The following {language} code may contain a vulnerability related to {cwe_hint}.\\n\\n"
+            "Analyze and return a JSON object:\\n"
+            "{{\\n"
+            '  "vulnerabilities": [\\n'
+            '    {{"type": "<vulnerability_type>", "severity": "<low|medium|high|critical>", "confidence": <0.0-1.0>}}\\n'
+            "  ],\\n"
+            '  "mitigations": [\\n'
+            '    {{"title": "<mitigation title>", "description": "<what to do>", "suggested_fix": "<code fix>"}}\\n'
+            "  ]\\n"
+            "}}\\n\\n"
+            'If no vulnerabilities are found, return {{"vulnerabilities": [], "mitigations": []}}.\\n\\n'
+            "Code:\\n```{language}\\n{code}\\n```"
+        ),
     },
 }
 
-cells: list = []
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Title & Abstract
-# ══════════════════════════════════════════════════════════════════════════════
-cells.append(nbf.v4.new_markdown_cell(
-    "# AI-Driven Threat Intelligence Framework: Research Experiments & Results\n\n"
-    "**Project:** AI-Driven Threat Intelligence Framework for Real-Time Cyber Defense Against Vulnerabilities  \n"
-    "**Period:** Jan 2025 – Dec 2025  \n"
-    "**Methodology:** Comparative evaluation of multiple LLMs (general-purpose and code-specialized) "
-    "for vulnerability detection and automated mitigation\n\n"
-    "---\n\n"
-    "### Abstract\n\n"
-    "This notebook presents a comprehensive empirical evaluation of large language models (LLMs) "
-    "for automated vulnerability detection in source code. We compare **six state-of-the-art LLMs** — "
-    "including both general-purpose models (GPT-4o, GPT-4-Turbo, Claude 3.5 Sonnet, Gemini 1.5 Pro) "
-    "and code-specialized models (DeepSeek-Coder-V2, CodeLlama-70B) — against a traditional "
-    "regex-based static analysis baseline. The evaluation uses two established benchmark datasets "
-    "(CrossVul and CVEfixes) totaling up to 400 real-world vulnerable code samples across multiple "
-    "programming languages. We report results per-dataset and merged, with statistical justification "
-    "for aggregation.\n\n"
-    "---\n\n"
-    "## Research Questions (RQs)\n\n"
-    "| # | Research Question | Section |\n"
-    "|---|---|---|\n"
-    "| **RQ1** | How do different LLMs compare in detecting known vulnerability types vs. pattern-based static analysis? | §4.1 |\n"
-    "| **RQ2** | What is the detection performance across different programming languages, and does it vary by model? | §4.2 |\n"
-    "| **RQ3** | How does vulnerability severity/type distribution from LLM analysis compare to historical CVE data? | §4.3 |\n"
-    "| **RQ4** | What is the quality and actionability of LLM-generated mitigation recommendations? | §4.4 |\n"
-    "| **RQ5** | What are the latency and throughput characteristics of each model in the detection pipeline? | §4.5 |\n"
-    "| **RQ6** | Do code-specialized LLMs outperform general-purpose LLMs on vulnerability detection tasks? | §4.6 |\n\n"
-    "---"
-))
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Section 1 — Setup
-# ══════════════════════════════════════════════════════════════════════════════
-cells.append(nbf.v4.new_markdown_cell(
-    "## 1. Environment Setup & Configuration\n\n"
-    "**Justification:** We use standard scientific Python libraries (pandas, matplotlib, numpy) for "
-    "reproducibility. The `datasets` library provides streaming access to HuggingFace benchmarks "
-    "without requiring full dataset downloads. Each LLM is accessed via its respective API client."
-))
-
-cells.append(nbf.v4.new_code_cell(
-    "# Install required packages (uncomment and run once)\n"
-    "# !pip install datasets openai anthropic google-generativeai matplotlib pandas numpy\n"
-))
-
-cells.append(nbf.v4.new_code_cell(
-    "import json\n"
-    "import os\n"
-    "import re\n"
-    "import time\n"
-    "import warnings\n"
-    "from collections import Counter, defaultdict\n"
-    "from datetime import datetime, timezone\n"
-    "from typing import Any\n"
-    "\n"
-    "import matplotlib\n"
-    "import matplotlib.pyplot as plt\n"
-    "import numpy as np\n"
-    "import pandas as pd\n"
-    "from IPython.display import display, HTML, Markdown\n"
-    "\n"
-    "matplotlib.rcParams.update({\n"
-    '    "figure.figsize": (10, 6),\n'
-    '    "figure.dpi": 150,\n'
-    '    "font.size": 11,\n'
-    '    "axes.titlesize": 13,\n'
-    '    "axes.labelsize": 11,\n'
-    '    "xtick.labelsize": 10,\n'
-    '    "ytick.labelsize": 10,\n'
-    '    "legend.fontsize": 10,\n'
-    '    "figure.facecolor": "white",\n'
-    '    "axes.facecolor": "white",\n'
-    '    "axes.grid": True,\n'
-    '    "grid.alpha": 0.3,\n'
-    "})\n"
-    'warnings.filterwarnings("ignore", category=DeprecationWarning)\n'
-    'print("Environment ready.")'
-))
-
-cells.append(nbf.v4.new_markdown_cell(
-    "### 1.1 API Configuration\n\n"
-    "**Note:** This experiment compares multiple LLM providers. You can configure API keys for "
-    "any subset of models. Models without API keys will use simulated results based on published "
-    "performance benchmarks.\n\n"
-    "| Model | Provider | Type | API Key Variable |\n"
-    "|-------|----------|------|------------------|\n"
-    "| GPT-4o | OpenAI | General-purpose | `OPENAI_API_KEY` |\n"
-    "| GPT-4-Turbo | OpenAI | General-purpose | `OPENAI_API_KEY` |\n"
-    "| Claude 3.5 Sonnet | Anthropic | General-purpose | `ANTHROPIC_API_KEY` |\n"
-    "| Gemini 1.5 Pro | Google | General-purpose | `GOOGLE_API_KEY` |\n"
-    "| DeepSeek-Coder-V2 | DeepSeek | Code-specialized | `DEEPSEEK_API_KEY` |\n"
-    "| CodeLlama-70B | Meta (via Together) | Code-specialized | `TOGETHER_API_KEY` |"
-))
-
-cells.append(nbf.v4.new_code_cell(
-    "# API keys — set via environment variables or directly here\n"
-    'OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")\n'
-    'ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")\n'
-    'GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")\n'
-    'DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")\n'
-    'TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY", "")\n'
-    "\n"
-    "# Define the models we want to evaluate\n"
-    "MODELS = [\n"
-    '    {"name": "GPT-4o",            "provider": "openai",    "model_id": "gpt-4o",                    "type": "general",     "api_key": OPENAI_API_KEY},\n'
-    '    {"name": "GPT-4-Turbo",       "provider": "openai",    "model_id": "gpt-4-turbo",               "type": "general",     "api_key": OPENAI_API_KEY},\n'
-    '    {"name": "Claude 3.5 Sonnet", "provider": "anthropic", "model_id": "claude-3-5-sonnet-20241022","type": "general",     "api_key": ANTHROPIC_API_KEY},\n'
-    '    {"name": "Gemini 1.5 Pro",    "provider": "google",    "model_id": "gemini-1.5-pro",            "type": "general",     "api_key": GOOGLE_API_KEY},\n'
-    '    {"name": "DeepSeek-Coder-V2", "provider": "deepseek",  "model_id": "deepseek-coder",            "type": "code",        "api_key": DEEPSEEK_API_KEY},\n'
-    '    {"name": "CodeLlama-70B",     "provider": "together",  "model_id": "codellama/CodeLlama-70b-Instruct-hf", "type": "code", "api_key": TOGETHER_API_KEY},\n'
-    "]\n"
-    "\n"
-    "live_models = [m for m in MODELS if m['api_key']]\n"
-    "simulated_models = [m for m in MODELS if not m['api_key']]\n"
-    "\n"
-    'print(f"Live models ({len(live_models)}):  {[m[\'name\'] for m in live_models]}")\n'
-    'print(f"Simulated models ({len(simulated_models)}): {[m[\'name\'] for m in simulated_models]}")\n'
-    'if simulated_models:\n'
-    '    print("\\nTo enable live analysis, set the corresponding API key environment variables.")\n'
-    '    print("Example: %env OPENAI_API_KEY=sk-...")\n'
-))
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Section 2 — Benchmark Datasets
-# ══════════════════════════════════════════════════════════════════════════════
-cells.append(nbf.v4.new_markdown_cell(
-    "## 2. Benchmark Datasets\n\n"
-    "### Rationale for Dataset Selection\n\n"
-    "We select two complementary, established benchmark datasets commonly used in "
-    "vulnerability detection research:\n\n"
-    "| Dataset | Reference | Languages | Key Strengths |\n"
-    "|---------|-----------|-----------|---------------|\n"
-    "| **CrossVul** | Nikitopoulos et al. (2021) | 40+ languages | Cross-language vulnerability pairs from real-world commits; CWE-labeled |\n"
-    "| **CVEfixes** | Bhandari et al. (2021) | Multi-language | Links CVE records to fix commits; includes CVSS scores for ground-truth severity |\n\n"
-    "**Why these datasets?**\n"
-    "1. **External validity** — Both contain real-world vulnerabilities from production open-source projects, "
-    "not synthetic or contrived examples\n"
-    "2. **Complementary coverage** — CrossVul emphasizes cross-language diversity; CVEfixes provides "
-    "severity metadata (CVSS) enabling RQ3\n"
-    "3. **Reproducibility** — Both are publicly available on HuggingFace with stable identifiers\n"
-    "4. **Code-based** — Since both datasets contain source code, code-specialized LLMs (DeepSeek-Coder, "
-    "CodeLlama) can be evaluated on their native modality\n\n"
-    "We report results **per-dataset** and **merged**, with a statistical test (§4.1) to justify aggregation."
-))
-
-# -- Common definitions --
-cells.append(nbf.v4.new_markdown_cell("### 2.1 Common Definitions & Utility Functions"))
-
-definitions_code = (
-    "from datasets import load_dataset\n"
-    "\n"
-    "# ── CWE-to-vulnerability-type mapping ──\n"
-    "# Maps CWE identifiers to canonical vulnerability categories.\n"
-    "# This mapping covers the most frequent CWEs in both datasets and aligns\n"
-    "# with OWASP Top 10 and MITRE CWE Top 25 categories.\n"
-    "CWE_TO_VULN_TYPE = {\n"
-    '    "CWE-89": "sql_injection", "CWE-564": "sql_injection",\n'
-    '    "CWE-79": "xss", "CWE-80": "xss",\n'
-    '    "CWE-78": "command_injection", "CWE-77": "command_injection",\n'
-    '    "CWE-22": "path_traversal", "CWE-23": "path_traversal", "CWE-36": "path_traversal",\n'
-    '    "CWE-502": "insecure_deserialization",\n'
-    '    "CWE-200": "sensitive_data_exposure", "CWE-209": "sensitive_data_exposure",\n'
-    '    "CWE-532": "sensitive_data_exposure", "CWE-312": "sensitive_data_exposure",\n'
-    '    "CWE-327": "cryptographic_failure", "CWE-328": "cryptographic_failure",\n'
-    '    "CWE-326": "cryptographic_failure", "CWE-295": "cryptographic_failure",\n'
-    '    "CWE-918": "ssrf",\n'
-    '    "CWE-94": "code_injection", "CWE-95": "code_injection", "CWE-96": "code_injection",\n'
-    '    "CWE-119": "buffer_overflow", "CWE-120": "buffer_overflow", "CWE-125": "buffer_overflow",\n'
-    '    "CWE-787": "buffer_overflow", "CWE-416": "use_after_free",\n'
-    '    "CWE-190": "integer_overflow", "CWE-191": "integer_overflow",\n'
-    '    "CWE-476": "null_pointer_dereference",\n'
-    '    "CWE-20": "improper_input_validation",\n'
-    '    "CWE-264": "permission_issue", "CWE-269": "permission_issue", "CWE-284": "permission_issue",\n'
-    '    "CWE-362": "race_condition",\n'
-    "}\n"
-    "\n"
-    "SUPPORTED_LANGUAGES = {\n"
-    '    "python", "javascript", "java", "php", "go", "c", "cpp", "c++",\n'
-    '    "typescript", "ruby",\n'
-    "}\n"
-    'LANG_NORMALIZE = {"c++": "cpp"}\n'
-    "\n"
-    "# ── Regex-based vulnerability patterns (baseline) ──\n"
-    "# These patterns represent traditional rule-based static analysis.\n"
-    "# They are intentionally simple to serve as a lower bound for comparison.\n"
-    "VULN_PATTERNS = {\n"
-    '    "sql_injection": [\n'
-    "        r'execute\\s*\\(\\s*[\"\\']\\s*SELECT.*\\+',\n"
-    "        r'execute\\s*\\(\\s*f[\"\\']',\n"
-    "        r'cursor\\.execute\\s*\\(\\s*[\"\\'].*%s',\n"
-    "        r'query\\s*=\\s*[\"\\']SELECT.*\\+',\n"
-    "        r'query\\s*=\\s*f[\"\\']SELECT',\n"
-    "        r'\\.query\\s*\\(\\s*[\"\\']SELECT.*\\+',\n"
-    "        r'executeQuery\\s*\\(\\s*[\"\\']SELECT.*\\+',\n"
-    "        r'\\$_(GET|POST|REQUEST).*(?:mysql_query|mysqli_query|pg_query)',\n"
-    "    ],\n"
-    '    "xss": [\n'
-    "        r'innerHTML\\s*=',\n"
-    "        r'document\\.write\\s*\\(',\n"
-    "        r'\\$_(?:GET|POST|REQUEST).*echo',\n"
-    "        r'echo\\s+.*\\$_(?:GET|POST|REQUEST)',\n"
-    "        r'res\\.send\\s*\\(.*req\\.',\n"
-    "        r'render_template_string\\s*\\(',\n"
-    "        r'return\\s+f[\"\\']<',\n"
-    "    ],\n"
-    '    "command_injection": [\n'
-    "        r'os\\.system\\s*\\(',\n"
-    "        r'os\\.popen\\s*\\(',\n"
-    "        r'subprocess\\.call\\s*\\(.*shell\\s*=\\s*True',\n"
-    "        r'exec\\s*\\(\\s*[\"\\'].*\\+',\n"
-    "        r'child_process.*exec\\s*\\(',\n"
-    "        r'Runtime\\.getRuntime\\(\\)\\.exec\\s*\\(',\n"
-    "        r'system\\s*\\(.*\\$',\n"
-    "    ],\n"
-    '    "path_traversal": [\n'
-    "        r'open\\s*\\(.*\\+.*\\)',\n"
-    "        r'send_file\\s*\\(.*request',\n"
-    "        r'file_get_contents\\s*\\(.*\\$_(GET|POST)',\n"
-    "        r'readFile\\s*\\(.*req\\.',\n"
-    "    ],\n"
-    '    "insecure_deserialization": [\n'
-    "        r'pickle\\.loads?\\s*\\(',\n"
-    "        r'yaml\\.load\\s*\\(',\n"
-    "        r'unserialize\\s*\\(',\n"
-    "        r'ObjectInputStream',\n"
-    "    ],\n"
-    '    "sensitive_data_exposure": [\n'
-    "        r'(?:password|secret|api_key|token)\\s*=\\s*[\"\\'][^\"\\']',\n"
-    "    ],\n"
-    '    "cryptographic_failure": [\n'
-    "        r'md5\\s*\\(', r'sha1\\s*\\(', r'DES(?:ede)?', r'RC4',\n"
-    "    ],\n"
-    '    "code_injection": [\n'
-    "        r'\\beval\\s*\\(', r'Function\\s*\\(',\n"
-    "    ],\n"
-    '    "buffer_overflow": [\n'
-    "        r'strcpy\\s*\\(', r'strcat\\s*\\(', r'gets\\s*\\(',\n"
-    "        r'sprintf\\s*\\(', r'memcpy\\s*\\(.*sizeof',\n"
-    "    ],\n"
-    "}\n"
-    "\n"
-    "def pattern_detect(code: str) -> list[str]:\n"
-    '    \"\"\"Run regex-based vulnerability detection on code.\"\"\"\n'
-    "    detected = []\n"
-    "    for vuln_type, patterns in VULN_PATTERNS.items():\n"
-    "        for pat in patterns:\n"
-    "            if re.search(pat, code, re.IGNORECASE | re.DOTALL):\n"
-    "                detected.append(vuln_type)\n"
-    "                break\n"
-    "    return detected\n"
-    "\n"
-    "def compute_metrics(classifications: list[str]) -> dict[str, float]:\n"
-    '    \"\"\"Compute precision, recall, F1, accuracy from TP/FP/FN/TN labels.\"\"\"\n'
-    '    tp = classifications.count("TP")\n'
-    '    fp = classifications.count("FP")\n'
-    '    fn = classifications.count("FN")\n'
-    '    tn = classifications.count("TN")\n'
-    "    precision = tp / (tp + fp) if (tp + fp) > 0 else 0.0\n"
-    "    recall = tp / (tp + fn) if (tp + fn) > 0 else 0.0\n"
-    "    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0\n"
-    "    accuracy = (tp + tn) / (tp + tn + fp + fn) if (tp + tn + fp + fn) > 0 else 0.0\n"
-    "    return {\n"
-    '        "TP": tp, "FP": fp, "FN": fn, "TN": tn,\n'
-    '        "Precision": round(precision, 4),\n'
-    '        "Recall": round(recall, 4),\n'
-    '        "F1-Score": round(f1, 4),\n'
-    '        "Accuracy": round(accuracy, 4),\n'
-    "    }\n"
-    "\n"
-    'print("Definitions loaded.")'
-)
-cells.append(nbf.v4.new_code_cell(definitions_code))
-
-# -- CrossVul --
-cells.append(nbf.v4.new_markdown_cell(
-    "### 2.2 CrossVul Dataset\n\n"
-    "**Source:** Nikitopoulos et al. (2021). *CrossVul: a cross-language vulnerability dataset "
-    "with commit data.*  \n"
-    "**HuggingFace:** [`hitoshura25/crossvul`](https://huggingface.co/datasets/hitoshura25/crossvul)\n\n"
-    "CrossVul contains vulnerable and fixed code pairs extracted from real-world open-source projects. "
-    "Each sample is labeled with a CWE identifier, making it suitable for type-aware evaluation. "
-    "The dataset spans 40+ programming languages, enabling cross-language analysis (RQ2).\n\n"
-    "**Filtering criteria:**\n"
-    "- Language must be in our supported set (Python, JavaScript, Java, PHP, Go, C, C++, TypeScript, Ruby)\n"
-    "- Code length between 20 and 5,000 characters (excludes trivial snippets and overly long files)\n"
-    "- Maximum 200 samples (for computational feasibility with multiple LLMs)"
-))
-
-crossvul_code = r'''print("Loading CrossVul dataset from HuggingFace (streaming)...")
-try:
-    crossvul_ds = load_dataset("hitoshura25/crossvul", split="train", streaming=True)
-    crossvul_samples = []
-    crossvul_skipped = 0
-    crossvul_total_seen = 0
-
-    for sample in crossvul_ds:
-        crossvul_total_seen += 1
-        lang = sample.get("language", "").lower().strip()
-        lang = LANG_NORMALIZE.get(lang, lang)
-        cwe = sample.get("cwe_id", "")
-        code = sample.get("vulnerable_code", "")
-
-        if not code or len(code) < 20 or len(code) > 5000:
-            crossvul_skipped += 1
-            continue
-        if lang not in SUPPORTED_LANGUAGES:
-            crossvul_skipped += 1
-            continue
-
-        vuln_type = CWE_TO_VULN_TYPE.get(cwe, None)
-        crossvul_samples.append({
-            "id": f"CV-{sample.get('file_pair_id', crossvul_total_seen)}",
-            "code": code,
-            "language": lang,
-            "cwe_id": cwe,
-            "cwe_description": sample.get("cwe_description", ""),
-            "vuln_type": vuln_type,
-            "source": "crossvul",
-            "is_vulnerable": True,
-        })
-        if len(crossvul_samples) >= 200:
-            break
-
-    print(f"CrossVul: {len(crossvul_samples)} samples loaded (scanned {crossvul_total_seen}, skipped {crossvul_skipped})")
-    print(f"  Languages: {Counter(s['language'] for s in crossvul_samples).most_common()}")
-    print(f"  Top CWEs:  {Counter(s['cwe_id'] for s in crossvul_samples).most_common(10)}")
-except Exception as e:
-    print(f"Failed to load CrossVul: {e}")
-    crossvul_samples = []
-'''
-cells.append(nbf.v4.new_code_cell(crossvul_code))
-
-# -- CrossVul sample display --
-cells.append(nbf.v4.new_markdown_cell(
-    "#### CrossVul — Sample Inspection\n\n"
-    "Displaying a representative sample from CrossVul to illustrate the data format and code quality."
-))
-
-crossvul_sample_code = r'''# Display sample entries from CrossVul
-if crossvul_samples:
-    print("=" * 70)
-    print("CrossVul — Sample Entries")
-    print("=" * 70)
-    # Show 3 diverse samples (different languages if possible)
-    shown_langs = set()
-    display_samples = []
-    for s in crossvul_samples:
-        if s["language"] not in shown_langs and len(display_samples) < 3:
-            display_samples.append(s)
-            shown_langs.add(s["language"])
-    # Fill remaining slots
-    for s in crossvul_samples:
-        if len(display_samples) >= 3:
-            break
-        if s not in display_samples:
-            display_samples.append(s)
-
-    for i, s in enumerate(display_samples[:3]):
-        print(f"\n--- Sample {i+1}: {s['id']} ---")
-        print(f"Language: {s['language']}  |  CWE: {s['cwe_id']}  |  Type: {s.get('vuln_type', 'unmapped')}")
-        print(f"Description: {s['cwe_description'][:120]}")
-        print(f"Code ({len(s['code'])} chars):")
-        # Show first 15 lines
-        lines = s["code"].split("\n")
-        for line in lines[:15]:
-            print(f"  {line}")
-        if len(lines) > 15:
-            print(f"  ... ({len(lines) - 15} more lines)")
-        print()
-else:
-    print("No CrossVul samples loaded.")
-'''
-cells.append(nbf.v4.new_code_cell(crossvul_sample_code))
-
-# -- CVEfixes --
-cells.append(nbf.v4.new_markdown_cell(
-    "### 2.3 CVEfixes Dataset\n\n"
-    "**Source:** Bhandari et al. (2021). *CVEfixes: Automated Collection of Vulnerabilities "
-    "and Their Fixes from Open-Source Software.*  \n"
-    "**HuggingFace:** [`hitoshura25/cvefixes`](https://huggingface.co/datasets/hitoshura25/cvefixes)\n\n"
-    "CVEfixes links real CVE records to their fix commits in open-source repositories. "
-    "Each sample includes the vulnerable code, the fix, the CVE identifier, CWE classification, "
-    "and — critically — **CVSS base scores** (v2 and/or v3). This provides ground-truth severity "
-    "data for RQ3.\n\n"
-    "**Filtering criteria:** Same as CrossVul (supported languages, 20–5,000 chars, max 200 samples)."
-))
-
-cvefixes_code = r'''print("Loading CVEfixes dataset from HuggingFace (streaming)...")
-try:
-    cvefixes_ds = load_dataset("hitoshura25/cvefixes", split="train", streaming=True)
-    cvefixes_samples = []
-    cvefixes_skipped = 0
-    cvefixes_total_seen = 0
-
-    for sample in cvefixes_ds:
-        cvefixes_total_seen += 1
-        lang = sample.get("language", "").lower().strip()
-        lang = LANG_NORMALIZE.get(lang, lang)
-        cwe = sample.get("cwe_id", "")
-        code = sample.get("vulnerable_code", "")
-        cve_id = sample.get("cve_id", "")
-
-        if not code or len(code) < 20 or len(code) > 5000:
-            cvefixes_skipped += 1
-            continue
-        if lang not in SUPPORTED_LANGUAGES:
-            cvefixes_skipped += 1
-            continue
-
-        # Parse CVSS score (prefer v3, fall back to v2)
-        cvss = None
-        for field in ["cvss3_base_score", "cvss2_base_score"]:
-            raw = sample.get(field)
-            if raw is not None:
-                try:
-                    cvss = float(raw)
-                    break
-                except (ValueError, TypeError):
-                    pass
-
-        # Map CVSS to severity level
-        if cvss is not None:
-            if cvss >= 9.0:   severity = "critical"
-            elif cvss >= 7.0: severity = "high"
-            elif cvss >= 4.0: severity = "medium"
-            elif cvss > 0:    severity = "low"
-            else:             severity = "info"
-        else:
-            sev_raw = str(sample.get("severity", "")).lower().strip()
-            severity = sev_raw if sev_raw in ("critical", "high", "medium", "low") else None
-
-        vuln_type = CWE_TO_VULN_TYPE.get(cwe, None)
-        cvefixes_samples.append({
-            "id": f"CVF-{cve_id}" if cve_id else f"CVF-{cvefixes_total_seen}",
-            "code": code,
-            "language": lang,
-            "cwe_id": cwe,
-            "cwe_name": sample.get("cwe_name", ""),
-            "cve_id": cve_id,
-            "cvss_score": cvss,
-            "severity": severity,
-            "vuln_type": vuln_type,
-            "source": "cvefixes",
-            "is_vulnerable": True,
-            "repo_url": sample.get("repo_url", ""),
-        })
-        if len(cvefixes_samples) >= 200:
-            break
-
-    print(f"CVEfixes: {len(cvefixes_samples)} samples loaded (scanned {cvefixes_total_seen}, skipped {cvefixes_skipped})")
-    print(f"  Languages: {Counter(s['language'] for s in cvefixes_samples).most_common()}")
-    print(f"  Top CWEs:  {Counter(s['cwe_id'] for s in cvefixes_samples).most_common(10)}")
-    if any(s['cvss_score'] for s in cvefixes_samples):
-        scores = [s['cvss_score'] for s in cvefixes_samples if s['cvss_score'] is not None]
-        print(f"  CVSS:      min={min(scores):.1f}, max={max(scores):.1f}, mean={np.mean(scores):.2f}")
-    print(f"  Severity:  {Counter(s['severity'] for s in cvefixes_samples if s['severity']).most_common()}")
-except Exception as e:
-    print(f"Failed to load CVEfixes: {e}")
-    cvefixes_samples = []
-'''
-cells.append(nbf.v4.new_code_cell(cvefixes_code))
-
-# -- CVEfixes sample display --
-cells.append(nbf.v4.new_markdown_cell(
-    "#### CVEfixes — Sample Inspection\n\n"
-    "Displaying representative samples from CVEfixes. Note the CVSS scores and CVE identifiers "
-    "that provide ground-truth severity labels."
-))
-
-cvefixes_sample_code = r'''if cvefixes_samples:
-    print("=" * 70)
-    print("CVEfixes — Sample Entries")
-    print("=" * 70)
-    shown_langs = set()
-    display_samples = []
-    for s in cvefixes_samples:
-        if s["language"] not in shown_langs and len(display_samples) < 3:
-            display_samples.append(s)
-            shown_langs.add(s["language"])
-    for s in cvefixes_samples:
-        if len(display_samples) >= 3:
-            break
-        if s not in display_samples:
-            display_samples.append(s)
-
-    for i, s in enumerate(display_samples[:3]):
-        print(f"\n--- Sample {i+1}: {s['id']} ---")
-        print(f"Language: {s['language']}  |  CWE: {s['cwe_id']}  |  CVE: {s['cve_id']}")
-        print(f"CVSS: {s['cvss_score']}  |  Severity: {s['severity']}  |  Type: {s.get('vuln_type', 'unmapped')}")
-        print(f"CWE Name: {s.get('cwe_name', 'N/A')[:100]}")
-        print(f"Code ({len(s['code'])} chars):")
-        lines = s["code"].split("\n")
-        for line in lines[:15]:
-            print(f"  {line}")
-        if len(lines) > 15:
-            print(f"  ... ({len(lines) - 15} more lines)")
-        print()
-else:
-    print("No CVEfixes samples loaded.")
-'''
-cells.append(nbf.v4.new_code_cell(cvefixes_sample_code))
-
-# -- Combine --
-cells.append(nbf.v4.new_markdown_cell(
-    "### 2.4 Combined Dataset\n\n"
-    "**Justification for reporting both separately and merged:**\n\n"
-    "Following best practices in empirical software engineering (Wohlin et al., 2012), we:\n"
-    "1. **Report per-dataset** to assess whether findings generalize across different data collection methodologies\n"
-    "2. **Report merged** to increase statistical power and provide an aggregate view\n"
-    "3. **Test for homogeneity** — if performance differs significantly between datasets (using Fisher's exact test), "
-    "we discuss this as a threat to validity rather than masking it in aggregation\n\n"
-    "Both datasets contain real-world vulnerable code from open-source projects, making them "
-    "methodologically compatible for aggregation. However, they differ in:\n"
-    "- **Collection method**: CrossVul extracts from commit diffs; CVEfixes links to CVE records\n"
-    "- **Metadata**: CVEfixes has CVSS scores; CrossVul has broader language coverage\n"
-    "- **Granularity**: Both provide function/file-level code snippets\n\n"
-    "We verify compatibility by checking language and CWE overlap."
-))
-
-combine_code = r'''# Build unified benchmark
-BENCHMARK_SAMPLES: list[dict[str, Any]] = []
-
-for s in crossvul_samples:
-    gt = [s["vuln_type"]] if s.get("vuln_type") else ([s["cwe_id"]] if s.get("cwe_id") else ["unknown"])
-    BENCHMARK_SAMPLES.append({
-        "id": s["id"], "code": s["code"], "language": s["language"],
-        "ground_truth": gt, "severity": None,
-        "description": f"CrossVul: {s.get('cwe_description', s.get('cwe_id', ''))[:80]}",
-        "is_vulnerable": True, "source": "crossvul",
-        "cwe_id": s.get("cwe_id", ""), "cvss_score": None,
-    })
-
-for s in cvefixes_samples:
-    gt = [s["vuln_type"]] if s.get("vuln_type") else ([s["cwe_id"]] if s.get("cwe_id") else ["unknown"])
-    BENCHMARK_SAMPLES.append({
-        "id": s["id"], "code": s["code"], "language": s["language"],
-        "ground_truth": gt, "severity": s.get("severity"),
-        "description": f"CVEfixes: {s.get('cwe_name', s.get('cwe_id', ''))[:60]} ({s.get('cve_id', '')})",
-        "is_vulnerable": True, "source": "cvefixes",
-        "cwe_id": s.get("cwe_id", ""), "cvss_score": s.get("cvss_score"),
-    })
-
-print("=" * 60)
-print("Combined Benchmark Dataset Summary")
-print("=" * 60)
-print(f"Total samples: {len(BENCHMARK_SAMPLES)}")
-print(f"\nBy source:")
-for src, cnt in Counter(s["source"] for s in BENCHMARK_SAMPLES).most_common():
-    print(f"  {src}: {cnt}")
-print(f"\nBy language:")
-for lang, cnt in Counter(s["language"] for s in BENCHMARK_SAMPLES).most_common():
-    print(f"  {lang}: {cnt}")
-
-# Check overlap
-cv_langs = set(s["language"] for s in crossvul_samples)
-cvf_langs = set(s["language"] for s in cvefixes_samples)
-cv_cwes = set(s["cwe_id"] for s in crossvul_samples if s["cwe_id"])
-cvf_cwes = set(s["cwe_id"] for s in cvefixes_samples if s["cwe_id"])
-print(f"\nLanguage overlap: {cv_langs & cvf_langs}")
-print(f"CWE overlap:     {len(cv_cwes & cvf_cwes)} shared CWEs out of {len(cv_cwes | cvf_cwes)} total")
-
-cwe_counts = Counter(s["cwe_id"] for s in BENCHMARK_SAMPLES if s["cwe_id"])
-print(f"\nTop 15 CWE IDs:")
-for cwe, cnt in cwe_counts.most_common(15):
-    mapped = CWE_TO_VULN_TYPE.get(cwe, "unmapped")
-    print(f"  {cwe} ({mapped}): {cnt}")
-'''
-cells.append(nbf.v4.new_code_cell(combine_code))
-
-# -- Dataset visualization --
-fig0_code = r'''# Figure 0: Dataset composition overview
-fig, axes = plt.subplots(1, 3, figsize=(16, 5))
-
-# (a) Samples by source
-src_counts = Counter(s["source"] for s in BENCHMARK_SAMPLES)
-bars = axes[0].bar(src_counts.keys(), src_counts.values(), color=["#1976D2", "#388E3C"], alpha=0.85)
-axes[0].set_title("(a) Samples by Source")
-axes[0].set_ylabel("Count")
-for bar in bars:
-    axes[0].text(bar.get_x() + bar.get_width()/2, bar.get_height() + 1,
-                 str(int(bar.get_height())), ha="center", fontsize=10)
-
-# (b) Samples by language
-lang_counts = Counter(s["language"] for s in BENCHMARK_SAMPLES)
-langs_sorted = sorted(lang_counts.keys(), key=lambda x: -lang_counts[x])
-colors_lang = plt.cm.tab10(np.linspace(0, 1, len(langs_sorted)))
-axes[1].barh(langs_sorted, [lang_counts[l] for l in langs_sorted], color=colors_lang, alpha=0.85)
-axes[1].set_title("(b) Samples by Language")
-axes[1].set_xlabel("Count")
-axes[1].invert_yaxis()
-
-# (c) Top CWE distribution
-if cwe_counts:
-    top_cwes = cwe_counts.most_common(12)
-    cwes_labels, cwes_vals = zip(*top_cwes)
-    axes[2].barh(range(len(cwes_labels)), cwes_vals, color="#00796B", alpha=0.8)
-    axes[2].set_yticks(range(len(cwes_labels)))
-    axes[2].set_yticklabels(cwes_labels, fontsize=9)
-    axes[2].set_title("(c) Top CWE Types")
-    axes[2].set_xlabel("Count")
-    axes[2].invert_yaxis()
-
-plt.suptitle("Figure 0: Benchmark Dataset Composition", fontsize=14, fontweight="bold")
-plt.tight_layout()
-plt.savefig("fig0_dataset_composition.png", dpi=300, bbox_inches="tight")
-plt.show()
-print("Saved: fig0_dataset_composition.png")
-'''
-cells.append(nbf.v4.new_code_cell(fig0_code))
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Section 3 — Pattern-based Baseline
-# ══════════════════════════════════════════════════════════════════════════════
-cells.append(nbf.v4.new_markdown_cell(
-    "## 3. Baseline: Pattern-Based Static Analysis\n\n"
-    "**Justification:** A regex-based baseline provides a lower bound on detection performance. "
-    "Traditional SAST tools (e.g., Semgrep, Bandit, Flawfinder) rely on pattern matching as their "
-    "core mechanism. While production tools have more sophisticated patterns, our baseline captures "
-    "the fundamental approach. This allows us to quantify the marginal benefit of LLM-based analysis "
-    "over simple pattern matching.\n\n"
-    "**Limitation:** Pattern-based analysis has inherently low recall on semantically complex "
-    "vulnerabilities (e.g., logic flaws, race conditions) that cannot be captured by syntactic patterns."
-))
-
-pattern_code = r'''# Run pattern-based baseline on all benchmark samples
-pattern_results: list[dict[str, Any]] = []
-for sample in BENCHMARK_SAMPLES:
-    detected = pattern_detect(sample["code"])
-    detected_any = len(detected) > 0
-    is_vulnerable = sample["is_vulnerable"]
-
-    if is_vulnerable and detected_any:
-        classification = "TP"
-    elif is_vulnerable and not detected_any:
-        classification = "FN"
-    elif not is_vulnerable and detected_any:
-        classification = "FP"
-    else:
-        classification = "TN"
-
-    pattern_results.append({
-        "id": sample["id"], "language": sample["language"],
-        "source": sample["source"], "ground_truth": sample["ground_truth"],
-        "detected_types": detected, "detected_any": detected_any,
-        "classification": classification,
-    })
-
-df_pattern = pd.DataFrame(pattern_results)
-pattern_metrics = compute_metrics(df_pattern["classification"].tolist())
-
-# Per-dataset baseline metrics
-print("Pattern-Based Baseline Results:")
-print("-" * 40)
-for src in ["crossvul", "cvefixes", "merged"]:
-    if src == "merged":
-        subset = df_pattern["classification"].tolist()
-    else:
-        subset = df_pattern[df_pattern["source"] == src]["classification"].tolist()
-    if subset:
-        m = compute_metrics(subset)
-        print(f"  {src:10s}: P={m['Precision']:.3f}  R={m['Recall']:.3f}  F1={m['F1-Score']:.3f}  (n={len(subset)})")
-'''
-cells.append(nbf.v4.new_code_cell(pattern_code))
-
-# ══════════════════════════════════════════════════════════════════════════════
-# Section 4 — Multi-LLM Analysis
-# ══════════════════════════════════════════════════════════════════════════════
-cells.append(nbf.v4.new_markdown_cell(
-    "## 4. Experimental Results\n\n"
-    "### 4.0 LLM Analysis Engine\n\n"
-    "**Methodology:** Each benchmark sample is sent to every configured LLM with an identical prompt. "
-    "The prompt instructs the model to return structured JSON with detected vulnerabilities "
-    "(type, severity, confidence) and mitigations (title, description, suggested fix). "
-    "We use low temperature (0.1) to ensure reproducibility.\n\n"
-    "**Why multiple LLMs?** Comparing models from different providers and architectures "
-    "(general-purpose vs. code-specialized) strengthens the generalizability of our findings "
-    "and identifies whether code-specific pretraining improves vulnerability detection (RQ6)."
-))
-
-llm_engine_code = r'''# ── LLM Analysis Functions ──
-# Each provider has a dedicated function to handle API differences.
-
-ANALYSIS_PROMPT_TEMPLATE = """Analyze the following {language} code for security vulnerabilities.
-
-Return a JSON object with:
-- "vulnerabilities": list of objects, each with:
-  - "type": vulnerability type (e.g., sql_injection, xss, command_injection, buffer_overflow, path_traversal, use_after_free, null_pointer_dereference, etc.)
-  - "severity": one of "critical", "high", "medium", "low"
-  - "confidence": float between 0.0 and 1.0
-  - "description": brief description of the vulnerability
-- "mitigations": list of objects, each with:
-  - "title": short title for the mitigation
-  - "description": explanation of the fix
-  - "suggested_fix": code snippet showing the fix
-
-If no vulnerabilities are found, return {{"vulnerabilities": [], "mitigations": []}}
-
-Code:
-```{language}
-{code}
-```
-
-Return ONLY valid JSON. Do not wrap in markdown fences."""
+with open(f"{CFG.output_dir}/prompt_version.json", "w") as f:
+    json.dump(PROMPT_REGISTRY, f, indent=2, default=str)
+print(f"Prompt registry exported: {len(PROMPT_REGISTRY)} prompts")
+for pid, p in PROMPT_REGISTRY.items():
+    print(f"  {pid}: {p['name']} ({p['date']})")""")
 
 
-def parse_llm_response(text: str) -> dict:
-    """Parse LLM response text into structured dict."""
-    text = text.strip()
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1] if "\n" in text else text[3:]
-        if text.endswith("```"):
-            text = text[:-3].strip()
+# ── S6: BASELINES ──
+md("""## 6. Baselines
+
+**Justification:** A single weak baseline (regex) is insufficient for Q1 journal methodology. We implement baselines of increasing strength:
+1. **Regex pattern baseline**: Simple pattern matching for common vulnerability signatures
+2. **Keyword/rule-based baseline**: Domain-specific keyword counting with thresholds
+3. **Semgrep baseline**: Industry-standard static analysis tool (if available)
+4. **Bandit baseline**: Python-specific static analysis (for Python samples only)
+
+Each baseline clearly states which languages it supports.""")
+
+code("""VULN_PATTERNS = {
+    "sql_injection": [
+        r'(?i)(execute|cursor\.execute|raw_query|rawQuery)\s*\([^)]*[\'"]?\s*(%s|\+|\.format|f[\'"])',
+        r'(?i)SELECT\s+.*\+\s*(user|request|input|param)',
+        r'(?i)(query|sql)\s*=\s*[f\'"].*\{',
+    ],
+    "xss": [
+        r'(?i)(innerHTML|outerHTML|document\.write|\.html\()\s*[=(]',
+        r'(?i)render.*\{\{.*\}\}.*\|safe',
+        r'(?i)dangerouslySetInnerHTML',
+    ],
+    "command_injection": [
+        r'(?i)(os\.system|subprocess\.(call|run|Popen)|exec|eval)\s*\(',
+        r'(?i)Runtime\.getRuntime\(\)\.exec\s*\(',
+        r'(?i)child_process\.(exec|spawn)\s*\(',
+    ],
+    "path_traversal": [
+        r'(?i)(open|read|fopen|file_get_contents)\s*\([^)]*\+',
+        r'(?i)\.\./|\.\.\\\\',
+        r'(?i)(realpath|abspath|normalize)\s*\(',
+    ],
+    "buffer_overflow": [
+        r'(?i)(strcpy|strcat|sprintf|gets)\s*\(',
+        r'(?i)memcpy\s*\([^,]+,\s*[^,]+,\s*sizeof',
+        r'(?i)\[\s*\d+\s*\].*=',
+    ],
+    "auth_bypass": [
+        r'(?i)(password|passwd|secret|token)\s*==\s*[\'"]',
+        r'(?i)verify\s*=\s*False',
+        r'(?i)authenticate.*return\s+True',
+    ],
+    "hardcoded_credentials": [
+        r'(?i)(password|api_key|secret|token)\s*=\s*[\'"][^\'"]{3,}[\'"]',
+        r'(?i)(AWS_SECRET|PRIVATE_KEY)\s*=\s*[\'"]',
+    ],
+}
+
+VULN_KEYWORDS = {
+    "sql_injection": ["execute", "query", "SELECT", "INSERT", "DROP", "cursor", "rawQuery"],
+    "xss": ["innerHTML", "outerHTML", "document.write", ".html(", "dangerouslySetInnerHTML", "safe"],
+    "command_injection": ["os.system", "subprocess", "exec(", "eval(", "child_process", "Runtime.exec"],
+    "path_traversal": ["../", "..\\\\", "file_get_contents", "open(", "readFile"],
+    "buffer_overflow": ["strcpy", "strcat", "sprintf", "gets(", "memcpy"],
+    "hardcoded_credentials": ["password=", "api_key=", "secret=", "token=", "AWS_SECRET"],
+}
+
+
+def baseline_regex(code_text: str) -> dict:
+    detected = []
+    for vuln_type, patterns in VULN_PATTERNS.items():
+        for pat in patterns:
+            if re.search(pat, code_text):
+                detected.append(vuln_type)
+                break
+    is_vuln = len(detected) > 0
+    return {"is_vulnerable": is_vuln, "types": detected, "method": "regex"}
+
+
+def baseline_keyword(code_text: str, threshold: int = 2) -> dict:
+    scores = {}
+    for vuln_type, keywords in VULN_KEYWORDS.items():
+        count = sum(1 for kw in keywords if kw.lower() in code_text.lower())
+        if count >= threshold:
+            scores[vuln_type] = count
+    detected = list(scores.keys())
+    return {"is_vulnerable": len(detected) > 0, "types": detected, "method": "keyword", "scores": scores}
+
+
+def baseline_semgrep(code_text: str, language: str, sample_id: str) -> dict:
+    if not shutil.which("semgrep"):
+        return {"is_vulnerable": False, "types": [], "method": "semgrep", "error": "semgrep_not_installed"}
+    ext_map = {"python": ".py", "javascript": ".js", "java": ".java", "php": ".php",
+               "go": ".go", "c": ".c", "cpp": ".cpp", "typescript": ".ts", "ruby": ".rb"}
+    ext = ext_map.get(language, ".txt")
+    tmp_path = f"/tmp/semgrep_sample_{sample_id}{ext}"
     try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        # Try to extract JSON from the response
-        import re as _re
-        match = _re.search(r'\{[\s\S]*\}', text)
-        if match:
-            try:
-                return json.loads(match.group())
-            except json.JSONDecodeError:
-                pass
-        return {"vulnerabilities": [], "mitigations": [], "parse_error": True}
+        with open(tmp_path, "w") as f:
+            f.write(code_text)
+        result = subprocess.run(
+            ["semgrep", "--config", "auto", "--json", "--quiet", tmp_path],
+            capture_output=True, text=True, timeout=30,
+        )
+        findings = json.loads(result.stdout).get("results", []) if result.returncode == 0 else []
+        detected = list(set(f.get("check_id", "unknown").split(".")[-1] for f in findings))
+        return {"is_vulnerable": len(findings) > 0, "types": detected, "method": "semgrep", "findings_count": len(findings)}
+    except Exception as e:
+        return {"is_vulnerable": False, "types": [], "method": "semgrep", "error": str(e)}
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
 
-async def call_openai(code: str, language: str, model_id: str, api_key: str) -> dict:
-    import openai
-    client = openai.AsyncOpenAI(api_key=api_key)
-    prompt = ANALYSIS_PROMPT_TEMPLATE.format(language=language, code=code)
-    response = await client.chat.completions.create(
-        model=model_id,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.1, max_tokens=2000,
-    )
-    return parse_llm_response(response.choices[0].message.content)
+def baseline_bandit(code_text: str, language: str, sample_id: str) -> dict:
+    if language != "python":
+        return {"is_vulnerable": False, "types": [], "method": "bandit", "error": "python_only"}
+    if not shutil.which("bandit"):
+        return {"is_vulnerable": False, "types": [], "method": "bandit", "error": "bandit_not_installed"}
+    tmp_path = f"/tmp/bandit_sample_{sample_id}.py"
+    try:
+        with open(tmp_path, "w") as f:
+            f.write(code_text)
+        result = subprocess.run(
+            ["bandit", "-f", "json", "-q", tmp_path],
+            capture_output=True, text=True, timeout=30,
+        )
+        output = json.loads(result.stdout) if result.stdout else {}
+        issues = output.get("results", [])
+        detected = list(set(i.get("test_id", "unknown") for i in issues))
+        return {"is_vulnerable": len(issues) > 0, "types": detected, "method": "bandit", "issues_count": len(issues)}
+    except Exception as e:
+        return {"is_vulnerable": False, "types": [], "method": "bandit", "error": str(e)}
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
 
-async def call_anthropic(code: str, language: str, model_id: str, api_key: str) -> dict:
-    import anthropic
-    client = anthropic.AsyncAnthropic(api_key=api_key)
-    prompt = ANALYSIS_PROMPT_TEMPLATE.format(language=language, code=code)
-    response = await client.messages.create(
-        model=model_id,
-        max_tokens=2000,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.1,
-    )
-    return parse_llm_response(response.content[0].text)
+print("Baselines defined:")
+print("  1. Regex pattern baseline (all languages)")
+print("  2. Keyword/rule-based baseline (all languages)")
+print("  3. Semgrep baseline (all languages, requires semgrep installation)")
+print("  4. Bandit baseline (Python only, requires bandit installation)")
+print(f"  Semgrep available: {shutil.which('semgrep') is not None}")
+print(f"  Bandit available: {shutil.which('bandit') is not None}")""")
 
 
-async def call_google(code: str, language: str, model_id: str, api_key: str) -> dict:
-    import google.generativeai as genai
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel(model_id)
-    prompt = ANALYSIS_PROMPT_TEMPLATE.format(language=language, code=code)
-    response = await model.generate_content_async(
-        prompt,
-        generation_config=genai.GenerationConfig(temperature=0.1, max_output_tokens=2000),
-    )
-    return parse_llm_response(response.text)
+# ── S7: LLM EXECUTION ENGINE ──
+md("""## 7. LLM Execution Engine
+
+**Justification:** A unified execution engine ensures that all models receive identical prompts, and that responses are parsed consistently. Robust JSON parsing with failure tracking prevents silent data loss. Each response records raw output, parsed JSON, success/failure, error message, retry count, latency, and token usage.""")
+
+code("""def parse_llm_json(raw_response: str) -> tuple:
+    \"\"\"Robust JSON parsing from LLM output. Returns (parsed_dict, success, error_msg).\"\"\"
+    if not raw_response or not isinstance(raw_response, str):
+        return ({}, False, "empty_response")
+    text = raw_response.strip()
+    json_match = re.search(r'```(?:json)?\s*([\s\S]*?)```', text)
+    if json_match:
+        text = json_match.group(1).strip()
+    else:
+        start = text.find('{')
+        end = text.rfind('}')
+        if start != -1 and end != -1 and end > start:
+            text = text[start:end + 1]
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, dict):
+            return (parsed, True, None)
+        return ({}, False, "not_a_dict")
+    except json.JSONDecodeError as e:
+        text_fixed = re.sub(r',\s*}', '}', re.sub(r',\s*]', ']', text))
+        try:
+            parsed = json.loads(text_fixed)
+            if isinstance(parsed, dict):
+                return (parsed, True, None)
+        except Exception:
+            pass
+        return ({}, False, f"json_error: {str(e)[:100]}")
 
 
-async def call_deepseek(code: str, language: str, model_id: str, api_key: str) -> dict:
-    import openai
-    client = openai.AsyncOpenAI(api_key=api_key, base_url="https://api.deepseek.com")
-    prompt = ANALYSIS_PROMPT_TEMPLATE.format(language=language, code=code)
-    response = await client.chat.completions.create(
-        model=model_id,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.1, max_tokens=2000,
-    )
-    return parse_llm_response(response.choices[0].message.content)
+def call_openai(prompt: str, model_id: str, temperature: float, max_tokens: int) -> tuple:
+    \"\"\"Call OpenAI API. Returns (raw_response, token_usage, error).\"\"\"
+    try:
+        import openai
+        client = openai.OpenAI()
+        response = client.chat.completions.create(
+            model=model_id,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        raw = response.choices[0].message.content
+        usage = {"prompt_tokens": response.usage.prompt_tokens,
+                 "completion_tokens": response.usage.completion_tokens,
+                 "total_tokens": response.usage.total_tokens}
+        return (raw, usage, None)
+    except Exception as e:
+        return (None, {}, str(e))
 
 
-async def call_together(code: str, language: str, model_id: str, api_key: str) -> dict:
-    import openai
-    client = openai.AsyncOpenAI(api_key=api_key, base_url="https://api.together.xyz/v1")
-    prompt = ANALYSIS_PROMPT_TEMPLATE.format(language=language, code=code)
-    response = await client.chat.completions.create(
-        model=model_id,
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.1, max_tokens=2000,
-    )
-    return parse_llm_response(response.choices[0].message.content)
+def call_anthropic(prompt: str, model_id: str, temperature: float, max_tokens: int) -> tuple:
+    try:
+        import anthropic
+        client = anthropic.Anthropic()
+        response = client.messages.create(
+            model=model_id,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        raw = response.content[0].text
+        usage = {"prompt_tokens": response.usage.input_tokens,
+                 "completion_tokens": response.usage.output_tokens,
+                 "total_tokens": response.usage.input_tokens + response.usage.output_tokens}
+        return (raw, usage, None)
+    except Exception as e:
+        return (None, {}, str(e))
 
 
-PROVIDER_FUNCTIONS = {
+def call_google(prompt: str, model_id: str, temperature: float, max_tokens: int) -> tuple:
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=os.environ.get("GOOGLE_API_KEY", ""))
+        model = genai.GenerativeModel(model_id)
+        response = model.generate_content(
+            prompt,
+            generation_config=genai.GenerationConfig(temperature=temperature, max_output_tokens=max_tokens),
+        )
+        raw = response.text
+        usage = {"total_tokens": 0}
+        return (raw, usage, None)
+    except Exception as e:
+        return (None, {}, str(e))
+
+
+def call_deepseek(prompt: str, model_id: str, temperature: float, max_tokens: int) -> tuple:
+    try:
+        import openai
+        client = openai.OpenAI(
+            api_key=os.environ.get("DEEPSEEK_API_KEY", ""),
+            base_url="https://api.deepseek.com/v1",
+        )
+        response = client.chat.completions.create(
+            model=model_id,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        raw = response.choices[0].message.content
+        usage = {"prompt_tokens": response.usage.prompt_tokens,
+                 "completion_tokens": response.usage.completion_tokens,
+                 "total_tokens": response.usage.total_tokens}
+        return (raw, usage, None)
+    except Exception as e:
+        return (None, {}, str(e))
+
+
+def call_together(prompt: str, model_id: str, temperature: float, max_tokens: int) -> tuple:
+    try:
+        import openai
+        client = openai.OpenAI(
+            api_key=os.environ.get("TOGETHER_API_KEY", ""),
+            base_url="https://api.together.xyz/v1",
+        )
+        response = client.chat.completions.create(
+            model=model_id,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+        raw = response.choices[0].message.content
+        usage = {"prompt_tokens": response.usage.prompt_tokens,
+                 "completion_tokens": response.usage.completion_tokens,
+                 "total_tokens": response.usage.total_tokens}
+        return (raw, usage, None)
+    except Exception as e:
+        return (None, {}, str(e))
+
+
+PROVIDER_CALLERS = {
     "openai": call_openai,
     "anthropic": call_anthropic,
     "google": call_google,
@@ -820,1102 +806,1334 @@ PROVIDER_FUNCTIONS = {
 }
 
 
-async def run_model_analysis(samples: list, model_config: dict) -> list[dict]:
-    """Run a single LLM model on all samples."""
-    call_fn = PROVIDER_FUNCTIONS[model_config["provider"]]
-    results = []
-
-    for i, sample in enumerate(samples):
-        start_time = time.time()
-        try:
-            result = await call_fn(sample["code"], sample["language"],
-                                   model_config["model_id"], model_config["api_key"])
-            elapsed = time.time() - start_time
-            vulns = result.get("vulnerabilities", [])
-            mits = result.get("mitigations", [])
-            detected_types = [v.get("type", "unknown") for v in vulns]
-            severities = [v.get("severity", "medium") for v in vulns]
-            confidences = [v.get("confidence", 0.8) for v in vulns]
-        except Exception as e:
-            elapsed = time.time() - start_time
-            detected_types, severities, confidences = [], [], []
-            mits = []
-            if i < 3:
-                print(f"    Error on {sample['id']}: {e}")
-
-        detected_any = len(detected_types) > 0
-        is_vulnerable = sample["is_vulnerable"]
-
-        if is_vulnerable and detected_any:
-            classification = "TP"
-        elif is_vulnerable and not detected_any:
-            classification = "FN"
-        elif not is_vulnerable and detected_any:
-            classification = "FP"
-        else:
-            classification = "TN"
-
-        results.append({
-            "id": sample["id"], "language": sample["language"],
-            "source": sample["source"], "ground_truth": sample["ground_truth"],
-            "detected_types": detected_types, "severities": severities,
-            "confidences": confidences, "classification": classification,
-            "latency_s": round(elapsed, 3), "num_vulns": len(detected_types),
-            "num_mitigations": len(mits),
-            "mitigations": [{"title": m.get("title", ""),
-                            "description": m.get("description", "")[:200],
-                            "suggested_fix": m.get("suggested_fix", "")[:200]} for m in mits],
-        })
-        if (i + 1) % 50 == 0 or (i + 1) == len(samples):
-            print(f"    [{i+1}/{len(samples)}] processed")
-
-    return results
-
-
-def simulate_model_results(samples: list, model_name: str, seed: int,
-                           recall_rate: float, fp_rate: float = 0.0) -> list[dict]:
-    """Simulate LLM results with configurable performance levels."""
-    np.random.seed(seed)
-    results = []
-    for sample in samples:
-        is_vuln = sample["is_vulnerable"]
-        gt = sample["ground_truth"]
-
-        if is_vuln:
-            detected = gt if np.random.random() < recall_rate else []
-            classification = "TP" if detected else "FN"
-            conf = [round(np.random.uniform(0.70, 0.95), 2)] if detected else []
-            sev = [sample.get("severity", "medium")] if detected else []
-        else:
-            if np.random.random() < fp_rate:
-                detected, classification = ["unknown"], "FP"
-                conf, sev = [round(np.random.uniform(0.3, 0.6), 2)], ["medium"]
-            else:
-                detected, classification = [], "TN"
-                conf, sev = [], []
-
-        results.append({
-            "id": sample["id"], "language": sample["language"],
-            "source": sample["source"], "ground_truth": gt,
-            "detected_types": detected, "severities": sev,
-            "confidences": conf, "classification": classification,
-            "latency_s": round(np.random.uniform(1.0, 5.0), 3),
-            "num_vulns": len(detected), "num_mitigations": len(detected),
-            "mitigations": [],
-        })
-    return results
-
-
-print("LLM analysis engine ready.")
-print(f"Provider functions: {list(PROVIDER_FUNCTIONS.keys())}")
-'''
-cells.append(nbf.v4.new_code_cell(llm_engine_code))
-
-# -- Run all models --
-cells.append(nbf.v4.new_markdown_cell(
-    "### 4.0.1 Running All Models\n\n"
-    "We now run each model on the full benchmark. For models without API keys, we use "
-    "simulated results calibrated to published benchmarks:\n\n"
-    "| Model | Simulated Recall | Source |\n"
-    "|-------|-----------------|--------|\n"
-    "| GPT-4o | 0.87 | OpenAI (2024) technical report |\n"
-    "| GPT-4-Turbo | 0.84 | Prior evaluations (Fang et al., 2024) |\n"
-    "| Claude 3.5 Sonnet | 0.86 | Anthropic system card |\n"
-    "| Gemini 1.5 Pro | 0.82 | Google DeepMind tech report |\n"
-    "| DeepSeek-Coder-V2 | 0.88 | Code-specialized; higher recall on code tasks |\n"
-    "| CodeLlama-70B | 0.80 | Meta (2024); open-source baseline |"
-))
-
-run_all_code = r'''# Simulated performance parameters (based on published benchmarks)
-SIMULATED_PARAMS = {
-    "GPT-4o":            {"seed": 42,  "recall": 0.87, "fp_rate": 0.08},
-    "GPT-4-Turbo":       {"seed": 43,  "recall": 0.84, "fp_rate": 0.09},
-    "Claude 3.5 Sonnet": {"seed": 44,  "recall": 0.86, "fp_rate": 0.07},
-    "Gemini 1.5 Pro":    {"seed": 45,  "recall": 0.82, "fp_rate": 0.10},
-    "DeepSeek-Coder-V2": {"seed": 46,  "recall": 0.88, "fp_rate": 0.06},
-    "CodeLlama-70B":     {"seed": 47,  "recall": 0.80, "fp_rate": 0.12},
+API_KEY_MAP = {
+    "openai": "OPENAI_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+    "google": "GOOGLE_API_KEY",
+    "deepseek": "DEEPSEEK_API_KEY",
+    "together": "TOGETHER_API_KEY",
 }
 
-# Run analysis for each model
-all_model_results: dict[str, pd.DataFrame] = {}
 
-for model_config in MODELS:
-    name = model_config["name"]
-    print(f"\n{'='*50}")
-    print(f"Model: {name} ({model_config['type']})")
-    print(f"{'='*50}")
+def check_model_availability() -> list:
+    \"\"\"Check which models have API keys configured.\"\"\"
+    available = []
+    for model in CFG.models:
+        env_key = API_KEY_MAP.get(model["provider"], "")
+        has_key = bool(os.environ.get(env_key, ""))
+        available.append({**model, "available": has_key, "env_key": env_key})
+    return available
 
-    if model_config["api_key"]:
-        print(f"  Running LIVE analysis via {model_config['provider']} API...")
-        results = await run_model_analysis(BENCHMARK_SAMPLES, model_config)
-    else:
-        params = SIMULATED_PARAMS[name]
-        print(f"  Using SIMULATED results (recall={params['recall']}, fp_rate={params['fp_rate']})")
-        results = simulate_model_results(BENCHMARK_SAMPLES, name, params["seed"],
-                                         params["recall"], params["fp_rate"])
+model_status = check_model_availability()
+print("Model availability:")
+for m in model_status:
+    status = "READY" if m["available"] else "NO API KEY"
+    print(f"  {m['name']:20s} ({m['provider']:10s}) [{m['type']:7s}] -> {status}")
 
-    df = pd.DataFrame(results)
-    all_model_results[name] = df
-    m = compute_metrics(df["classification"].tolist())
-    print(f"  Results: P={m['Precision']:.3f}  R={m['Recall']:.3f}  F1={m['F1-Score']:.3f}  Acc={m['Accuracy']:.3f}")
+AVAILABLE_MODELS = [m for m in model_status if m["available"]]
+if not AVAILABLE_MODELS and CFG.USE_REAL_LLMS_ONLY:
+    print("\\nWARNING: No API keys found and USE_REAL_LLMS_ONLY=True.")
+    print("Set API keys as environment variables to run experiments.")
+    print("Baselines will still be evaluated.")""")
 
-print(f"\n{'='*50}")
-print(f"All {len(all_model_results)} models processed.")
-'''
-cells.append(nbf.v4.new_code_cell(run_all_code))
 
-# ── RQ1 ──
-cells.append(nbf.v4.new_markdown_cell(
-    "### 4.1 RQ1: Multi-Model Detection Effectiveness\n\n"
-    "**Research Question:** *How do different LLMs compare in detecting known vulnerability types "
-    "vs. pattern-based static analysis?*\n\n"
-    "**Methodology:** We compute precision, recall, F1-score, and accuracy for each model and "
-    "the baseline. We report results:\n"
-    "1. **Per-dataset** (CrossVul and CVEfixes separately)\n"
-    "2. **Merged** (combined dataset)\n\n"
-    "**Note:** Since both datasets contain only vulnerable samples, precision is bounded by "
-    "the absence of true negatives. We focus primarily on **recall** (ability to detect known "
-    "vulnerabilities) and **F1-score** as the primary comparison metric."
-))
+# ── S8: MAIN EXPERIMENT LOOP ──
+md("""## 8. Main Experiment Execution
 
-rq1_code = r'''# ── RQ1: Overall comparison table ──
-print("=" * 80)
-print("RQ1 RESULTS: Detection Effectiveness — All Models vs. Baseline")
-print("=" * 80)
+**Justification:** The experiment runs each model on the identical benchmark samples. Each sample-model pair records: raw response, parsed JSON, success/failure, error message, retry count, latency, and token usage. Models without API keys are excluded from the main experiment when `USE_REAL_LLMS_ONLY=True`. Each model is run `num_repeated_runs` times to capture variance.""")
 
-# Build comparison table
-rows = []
-# Baseline
-pm = pattern_metrics
-rows.append({"Model": "Pattern-Based (Baseline)", "Type": "regex",
-             **{k: pm[k] for k in ["TP","FP","FN","TN","Precision","Recall","F1-Score","Accuracy"]}})
-# LLMs
-for name, df in all_model_results.items():
-    m = compute_metrics(df["classification"].tolist())
-    model_type = next((mc["type"] for mc in MODELS if mc["name"] == name), "unknown")
-    rows.append({"Model": name, "Type": model_type,
-                 **{k: m[k] for k in ["TP","FP","FN","TN","Precision","Recall","F1-Score","Accuracy"]}})
-
-df_comparison = pd.DataFrame(rows)
-display(df_comparison.style.set_caption("Table 1: Detection Performance — All Models (Merged Dataset)")
-        .highlight_max(subset=["Recall", "F1-Score"], color="#c8e6c9")
-        .highlight_min(subset=["Recall", "F1-Score"], color="#ffcdd2"))
-'''
-cells.append(nbf.v4.new_code_cell(rq1_code))
-
-# Per-dataset results
-rq1_per_dataset_code = r'''# ── Per-dataset results ──
-print("\n" + "=" * 80)
-print("Per-Dataset Results")
-print("=" * 80)
-
-for src in ["crossvul", "cvefixes"]:
-    print(f"\n--- {src.upper()} ---")
-    rows_ds = []
-    # Baseline for this dataset
-    pat_sub = df_pattern[df_pattern["source"] == src]["classification"].tolist()
-    if pat_sub:
-        pm_ds = compute_metrics(pat_sub)
-        rows_ds.append({"Model": "Pattern-Based", **{k: pm_ds[k] for k in ["Precision","Recall","F1-Score"]}})
-
-    for name, df in all_model_results.items():
-        sub = df[df["source"] == src]["classification"].tolist()
-        if sub:
-            m = compute_metrics(sub)
-            rows_ds.append({"Model": name, **{k: m[k] for k in ["Precision","Recall","F1-Score"]}})
-
-    df_ds = pd.DataFrame(rows_ds)
-    display(df_ds.style.set_caption(f"Table 1.{1 if src=='crossvul' else 2}: "
-            f"Detection Performance on {src.title()} (n={len(pat_sub)})")
-            .highlight_max(subset=["Recall", "F1-Score"], color="#c8e6c9"))
-'''
-cells.append(nbf.v4.new_code_cell(rq1_per_dataset_code))
-
-# Homogeneity test
-homogeneity_code = r'''# ── Statistical test for dataset homogeneity ──
-# Fisher's exact test: does model performance differ significantly between datasets?
-from scipy import stats
-
-print("\n" + "=" * 80)
-print("Statistical Homogeneity Test (Fisher's Exact)")
-print("=" * 80)
-print("H0: Detection rate is the same on both datasets")
-print("H1: Detection rate differs between datasets\n")
-
-for name, df in all_model_results.items():
-    cv_cls = df[df["source"] == "crossvul"]["classification"].tolist()
-    cvf_cls = df[df["source"] == "cvefixes"]["classification"].tolist()
-    if cv_cls and cvf_cls:
-        cv_tp = cv_cls.count("TP")
-        cv_fn = cv_cls.count("FN")
-        cvf_tp = cvf_cls.count("TP")
-        cvf_fn = cvf_cls.count("FN")
-        table = [[cv_tp, cv_fn], [cvf_tp, cvf_fn]]
-        _, p_value = stats.fisher_exact(table)
-        sig = "***" if p_value < 0.001 else "**" if p_value < 0.01 else "*" if p_value < 0.05 else "ns"
-        print(f"  {name:25s}: p={p_value:.4f} {sig}  "
-              f"(CrossVul: {cv_tp}/{cv_tp+cv_fn} TP, CVEfixes: {cvf_tp}/{cvf_tp+cvf_fn} TP)")
-
-print("\n* p<0.05, ** p<0.01, *** p<0.001, ns = not significant")
-print("\nInterpretation: If p > 0.05 for most models, merging datasets is justified.")
-'''
-cells.append(nbf.v4.new_code_cell(homogeneity_code))
-
-# Figure 1: Multi-model comparison
-fig1_code = r'''# Figure 1: Multi-model detection performance comparison
-fig, ax = plt.subplots(figsize=(14, 6))
-
-model_names = ["Pattern-Based"] + list(all_model_results.keys())
-recalls = [pattern_metrics["Recall"]] + [compute_metrics(df["classification"].tolist())["Recall"] for df in all_model_results.values()]
-f1s = [pattern_metrics["F1-Score"]] + [compute_metrics(df["classification"].tolist())["F1-Score"] for df in all_model_results.values()]
-
-x = np.arange(len(model_names))
-width = 0.35
-
-# Color by type
-colors_recall = []
-colors_f1 = []
-for name in model_names:
-    if name == "Pattern-Based":
-        colors_recall.append("#9E9E9E")
-        colors_f1.append("#757575")
-    else:
-        mt = next((mc["type"] for mc in MODELS if mc["name"] == name), "general")
-        colors_recall.append("#2196F3" if mt == "general" else "#FF9800")
-        colors_f1.append("#1565C0" if mt == "general" else "#E65100")
-
-bars1 = ax.bar(x - width/2, recalls, width, color=colors_recall, alpha=0.85, label="Recall")
-bars2 = ax.bar(x + width/2, f1s, width, color=colors_f1, alpha=0.85, label="F1-Score")
-
-for bars in [bars1, bars2]:
-    for bar in bars:
-        ax.annotate(f"{bar.get_height():.2f}", xy=(bar.get_x() + bar.get_width()/2, bar.get_height()),
-                    xytext=(0, 3), textcoords="offset points", ha="center", fontsize=8)
-
-ax.set_ylabel("Score")
-ax.set_title(f"Figure 1: Detection Performance — All Models (N={len(BENCHMARK_SAMPLES)})\n"
-             "Blue = General-Purpose LLM | Orange = Code-Specialized LLM | Gray = Baseline")
-ax.set_xticks(x)
-ax.set_xticklabels(model_names, rotation=25, ha="right", fontsize=9)
-ax.set_ylim(0, 1.12)
-ax.legend()
-plt.tight_layout()
-plt.savefig("fig1_multimodel_comparison.png", dpi=300, bbox_inches="tight")
-plt.show()
-print("Saved: fig1_multimodel_comparison.png")
-'''
-cells.append(nbf.v4.new_code_cell(fig1_code))
-
-# Figure 2: Per-dataset comparison heatmap
-fig2_code = r'''# Figure 2: Per-dataset F1 heatmap
-model_names_llm = list(all_model_results.keys())
-sources = ["crossvul", "cvefixes", "merged"]
-heatmap_data = []
-
-for name in model_names_llm:
-    df = all_model_results[name]
-    row = []
-    for src in sources:
-        if src == "merged":
-            cls = df["classification"].tolist()
-        else:
-            cls = df[df["source"] == src]["classification"].tolist()
-        m = compute_metrics(cls)
-        row.append(m["F1-Score"])
-    heatmap_data.append(row)
-
-# Add baseline
-row_baseline = []
-for src in sources:
-    if src == "merged":
-        cls = df_pattern["classification"].tolist()
-    else:
-        cls = df_pattern[df_pattern["source"] == src]["classification"].tolist()
-    m = compute_metrics(cls)
-    row_baseline.append(m["F1-Score"])
-heatmap_data.append(row_baseline)
-
-hm = np.array(heatmap_data)
-fig, ax = plt.subplots(figsize=(8, 6))
-im = ax.imshow(hm, cmap="RdYlGn", vmin=0, vmax=1, aspect="auto")
-
-ax.set_xticks(range(len(sources)))
-ax.set_xticklabels([s.title() for s in sources])
-ax.set_yticks(range(len(model_names_llm) + 1))
-ax.set_yticklabels(model_names_llm + ["Pattern-Based"])
-
-for i in range(hm.shape[0]):
-    for j in range(hm.shape[1]):
-        color = "white" if hm[i, j] < 0.5 else "black"
-        ax.text(j, i, f"{hm[i,j]:.2f}", ha="center", va="center", color=color, fontsize=11, fontweight="bold")
-
-ax.set_title("Figure 2: F1-Score by Model and Dataset", fontsize=13, fontweight="bold")
-plt.colorbar(im, ax=ax, label="F1-Score")
-plt.tight_layout()
-plt.savefig("fig2_model_dataset_heatmap.png", dpi=300, bbox_inches="tight")
-plt.show()
-print("Saved: fig2_model_dataset_heatmap.png")
-'''
-cells.append(nbf.v4.new_code_cell(fig2_code))
-
-# ── RQ2 ──
-cells.append(nbf.v4.new_markdown_cell(
-    "### 4.2 RQ2: Cross-Language Detection Performance\n\n"
-    "**Research Question:** *What is the detection performance across different programming "
-    "languages, and does it vary by model?*\n\n"
-    "**Justification:** Since both CrossVul and CVEfixes are code-based datasets spanning "
-    "multiple languages, and we include code-specialized models (DeepSeek-Coder, CodeLlama), "
-    "this analysis reveals whether certain models have language-specific strengths."
-))
-
-rq2_code = r'''# Per-language F1 for each model
-languages = sorted(set(s["language"] for s in BENCHMARK_SAMPLES))
-lang_f1_data = {}
-
-# Baseline
-for lang in languages:
-    cls = df_pattern[df_pattern["language"] == lang]["classification"].tolist()
-    m = compute_metrics(cls) if cls else {"F1-Score": 0.0}
-    lang_f1_data.setdefault("Pattern-Based", {})[lang] = m["F1-Score"]
-
-# LLMs
-for name, df in all_model_results.items():
-    for lang in languages:
-        cls = df[df["language"] == lang]["classification"].tolist()
-        m = compute_metrics(cls) if cls else {"F1-Score": 0.0}
-        lang_f1_data.setdefault(name, {})[lang] = m["F1-Score"]
-
-# Build table
-lang_rows = []
-for lang in languages:
-    n = sum(1 for s in BENCHMARK_SAMPLES if s["language"] == lang)
-    row = {"Language": lang.title(), "N": n}
-    for model_name in ["Pattern-Based"] + list(all_model_results.keys()):
-        row[model_name] = lang_f1_data[model_name].get(lang, 0.0)
-    lang_rows.append(row)
-
-df_lang = pd.DataFrame(lang_rows)
-display(df_lang.style.set_caption("Table 2: F1-Score by Language and Model")
-        .background_gradient(cmap="RdYlGn", vmin=0, vmax=1,
-                            subset=[c for c in df_lang.columns if c not in ["Language", "N"]]))
-'''
-cells.append(nbf.v4.new_code_cell(rq2_code))
-
-fig3_code = r'''# Figure 3: Per-language F1 comparison (top 3 models + baseline)
-# Select top 3 models by merged F1
-model_f1s = [(name, compute_metrics(df["classification"].tolist())["F1-Score"])
-             for name, df in all_model_results.items()]
-model_f1s.sort(key=lambda x: -x[1])
-top_models = [m[0] for m in model_f1s[:3]]
-
-fig, ax = plt.subplots(figsize=(12, 5))
-n_groups = len(languages)
-n_bars = len(top_models) + 1  # +1 for baseline
-width = 0.8 / n_bars
-x = np.arange(n_groups)
-
-# Baseline
-vals = [lang_f1_data["Pattern-Based"].get(l, 0) for l in languages]
-ax.bar(x - width * n_bars/2 + width/2, vals, width, label="Pattern-Based", color="#9E9E9E", alpha=0.8)
-
-# Top models
-colors_top = ["#1976D2", "#388E3C", "#FF9800"]
-for i, name in enumerate(top_models):
-    vals = [lang_f1_data[name].get(l, 0) for l in languages]
-    ax.bar(x - width * n_bars/2 + width * (i+1) + width/2, vals, width,
-           label=name, color=colors_top[i], alpha=0.85)
-
-lang_labels = [f"{l.title()}\n(n={sum(1 for s in BENCHMARK_SAMPLES if s['language']==l)})" for l in languages]
-ax.set_xticks(x)
-ax.set_xticklabels(lang_labels, fontsize=8)
-ax.set_ylabel("F1-Score")
-ax.set_title("Figure 3: F1-Score by Language (Top 3 Models + Baseline)")
-ax.set_ylim(0, 1.15)
-ax.legend(fontsize=9, loc="upper right")
-plt.tight_layout()
-plt.savefig("fig3_language_f1.png", dpi=300, bbox_inches="tight")
-plt.show()
-print("Saved: fig3_language_f1.png")
-'''
-cells.append(nbf.v4.new_code_cell(fig3_code))
-
-# ── RQ3 ──
-cells.append(nbf.v4.new_markdown_cell(
-    "### 4.3 RQ3: Severity & Type Distribution\n\n"
-    "**Research Question:** *How does vulnerability severity and type distribution from "
-    "LLM analysis compare to historical CVE data?*\n\n"
-    "**Approach:** We compare three severity distributions:\n"
-    "1. **NVD Historical** — representative distribution from NVD statistics (2023–2024)\n"
-    "2. **CVEfixes Ground Truth** — actual CVSS scores from CVEfixes samples\n"
-    "3. **LLM Detected** — severity labels assigned by each LLM\n\n"
-    "This tests whether LLMs can accurately assess vulnerability severity, which is critical "
-    "for triage and prioritization in real-world security workflows."
-))
-
-rq3_code = r'''# NVD representative severity distribution (from NVD statistics 2023-2024)
-nvd_severity_dist = {"critical": 0.12, "high": 0.35, "medium": 0.38, "low": 0.12, "info": 0.03}
-
-# CVEfixes ground-truth severity
-cvefixes_sev = [s.get("severity") for s in cvefixes_samples if s.get("severity")]
-cvefixes_sev_counts = Counter(cvefixes_sev)
-total_cvefixes = sum(cvefixes_sev_counts.values()) or 1
-cvefixes_severity_dist = {
-    s: round(cvefixes_sev_counts.get(s, 0) / total_cvefixes, 4)
-    for s in ["critical", "high", "medium", "low", "info"]
+code("""COST_PER_1K_TOKENS = {
+    "gpt-4o": {"input": 0.0025, "output": 0.01},
+    "gpt-4-turbo": {"input": 0.01, "output": 0.03},
+    "claude-3-5-sonnet-20241022": {"input": 0.003, "output": 0.015},
+    "gemini-1.5-pro": {"input": 0.00125, "output": 0.005},
+    "deepseek-coder": {"input": 0.0001, "output": 0.0002},
+    "codellama/CodeLlama-70b-Instruct-hf": {"input": 0.0009, "output": 0.0009},
 }
 
-# Per-model severity distributions
-severity_order = ["critical", "high", "medium", "low", "info"]
-severity_comparison_rows = []
-row = {"Source": "NVD Historical"}
-for s in severity_order:
-    row[s.title()] = round(nvd_severity_dist.get(s, 0) * 100, 1)
-severity_comparison_rows.append(row)
 
-row = {"Source": "CVEfixes (CVSS)"}
-for s in severity_order:
-    row[s.title()] = round(cvefixes_severity_dist.get(s, 0) * 100, 1)
-severity_comparison_rows.append(row)
+def estimate_cost(model_id: str, usage: dict) -> float:
+    costs = COST_PER_1K_TOKENS.get(model_id, {"input": 0.005, "output": 0.015})
+    prompt_cost = usage.get("prompt_tokens", 0) / 1000 * costs["input"]
+    completion_cost = usage.get("completion_tokens", 0) / 1000 * costs["output"]
+    return prompt_cost + completion_cost
 
-# Best model severity
-best_model_name = model_f1s[0][0]
-best_df = all_model_results[best_model_name]
-llm_sevs = [s for slist in best_df["severities"] for s in slist if s]
-llm_sev_counts = Counter(llm_sevs)
-total_llm = sum(llm_sev_counts.values()) or 1
-row = {"Source": f"{best_model_name} (LLM)"}
-for s in severity_order:
-    row[s.title()] = round(llm_sev_counts.get(s, 0) / total_llm * 100, 1)
-severity_comparison_rows.append(row)
 
-severity_comparison = pd.DataFrame(severity_comparison_rows)
-display(severity_comparison.style.set_caption("Table 3: Severity Distribution Comparison (%)"))
-'''
-cells.append(nbf.v4.new_code_cell(rq3_code))
+def run_llm_on_sample(model: dict, sample: dict, prompt_id: str = "v1.0",
+                      temperature: float = None, max_tokens: int = None,
+                      truncate_code: int = None) -> dict:
+    \"\"\"Run a single LLM call on a sample. Returns detailed result record.\"\"\"
+    if temperature is None:
+        temperature = CFG.temperature
+    if max_tokens is None:
+        max_tokens = CFG.max_tokens
 
-fig4_code = r'''# Figure 4: Severity distribution comparison
-fig, axes = plt.subplots(1, 3, figsize=(15, 4.5))
-severity_labels = ["Critical", "High", "Medium", "Low", "Info"]
-colors_sev = ["#D32F2F", "#FF5722", "#FF9800", "#FFC107", "#4CAF50"]
+    prompt_template = PROMPT_REGISTRY[prompt_id]["template"]
+    code_text = sample["code"]
+    if truncate_code and len(code_text) > truncate_code:
+        code_text = code_text[:truncate_code] + "\n// ... truncated ..."
 
-for ax, _, row in zip(axes, range(3), severity_comparison.itertuples()):
-    vals = [getattr(row, s) for s in severity_labels]
-    nonzero = [(s, v, c) for s, v, c in zip(severity_labels, vals, colors_sev) if v > 0]
-    if nonzero:
-        labels, values, cs = zip(*nonzero)
-        ax.pie(values, labels=labels, colors=cs, autopct="%1.1f%%", startangle=90, textprops={"fontsize": 9})
-    ax.set_title(row.Source, fontsize=11)
+    cwe_hint = sample.get("cwe", "unknown")
+    prompt = prompt_template.format(language=sample["language"], code=code_text, cwe_hint=cwe_hint)
 
-plt.suptitle("Figure 4: Severity Distribution — NVD vs. CVEfixes vs. LLM", fontsize=13, fontweight="bold", y=1.02)
-plt.tight_layout()
-plt.savefig("fig4_severity_distribution.png", dpi=300, bbox_inches="tight")
-plt.show()
-print("Saved: fig4_severity_distribution.png")
-'''
-cells.append(nbf.v4.new_code_cell(fig4_code))
+    caller = PROVIDER_CALLERS.get(model["provider"])
+    if not caller:
+        return {"sample_id": sample["id"], "model": model["name"], "raw_response": None,
+                "parsed_json": {}, "parse_success": False, "error": f"unknown_provider:{model['provider']}",
+                "retry_count": 0, "latency_s": 0, "token_usage": {}, "cost_usd": 0}
 
-fig5_code = r'''# Figure 5: CWE type distribution
-all_cwes = [s["cwe_id"] for s in BENCHMARK_SAMPLES if s.get("cwe_id")]
-cwe_dist = Counter(all_cwes).most_common(15)
+    max_retries = 2
+    for attempt in range(max_retries + 1):
+        t0 = time.time()
+        raw, usage, error = caller(prompt, model["model_id"], temperature, max_tokens)
+        latency = time.time() - t0
 
-if cwe_dist:
-    fig, ax = plt.subplots(figsize=(10, 6))
-    cwes, counts = zip(*cwe_dist)
-    bar_colors = plt.cm.Set3(np.linspace(0, 1, len(cwes)))
-    bars = ax.barh(range(len(cwes)), counts, color=bar_colors, alpha=0.85)
-    ax.set_yticks(range(len(cwes)))
-    labels = [f"{cwe} ({CWE_TO_VULN_TYPE.get(cwe, '?')[:20]})" for cwe in cwes]
-    ax.set_yticklabels(labels, fontsize=9)
-    ax.set_xlabel("Count")
-    ax.set_title("Figure 5: CWE Type Distribution (CrossVul + CVEfixes)", fontweight="bold")
-    ax.invert_yaxis()
-    plt.tight_layout()
-    plt.savefig("fig5_cwe_distribution.png", dpi=300, bbox_inches="tight")
-    plt.show()
-    print("Saved: fig5_cwe_distribution.png")
-'''
-cells.append(nbf.v4.new_code_cell(fig5_code))
+        if error and attempt < max_retries:
+            time.sleep(2 ** attempt)
+            continue
 
-# CVSS analysis
-cells.append(nbf.v4.new_markdown_cell(
-    "#### CVEfixes CVSS Score Analysis\n\n"
-    "Since CVEfixes includes real CVSS base scores, we can directly evaluate the accuracy "
-    "of LLM severity classification against ground truth."
-))
+        if error:
+            return {"sample_id": sample["id"], "model": model["name"], "raw_response": None,
+                    "parsed_json": {}, "parse_success": False, "error": error,
+                    "retry_count": attempt, "latency_s": latency, "token_usage": usage,
+                    "cost_usd": estimate_cost(model["model_id"], usage)}
 
-cvss_code = r'''cvss_scores = [s["cvss_score"] for s in cvefixes_samples if s.get("cvss_score") is not None]
+        parsed, success, parse_error = parse_llm_json(raw)
+        return {"sample_id": sample["id"], "model": model["name"], "raw_response": raw,
+                "parsed_json": parsed, "parse_success": success,
+                "error": parse_error if not success else None,
+                "retry_count": attempt, "latency_s": latency, "token_usage": usage,
+                "cost_usd": estimate_cost(model["model_id"], usage)}
 
-if cvss_scores:
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4.5))
+    return {"sample_id": sample["id"], "model": model["name"], "raw_response": None,
+            "parsed_json": {}, "parse_success": False, "error": "max_retries_exceeded",
+            "retry_count": max_retries, "latency_s": 0, "token_usage": {}, "cost_usd": 0}
 
-    ax1.hist(cvss_scores, bins=20, color="#673AB7", alpha=0.8, edgecolor="white")
-    ax1.axvline(np.mean(cvss_scores), color="red", linestyle="--", label=f"Mean: {np.mean(cvss_scores):.2f}")
-    ax1.axvline(np.median(cvss_scores), color="blue", linestyle=":", label=f"Median: {np.median(cvss_scores):.2f}")
-    ax1.set_xlabel("CVSS Score")
-    ax1.set_ylabel("Count")
-    ax1.set_title("(a) CVSS Score Distribution")
-    ax1.legend()
 
-    sev_labels = [s for s in ["Critical", "High", "Medium", "Low"]
-                  if cvefixes_severity_dist.get(s.lower(), 0) > 0]
-    sev_vals = [cvefixes_severity_dist[s.lower()] * 100 for s in sev_labels]
-    sev_colors = [colors_sev[severity_labels.index(s)] for s in sev_labels]
-    if sev_vals:
-        ax2.pie(sev_vals, labels=sev_labels, colors=sev_colors, autopct="%1.1f%%", startangle=90)
-    ax2.set_title("(b) CVEfixes Severity Distribution")
+def extract_detection(parsed_json: dict) -> tuple:
+    \"\"\"Extract binary detection and types from parsed LLM JSON.\"\"\"
+    vulns = parsed_json.get("vulnerabilities", [])
+    if not isinstance(vulns, list):
+        return (False, [])
+    detected_types = []
+    for v in vulns:
+        if isinstance(v, dict):
+            vtype = v.get("type", "unknown")
+            detected_types.append(str(vtype).lower().replace(" ", "_"))
+    return (len(detected_types) > 0, detected_types)
 
-    plt.suptitle("Figure 6: CVEfixes CVSS Analysis", fontsize=13, fontweight="bold")
-    plt.tight_layout()
-    plt.savefig("fig6_cvss_analysis.png", dpi=300, bbox_inches="tight")
-    plt.show()
-    print("Saved: fig6_cvss_analysis.png")
+print("Experiment engine ready.")
+print(f"  Available models for real execution: {[m['name'] for m in AVAILABLE_MODELS]}")
+print(f"  Benchmark size: {len(BENCHMARK)} samples")
+print(f"  Repeated runs: {CFG.num_repeated_runs}")
+print(f"  Prompt version: {CFG.prompt_version}")""")
+
+code("""# Run baseline evaluation
+print("Running baseline evaluation on all benchmark samples...")
+baseline_results = {"regex": [], "keyword": [], "semgrep": [], "bandit": []}
+
+for i, sample in enumerate(BENCHMARK):
+    regex_res = baseline_regex(sample["code"])
+    baseline_results["regex"].append({
+        "sample_id": sample["id"], "is_vulnerable_pred": regex_res["is_vulnerable"],
+        "is_vulnerable_true": sample["is_vulnerable"], "types": regex_res["types"],
+    })
+    kw_res = baseline_keyword(sample["code"])
+    baseline_results["keyword"].append({
+        "sample_id": sample["id"], "is_vulnerable_pred": kw_res["is_vulnerable"],
+        "is_vulnerable_true": sample["is_vulnerable"], "types": kw_res["types"],
+    })
+    sg_res = baseline_semgrep(sample["code"], sample["language"], sample["id"])
+    baseline_results["semgrep"].append({
+        "sample_id": sample["id"], "is_vulnerable_pred": sg_res["is_vulnerable"],
+        "is_vulnerable_true": sample["is_vulnerable"], "types": sg_res["types"],
+        "error": sg_res.get("error"),
+    })
+    bn_res = baseline_bandit(sample["code"], sample["language"], sample["id"])
+    baseline_results["bandit"].append({
+        "sample_id": sample["id"], "is_vulnerable_pred": bn_res["is_vulnerable"],
+        "is_vulnerable_true": sample["is_vulnerable"], "types": bn_res["types"],
+        "error": bn_res.get("error"),
+    })
+    if (i + 1) % 50 == 0:
+        print(f"  Baselines: {i+1}/{len(BENCHMARK)} samples evaluated")
+
+print(f"Baseline evaluation complete for {len(BENCHMARK)} samples.")
+for bname, bres in baseline_results.items():
+    tp = sum(1 for r in bres if r["is_vulnerable_pred"] and r["is_vulnerable_true"])
+    fp = sum(1 for r in bres if r["is_vulnerable_pred"] and not r["is_vulnerable_true"])
+    fn = sum(1 for r in bres if not r["is_vulnerable_pred"] and r["is_vulnerable_true"])
+    tn = sum(1 for r in bres if not r["is_vulnerable_pred"] and not r["is_vulnerable_true"])
+    print(f"  {bname}: TP={tp} FP={fp} FN={fn} TN={tn}")""")
+
+code("""# Run LLM evaluation (real models only)
+all_llm_results = {}
+all_run_results = {}
+
+if AVAILABLE_MODELS:
+    for model in AVAILABLE_MODELS:
+        model_name = model["name"]
+        all_llm_results[model_name] = []
+        all_run_results[model_name] = []
+        print(f"\\nRunning {model_name} ({CFG.num_repeated_runs} runs)...")
+
+        for run_idx in range(CFG.num_repeated_runs):
+            seed_everything(CFG.random_seed + run_idx)
+            run_records = []
+            for j, sample in enumerate(BENCHMARK):
+                result = run_llm_on_sample(model, sample, prompt_id=CFG.prompt_version)
+                result["run_idx"] = run_idx
+                run_records.append(result)
+                if (j + 1) % 25 == 0:
+                    successes = sum(1 for r in run_records if r["parse_success"])
+                    print(f"  Run {run_idx+1}: {j+1}/{len(BENCHMARK)} (parse success: {successes}/{j+1})")
+            all_llm_results[model_name].extend(run_records)
+            all_run_results[model_name].append(run_records)
+            total_lat = sum(r["latency_s"] for r in run_records)
+            total_cost = sum(r["cost_usd"] for r in run_records)
+            successes = sum(1 for r in run_records if r["parse_success"])
+            print(f"  Run {run_idx+1} complete: {successes}/{len(BENCHMARK)} parsed, "
+                  f"latency={total_lat:.1f}s, cost=${total_cost:.4f}")
+
+    print(f"\\nLLM evaluation complete for {len(AVAILABLE_MODELS)} models.")
 else:
-    print("No CVSS scores available")
-'''
-cells.append(nbf.v4.new_code_cell(cvss_code))
+    print("No models available for real execution.")
+    print("Set API keys and re-run to get real results.")
+    print("Baselines and analysis framework are still functional.")""")
 
-# ── RQ4 ──
-cells.append(nbf.v4.new_markdown_cell(
-    "### 4.4 RQ4: Mitigation Recommendation Quality\n\n"
-    "**Research Question:** *What is the quality and actionability of LLM-generated "
-    "mitigation recommendations?*\n\n"
-    "**Evaluation criteria:**\n"
-    "1. **Coverage** — ratio of mitigations generated to vulnerabilities detected\n"
-    "2. **Specificity** — whether the mitigation includes a concrete code fix\n"
-    "3. **Confidence** — mean confidence score of detections\n\n"
-    "**Justification:** Actionable mitigations are critical for reducing the mean-time-to-remediate "
-    "(MTTR). A model that detects vulnerabilities but provides vague recommendations has limited "
-    "practical value compared to one that generates specific, applicable code fixes."
-))
 
-rq4_code = r'''# Mitigation quality metrics per model
-mit_rows = []
-for name, df in all_model_results.items():
-    total_vulns = int(df["num_vulns"].sum())
-    total_mits = int(df["num_mitigations"].sum())
-    coverage = total_mits / total_vulns if total_vulns > 0 else 0.0
+# ── S9: EVALUATION METRICS ──
+md("""## 9. Evaluation Metrics
 
-    has_fix = 0
-    total_mit_items = 0
-    for _, row in df.iterrows():
-        for m in row["mitigations"]:
-            total_mit_items += 1
-            if m.get("suggested_fix", "").strip():
-                has_fix += 1
-    specificity = has_fix / total_mit_items if total_mit_items > 0 else (0.78 if not any(mc["api_key"] for mc in MODELS if mc["name"] == name) else 0.0)
+**Justification:** Binary detection metrics alone are insufficient. We report a comprehensive set including MCC (robust to class imbalance), balanced accuracy, specificity, FPR, and FNR. For vulnerability type classification, we report macro and weighted F1. All metrics follow recommendations from Hosseini et al. (2017) and Croft et al. (2023).""")
 
-    mean_conf = df["confidences"].apply(lambda x: np.mean(x) if x else 0).mean()
+code("""def compute_binary_metrics(y_true: list, y_pred: list) -> dict:
+    \"\"\"Compute comprehensive binary classification metrics.\"\"\"
+    y_true = np.array(y_true, dtype=int)
+    y_pred = np.array(y_pred, dtype=int)
+    cm = confusion_matrix(y_true, y_pred, labels=[0, 1])
+    tn, fp, fn, tp = cm.ravel() if cm.size == 4 else (0, 0, 0, 0)
+    n = len(y_true)
+    accuracy = (tp + tn) / n if n > 0 else 0
+    precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+    recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
+    specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
+    fpr = fp / (fp + tn) if (fp + tn) > 0 else 0
+    fnr = fn / (fn + tp) if (fn + tp) > 0 else 0
+    mcc_val = matthews_corrcoef(y_true, y_pred) if len(set(y_true)) > 1 else 0
+    bal_acc = balanced_accuracy_score(y_true, y_pred) if len(set(y_true)) > 1 else accuracy
+    return {
+        "accuracy": accuracy, "precision": precision, "recall": recall, "f1": f1,
+        "specificity": specificity, "fpr": fpr, "fnr": fnr, "mcc": mcc_val,
+        "balanced_accuracy": bal_acc, "tp": int(tp), "fp": int(fp),
+        "fn": int(fn), "tn": int(tn), "n": n,
+        "confusion_matrix": cm.tolist(),
+    }
 
-    mit_rows.append({
-        "Model": name,
-        "Vulns Detected": total_vulns,
-        "Mitigations": total_mits,
-        "Coverage": f"{coverage:.1%}",
-        "Specificity": f"{specificity:.1%}",
-        "Mean Confidence": f"{mean_conf:.2f}",
+
+def compute_multiclass_metrics(y_true: list, y_pred: list, labels: list = None) -> dict:
+    \"\"\"Compute per-class and aggregate multiclass metrics.\"\"\"
+    macro_f1 = f1_score(y_true, y_pred, average="macro", zero_division=0)
+    weighted_f1 = f1_score(y_true, y_pred, average="weighted", zero_division=0)
+    acc = accuracy_score(y_true, y_pred)
+    per_class = {}
+    if labels is None:
+        labels = sorted(set(y_true) | set(y_pred))
+    for label in labels:
+        y_t = [1 if t == label else 0 for t in y_true]
+        y_p = [1 if p == label else 0 for p in y_pred]
+        per_class[label] = {
+            "f1": f1_score(y_t, y_p, zero_division=0),
+            "support": sum(y_t),
+        }
+    return {"macro_f1": macro_f1, "weighted_f1": weighted_f1, "accuracy": acc, "per_class": per_class}
+
+
+def bootstrap_ci(y_true, y_pred, metric_fn, n_boot=1000, ci=0.95, seed=42):
+    \"\"\"Compute bootstrap confidence interval for a metric.\"\"\"
+    rng = np.random.RandomState(seed)
+    scores = []
+    n = len(y_true)
+    for _ in range(n_boot):
+        idx = rng.randint(0, n, n)
+        try:
+            scores.append(metric_fn(np.array(y_true)[idx], np.array(y_pred)[idx]))
+        except Exception:
+            continue
+    if not scores:
+        return (0, 0, 0)
+    alpha = (1 - ci) / 2
+    lo = np.percentile(scores, alpha * 100)
+    hi = np.percentile(scores, (1 - alpha) * 100)
+    return (np.mean(scores), lo, hi)
+
+
+print("Evaluation metrics module ready.")
+print("  Binary: accuracy, precision, recall, F1, specificity, FPR, FNR, MCC, balanced accuracy")
+print("  Multiclass: macro F1, weighted F1, per-class F1")
+print("  Confidence intervals: bootstrap (1000 iterations)")""")
+
+
+# ── S10: RQ1 — Model Comparison ──
+md("""## 10. RQ1: LLM vs. Baseline Detection Performance
+
+**Research Question:** How do different LLMs compare in detecting known vulnerability types vs. pattern-based and tool-based static analysis?
+
+**Methodology:** We evaluate each model and baseline on the identical fixed benchmark. For LLMs with repeated runs, we report mean +/- std and 95% CI. We compare using paired McNemar's test since all methods evaluate the same samples.""")
+
+code("""# Compute baseline metrics
+baseline_metrics = {}
+for bname, bres in baseline_results.items():
+    y_true = [int(r["is_vulnerable_true"]) for r in bres]
+    y_pred = [int(r["is_vulnerable_pred"]) for r in bres]
+    baseline_metrics[bname] = compute_binary_metrics(y_true, y_pred)
+    baseline_metrics[bname]["method_type"] = "baseline"
+
+# Compute LLM metrics (per-run and aggregated)
+llm_metrics = {}
+llm_per_run_metrics = {}
+
+for model_name, run_list in all_run_results.items():
+    llm_per_run_metrics[model_name] = []
+    for run_idx, run_records in enumerate(run_list):
+        y_true_run = []
+        y_pred_run = []
+        for rec in run_records:
+            sample = next((s for s in BENCHMARK if s["id"] == rec["sample_id"]), None)
+            if sample is None:
+                continue
+            y_true_run.append(int(sample["is_vulnerable"]))
+            if rec["parse_success"]:
+                is_vuln_pred, _ = extract_detection(rec["parsed_json"])
+                y_pred_run.append(int(is_vuln_pred))
+            else:
+                y_pred_run.append(0)
+        metrics_run = compute_binary_metrics(y_true_run, y_pred_run)
+        metrics_run["run_idx"] = run_idx
+        llm_per_run_metrics[model_name].append(metrics_run)
+
+    # Aggregate across runs
+    if llm_per_run_metrics[model_name]:
+        metric_keys = ["accuracy", "precision", "recall", "f1", "specificity", "fpr", "fnr", "mcc", "balanced_accuracy"]
+        agg = {}
+        for mk in metric_keys:
+            values = [m[mk] for m in llm_per_run_metrics[model_name]]
+            agg[f"{mk}_mean"] = np.mean(values)
+            agg[f"{mk}_std"] = np.std(values)
+            n_runs = len(values)
+            if n_runs > 1:
+                ci = stats.t.interval(0.95, df=n_runs-1, loc=np.mean(values), scale=stats.sem(values))
+                agg[f"{mk}_ci_lo"] = ci[0]
+                agg[f"{mk}_ci_hi"] = ci[1]
+            else:
+                agg[f"{mk}_ci_lo"] = np.mean(values)
+                agg[f"{mk}_ci_hi"] = np.mean(values)
+        agg["method_type"] = "llm"
+        agg["num_runs"] = len(llm_per_run_metrics[model_name])
+        llm_metrics[model_name] = agg
+
+# Build main comparison table (Table 1)
+print("\\n=== Table 1: Main Model Comparison (Binary Detection) ===\\n")
+table_rows = []
+for bname, bm in baseline_metrics.items():
+    table_rows.append({
+        "Method": bname.capitalize(), "Type": "Baseline",
+        "Accuracy": f"{bm['accuracy']:.3f}", "Precision": f"{bm['precision']:.3f}",
+        "Recall": f"{bm['recall']:.3f}", "F1": f"{bm['f1']:.3f}",
+        "Specificity": f"{bm['specificity']:.3f}", "MCC": f"{bm['mcc']:.3f}",
+        "Balanced Acc": f"{bm['balanced_accuracy']:.3f}",
+    })
+for mname, mm in llm_metrics.items():
+    table_rows.append({
+        "Method": mname, "Type": "LLM",
+        "Accuracy": f"{mm['accuracy_mean']:.3f} +/- {mm['accuracy_std']:.3f}",
+        "Precision": f"{mm['precision_mean']:.3f} +/- {mm['precision_std']:.3f}",
+        "Recall": f"{mm['recall_mean']:.3f} +/- {mm['recall_std']:.3f}",
+        "F1": f"{mm['f1_mean']:.3f} +/- {mm['f1_std']:.3f}",
+        "Specificity": f"{mm['specificity_mean']:.3f} +/- {mm['specificity_std']:.3f}",
+        "MCC": f"{mm['mcc_mean']:.3f} +/- {mm['mcc_std']:.3f}",
+        "Balanced Acc": f"{mm['balanced_accuracy_mean']:.3f} +/- {mm['balanced_accuracy_std']:.3f}",
     })
 
-df_mitigation = pd.DataFrame(mit_rows)
-display(df_mitigation.style.set_caption("Table 4: Mitigation Recommendation Quality by Model"))
-'''
-cells.append(nbf.v4.new_code_cell(rq4_code))
+df_main = pd.DataFrame(table_rows)
+display(df_main)
+df_main.to_csv(f"{CFG.output_dir}/table1_main_comparison.csv", index=False)
 
-fig7_code = r'''# Figure 7: Mitigation quality radar chart (top 3 models)
-categories = ["Coverage", "Specificity", "Confidence", "Recall", "F1-Score"]
-n_cats = len(categories)
+if not table_rows:
+    print("No results to display. Set API keys to run LLM evaluation.")""")
 
-fig, ax = plt.subplots(figsize=(8, 8), subplot_kw=dict(polar=True))
-angles = np.linspace(0, 2 * np.pi, n_cats, endpoint=False).tolist()
-angles += angles[:1]
+code("""# RQ1 visualization
+if baseline_metrics or llm_metrics:
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+    methods = list(baseline_metrics.keys()) + list(llm_metrics.keys())
+    f1_vals, f1_errs, colors = [], [], []
+    for bname in baseline_metrics:
+        f1_vals.append(baseline_metrics[bname]["f1"])
+        f1_errs.append(0)
+        colors.append("#2196F3")
+    for mname in llm_metrics:
+        f1_vals.append(llm_metrics[mname]["f1_mean"])
+        f1_errs.append(llm_metrics[mname]["f1_std"])
+        colors.append("#4CAF50" if any(m["type"] == "code" for m in CFG.models if m["name"] == mname) else "#FF9800")
+    x = np.arange(len(methods))
+    axes[0].bar(x, f1_vals, yerr=f1_errs, color=colors, capsize=4, alpha=0.85)
+    axes[0].set_xticks(x)
+    axes[0].set_xticklabels(methods, rotation=45, ha="right", fontsize=9)
+    axes[0].set_ylabel("F1 Score")
+    axes[0].set_title("RQ1: Detection F1 Score Comparison")
+    axes[0].set_ylim(0, 1.05)
+    mcc_vals = [baseline_metrics[b]["mcc"] for b in baseline_metrics] + \
+               [llm_metrics[m]["mcc_mean"] for m in llm_metrics]
+    mcc_errs = [0] * len(baseline_metrics) + [llm_metrics[m]["mcc_std"] for m in llm_metrics]
+    axes[1].bar(x, mcc_vals, yerr=mcc_errs, color=colors, capsize=4, alpha=0.85)
+    axes[1].set_xticks(x)
+    axes[1].set_xticklabels(methods, rotation=45, ha="right", fontsize=9)
+    axes[1].set_ylabel("MCC")
+    axes[1].set_title("RQ1: Matthews Correlation Coefficient")
+    axes[1].set_ylim(-0.5, 1.05)
+    plt.tight_layout()
+    plt.savefig(f"{CFG.output_dir}/fig1_rq1_detection_comparison.png", dpi=CFG.figure_dpi, bbox_inches="tight")
+    plt.show()
+    print(f"Figure saved: {CFG.output_dir}/fig1_rq1_detection_comparison.png")
+else:
+    print("No results available for RQ1 visualization.")""")
 
-# Pattern-based (zero for all mitigation metrics)
-pat_scores = [0.0, 0.0, 0.0, pattern_metrics["Recall"], pattern_metrics["F1-Score"]]
-pat_scores += pat_scores[:1]
-ax.plot(angles, pat_scores, "o-", linewidth=2, color="#9E9E9E", label="Pattern-Based")
-ax.fill(angles, pat_scores, alpha=0.05, color="#9E9E9E")
+# ── S11: RQ2 — Cross-Language Performance ──
+md("""## 11. RQ2: Cross-Language Detection Performance
 
-# Top 3 models
-colors_radar = ["#1976D2", "#388E3C", "#FF9800"]
-for i, name in enumerate(top_models[:3]):
-    df = all_model_results[name]
-    m = compute_metrics(df["classification"].tolist())
-    total_vulns = int(df["num_vulns"].sum())
-    total_mits = int(df["num_mitigations"].sum())
-    coverage = total_mits / total_vulns if total_vulns > 0 else 0.0
-    mean_conf = df["confidences"].apply(lambda x: np.mean(x) if x else 0).mean()
+**Research Question:** What is the detection performance across different programming languages, and does it vary by model?
 
-    # Get specificity from table
-    has_fix_count = 0
-    total_mit_count = 0
-    for _, row in df.iterrows():
-        for mit in row["mitigations"]:
-            total_mit_count += 1
-            if mit.get("suggested_fix", "").strip():
-                has_fix_count += 1
-    specificity = has_fix_count / total_mit_count if total_mit_count > 0 else 0.78
+**Methodology:** We break down detection metrics by programming language for each method. Per-dataset reporting is provided below with Fisher's exact test for statistical justification of merging.""")
 
-    scores = [coverage, specificity, mean_conf, m["Recall"], m["F1-Score"]]
-    scores += scores[:1]
-    ax.plot(angles, scores, "o-", linewidth=2, color=colors_radar[i], label=name)
-    ax.fill(angles, scores, alpha=0.1, color=colors_radar[i])
+code("""def compute_per_group_metrics(results_list, benchmark, group_key="language"):
+    sample_map = {s["id"]: s for s in benchmark}
+    group_results = defaultdict(lambda: {"y_true": [], "y_pred": []})
+    for rec in results_list:
+        sample = sample_map.get(rec.get("sample_id"))
+        if not sample:
+            continue
+        group = sample[group_key]
+        group_results[group]["y_true"].append(int(sample["is_vulnerable"]))
+        if "is_vulnerable_pred" in rec:
+            group_results[group]["y_pred"].append(int(rec["is_vulnerable_pred"]))
+        elif rec.get("parse_success"):
+            is_v, _ = extract_detection(rec.get("parsed_json", {}))
+            group_results[group]["y_pred"].append(int(is_v))
+        else:
+            group_results[group]["y_pred"].append(0)
+    metrics = {}
+    for group, data in group_results.items():
+        if len(data["y_true"]) >= 2:
+            metrics[group] = compute_binary_metrics(data["y_true"], data["y_pred"])
+            metrics[group]["n_samples"] = len(data["y_true"])
+    return metrics
 
-ax.set_xticks(angles[:-1])
-ax.set_xticklabels(categories, fontsize=10)
-ax.set_ylim(0, 1.1)
-ax.set_title("Figure 7: Model Quality Radar — Top 3 Models", pad=20, fontsize=13, fontweight="bold")
-ax.legend(loc="lower right", fontsize=9)
+print("=== Table 2: Per-Language Performance ===\\n")
+lang_table_rows = []
+for bname, bres in baseline_results.items():
+    lang_metrics = compute_per_group_metrics(bres, BENCHMARK, "language")
+    for lang, lm in lang_metrics.items():
+        lang_table_rows.append({
+            "Method": bname.capitalize(), "Language": lang,
+            "F1": f"{lm['f1']:.3f}", "Precision": f"{lm['precision']:.3f}",
+            "Recall": f"{lm['recall']:.3f}", "MCC": f"{lm['mcc']:.3f}", "N": lm["n_samples"],
+        })
+for model_name, run_list in all_run_results.items():
+    if run_list:
+        lang_metrics = compute_per_group_metrics(run_list[0], BENCHMARK, "language")
+        for lang, lm in lang_metrics.items():
+            lang_table_rows.append({
+                "Method": model_name, "Language": lang,
+                "F1": f"{lm['f1']:.3f}", "Precision": f"{lm['precision']:.3f}",
+                "Recall": f"{lm['recall']:.3f}", "MCC": f"{lm['mcc']:.3f}", "N": lm["n_samples"],
+            })
+if lang_table_rows:
+    df_lang = pd.DataFrame(lang_table_rows)
+    display(df_lang)
+    df_lang.to_csv(f"{CFG.output_dir}/table2_per_language.csv", index=False)
+else:
+    print("No per-language results available.")""")
+
+code("""print("\\n=== Table 3: Per-Dataset Performance ===\\n")
+dataset_table_rows = []
+for bname, bres in baseline_results.items():
+    src_metrics = compute_per_group_metrics(bres, BENCHMARK, "source")
+    for src, sm in src_metrics.items():
+        dataset_table_rows.append({
+            "Method": bname.capitalize(), "Dataset": src,
+            "F1": f"{sm['f1']:.3f}", "Precision": f"{sm['precision']:.3f}",
+            "Recall": f"{sm['recall']:.3f}", "MCC": f"{sm['mcc']:.3f}", "N": sm["n_samples"],
+        })
+for model_name, run_list in all_run_results.items():
+    if run_list:
+        src_metrics = compute_per_group_metrics(run_list[0], BENCHMARK, "source")
+        for src, sm in src_metrics.items():
+            dataset_table_rows.append({
+                "Method": model_name, "Dataset": src,
+                "F1": f"{sm['f1']:.3f}", "Precision": f"{sm['precision']:.3f}",
+                "Recall": f"{sm['recall']:.3f}", "MCC": f"{sm['mcc']:.3f}", "N": sm["n_samples"],
+            })
+if dataset_table_rows:
+    df_dataset = pd.DataFrame(dataset_table_rows)
+    display(df_dataset)
+    df_dataset.to_csv(f"{CFG.output_dir}/table3_per_dataset.csv", index=False)
+
+print("\\n--- Fisher's Exact Test: Justification for Dataset Merging ---")
+sample_map = {s["id"]: s for s in BENCHMARK}
+for method_name in list(baseline_metrics.keys()):
+    if method_name in baseline_results:
+        res = baseline_results[method_name]
+        cv_tp = sum(1 for r in res if r["is_vulnerable_pred"] and r["is_vulnerable_true"] and sample_map.get(r["sample_id"], {}).get("source") == "crossvul")
+        cv_fn = sum(1 for r in res if not r["is_vulnerable_pred"] and r["is_vulnerable_true"] and sample_map.get(r["sample_id"], {}).get("source") == "crossvul")
+        cf_tp = sum(1 for r in res if r["is_vulnerable_pred"] and r["is_vulnerable_true"] and sample_map.get(r["sample_id"], {}).get("source") == "cvefixes")
+        cf_fn = sum(1 for r in res if not r["is_vulnerable_pred"] and r["is_vulnerable_true"] and sample_map.get(r["sample_id"], {}).get("source") == "cvefixes")
+        if cv_tp + cv_fn > 0 and cf_tp + cf_fn > 0:
+            table_2x2 = [[cv_tp, cv_fn], [cf_tp, cf_fn]]
+            _, p_val = stats.fisher_exact(table_2x2)
+            print(f"  {method_name}: Fisher p={p_val:.4f} {'(no sig diff -> merge OK)' if p_val > 0.05 else '(sig diff -> report separately)'}")""")
+
+
+# ── S12: RQ3 — Severity/Type Distribution ──
+md("""## 12. RQ3: Vulnerability Severity and Type Distribution
+
+**Research Question:** How does vulnerability severity/type distribution from LLM analysis compare to historical CVE data?
+
+**Methodology:** We compare the distribution of vulnerability types and severity levels detected by each model against the ground truth labels from the benchmark datasets.""")
+
+code("""print("=== Table 4: Per-CWE Performance ===\\n")
+cwe_table_rows = []
+sample_map = {s["id"]: s for s in BENCHMARK}
+
+for bname, bres in baseline_results.items():
+    cwe_groups = defaultdict(lambda: {"y_true": [], "y_pred": []})
+    for rec in bres:
+        sample = sample_map.get(rec["sample_id"])
+        if sample:
+            cwe = sample["cwe"]
+            cwe_groups[cwe]["y_true"].append(int(sample["is_vulnerable"]))
+            cwe_groups[cwe]["y_pred"].append(int(rec["is_vulnerable_pred"]))
+    for cwe, data in cwe_groups.items():
+        if len(data["y_true"]) >= 5:
+            m = compute_binary_metrics(data["y_true"], data["y_pred"])
+            cwe_table_rows.append({
+                "Method": bname.capitalize(), "CWE": cwe,
+                "F1": f"{m['f1']:.3f}", "Recall": f"{m['recall']:.3f}",
+                "N": len(data["y_true"]),
+            })
+
+for model_name, run_list in all_run_results.items():
+    if run_list:
+        cwe_groups = defaultdict(lambda: {"y_true": [], "y_pred": []})
+        for rec in run_list[0]:
+            sample = sample_map.get(rec["sample_id"])
+            if sample:
+                cwe = sample["cwe"]
+                cwe_groups[cwe]["y_true"].append(int(sample["is_vulnerable"]))
+                if rec.get("parse_success"):
+                    is_v, _ = extract_detection(rec.get("parsed_json", {}))
+                    cwe_groups[cwe]["y_pred"].append(int(is_v))
+                else:
+                    cwe_groups[cwe]["y_pred"].append(0)
+        for cwe, data in cwe_groups.items():
+            if len(data["y_true"]) >= 5:
+                m = compute_binary_metrics(data["y_true"], data["y_pred"])
+                cwe_table_rows.append({
+                    "Method": model_name, "CWE": cwe,
+                    "F1": f"{m['f1']:.3f}", "Recall": f"{m['recall']:.3f}",
+                    "N": len(data["y_true"]),
+                })
+
+if cwe_table_rows:
+    df_cwe = pd.DataFrame(cwe_table_rows)
+    display(df_cwe)
+    df_cwe.to_csv(f"{CFG.output_dir}/table4_per_cwe.csv", index=False)
+
+# Severity distribution comparison
+print("\\n=== Table 5: Severity Distribution ===\\n")
+sev_counts = Counter(s["severity"] for s in BENCHMARK if s["is_vulnerable"])
+print("Ground truth severity distribution:")
+for sev, count in sev_counts.most_common():
+    print(f"  {sev}: {count}")
+
+# Vulnerability type distribution
+vuln_type_counts = Counter(s["ground_truth"] for s in BENCHMARK if s["is_vulnerable"])
+print("\\nGround truth vulnerability type distribution:")
+for vt, count in vuln_type_counts.most_common(15):
+    print(f"  {vt}: {count}")""")
+
+code("""# RQ3 visualization: severity and type distributions
+fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+
+sev_labels = list(sev_counts.keys())
+sev_values = list(sev_counts.values())
+if sev_labels:
+    colors_sev = {"low": "#4CAF50", "medium": "#FFC107", "high": "#FF9800", "critical": "#F44336", "unknown": "#9E9E9E", "none": "#E0E0E0"}
+    bar_colors = [colors_sev.get(s, "#9E9E9E") for s in sev_labels]
+    axes[0].bar(sev_labels, sev_values, color=bar_colors, alpha=0.85)
+    axes[0].set_title("RQ3: Severity Distribution (Vulnerable Samples)")
+    axes[0].set_ylabel("Count")
+    axes[0].set_xlabel("Severity")
+
+vt_labels = [vt for vt, _ in vuln_type_counts.most_common(10)]
+vt_values = [c for _, c in vuln_type_counts.most_common(10)]
+if vt_labels:
+    axes[1].barh(vt_labels, vt_values, color="#2196F3", alpha=0.85)
+    axes[1].set_title("RQ3: Top Vulnerability Types")
+    axes[1].set_xlabel("Count")
+    axes[1].invert_yaxis()
+
 plt.tight_layout()
-plt.savefig("fig7_quality_radar.png", dpi=300, bbox_inches="tight")
+plt.savefig(f"{CFG.output_dir}/fig2_rq3_distributions.png", dpi=CFG.figure_dpi, bbox_inches="tight")
 plt.show()
-print("Saved: fig7_quality_radar.png")
-'''
-cells.append(nbf.v4.new_code_cell(fig7_code))
+print(f"Figure saved: {CFG.output_dir}/fig2_rq3_distributions.png")""")
 
-# ── RQ5 ──
-cells.append(nbf.v4.new_markdown_cell(
-    "### 4.5 RQ5: Latency & Throughput Analysis\n\n"
-    "**Research Question:** *What are the latency and throughput characteristics of each "
-    "model in the detection pipeline?*\n\n"
-    "**Justification:** For real-time or CI/CD-integrated vulnerability detection, inference "
-    "latency directly impacts developer experience and pipeline throughput. We measure:\n"
-    "- **Preprocessing latency** — time for regex-based pattern matching (baseline)\n"
-    "- **LLM inference latency** — per-sample API call time for each model\n"
-    "- **Throughput** — samples processed per minute"
-))
 
-rq5_code = r'''# Preprocessing latency
-preprocessing_times = []
-for sample in BENCHMARK_SAMPLES[:68]:
-    start = time.perf_counter()
-    for _ in range(100):
-        _ = pattern_detect(sample["code"])
-    elapsed = (time.perf_counter() - start) / 100 * 1000
-    preprocessing_times.append({
-        "id": sample["id"], "language": sample["language"],
-        "chars": len(sample["code"]), "preprocessing_ms": round(elapsed, 3),
+# ── S13: RQ4 — Mitigation Quality ──
+md("""## 13. RQ4: Mitigation Recommendation Quality
+
+**Research Question:** What is the quality and actionability of LLM-generated mitigation recommendations?
+
+**Methodology:** For each LLM response that includes mitigation suggestions, we evaluate: (1) presence of mitigation, (2) number of suggestions, (3) whether a code fix is included. This is a qualitative metric reported as coverage rates.""")
+
+code("""print("=== Table 6: Mitigation Quality ===\\n")
+mitigation_rows = []
+
+for model_name, run_list in all_run_results.items():
+    if not run_list:
+        continue
+    records = run_list[0]
+    total = len(records)
+    has_mitigation = 0
+    has_code_fix = 0
+    total_suggestions = 0
+    parsed_ok = 0
+    for rec in records:
+        if not rec.get("parse_success"):
+            continue
+        parsed_ok += 1
+        mits = rec["parsed_json"].get("mitigations", [])
+        if isinstance(mits, list) and len(mits) > 0:
+            has_mitigation += 1
+            total_suggestions += len(mits)
+            for m in mits:
+                if isinstance(m, dict) and m.get("suggested_fix"):
+                    has_code_fix += 1
+                    break
+    mitigation_rows.append({
+        "Model": model_name,
+        "Parsed responses": parsed_ok,
+        "Has mitigation (%)": f"{has_mitigation/max(parsed_ok,1)*100:.1f}",
+        "Has code fix (%)": f"{has_code_fix/max(parsed_ok,1)*100:.1f}",
+        "Avg suggestions": f"{total_suggestions/max(parsed_ok,1):.2f}",
     })
-df_preprocess = pd.DataFrame(preprocessing_times)
 
-# LLM latency summary per model
-latency_rows = []
-latency_rows.append({
-    "Model": "Pattern-Based",
-    "Mean (s)": round(df_preprocess["preprocessing_ms"].mean() / 1000, 4),
-    "Median (s)": round(df_preprocess["preprocessing_ms"].median() / 1000, 4),
-    "P95 (s)": round(df_preprocess["preprocessing_ms"].quantile(0.95) / 1000, 4),
-    "Throughput (samples/min)": round(60 / (df_preprocess["preprocessing_ms"].mean() / 1000), 0),
-})
+if mitigation_rows:
+    df_mit = pd.DataFrame(mitigation_rows)
+    display(df_mit)
+    df_mit.to_csv(f"{CFG.output_dir}/table6_mitigation_quality.csv", index=False)
+else:
+    print("No mitigation data available (no LLM results).")""")
 
-for name, df in all_model_results.items():
-    lats = df["latency_s"].values
-    latency_rows.append({
-        "Model": name,
-        "Mean (s)": round(np.mean(lats), 3),
-        "Median (s)": round(np.median(lats), 3),
-        "P95 (s)": round(np.percentile(lats, 95), 3),
-        "Throughput (samples/min)": round(60 / np.mean(lats), 1),
-    })
 
-df_latency = pd.DataFrame(latency_rows)
-display(df_latency.style.set_caption("Table 5: Latency & Throughput by Model"))
-'''
-cells.append(nbf.v4.new_code_cell(rq5_code))
+# ── S14: RQ5 — Runtime and Cost Analysis ──
+md("""## 14. RQ5: Runtime, Throughput, and Cost Analysis
 
-fig8_code = r'''# Figure 8: Latency comparison across models
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+**Research Question:** What are the latency, throughput, and cost characteristics of each model?
 
-# (a) Box plot of latencies
-model_names_lat = list(all_model_results.keys())
-latency_data = [all_model_results[name]["latency_s"].values for name in model_names_lat]
-bp = ax1.boxplot(latency_data, labels=model_names_lat, patch_artist=True)
-colors_box = ["#1976D2", "#1565C0", "#388E3C", "#00796B", "#FF9800", "#E65100"]
-for patch, color in zip(bp["boxes"], colors_box[:len(bp["boxes"])]):
-    patch.set_facecolor(color)
-    patch.set_alpha(0.6)
-ax1.set_ylabel("Latency (seconds)")
-ax1.set_title("(a) LLM Inference Latency Distribution")
-ax1.tick_params(axis="x", rotation=25)
+**Methodology:** We measure per-sample latency, compute mean/median/p95, throughput (samples/minute), total token usage, estimated API cost, and failed request rate.""")
 
-# (b) Throughput bar chart
-throughputs = df_latency["Throughput (samples/min)"].values
-ax2.barh(df_latency["Model"], throughputs, color=["#9E9E9E"] + colors_box[:len(model_names_lat)], alpha=0.85)
-ax2.set_xlabel("Samples per minute")
-ax2.set_title("(b) Throughput Comparison")
-ax2.invert_yaxis()
+code("""print("=== Table 7: Runtime and Cost Analysis ===\\n")
+runtime_rows = []
 
-plt.suptitle("Figure 8: Latency & Throughput Analysis", fontsize=13, fontweight="bold")
-plt.tight_layout()
-plt.savefig("fig8_latency_throughput.png", dpi=300, bbox_inches="tight")
-plt.show()
-print("Saved: fig8_latency_throughput.png")
-'''
-cells.append(nbf.v4.new_code_cell(fig8_code))
+for model_name, all_records in all_llm_results.items():
+    if not all_records:
+        continue
+    latencies = [r["latency_s"] for r in all_records if r["latency_s"] > 0]
+    total_cost = sum(r["cost_usd"] for r in all_records)
+    total_tokens = sum(r["token_usage"].get("total_tokens", 0) for r in all_records)
+    prompt_tokens = sum(r["token_usage"].get("prompt_tokens", 0) for r in all_records)
+    completion_tokens = sum(r["token_usage"].get("completion_tokens", 0) for r in all_records)
+    failed = sum(1 for r in all_records if r.get("error") and not r.get("parse_success"))
+    total = len(all_records)
 
-fig9_code = r'''# Figure 9: Latency vs code size (best model)
-fig, ax = plt.subplots(figsize=(8, 5))
+    if latencies:
+        runtime_rows.append({
+            "Model": model_name,
+            "Mean latency (s)": f"{np.mean(latencies):.2f}",
+            "Median latency (s)": f"{np.median(latencies):.2f}",
+            "P95 latency (s)": f"{np.percentile(latencies, 95):.2f}",
+            "Throughput (samples/min)": f"{60.0/np.mean(latencies):.1f}" if np.mean(latencies) > 0 else "N/A",
+            "Total tokens": total_tokens,
+            "Prompt tokens": prompt_tokens,
+            "Completion tokens": completion_tokens,
+            "Est. cost (USD)": f"${total_cost:.4f}",
+            "Failed requests (%)": f"{failed/max(total,1)*100:.1f}",
+        })
 
-best_df = all_model_results[best_model_name]
-chars = np.array([len(s["code"]) for s in BENCHMARK_SAMPLES])
-lats = best_df["latency_s"].values
+if runtime_rows:
+    df_runtime = pd.DataFrame(runtime_rows)
+    display(df_runtime)
+    df_runtime.to_csv(f"{CFG.output_dir}/table7_runtime_cost.csv", index=False)
+else:
+    print("No runtime data available (no LLM results).")""")
 
-ax.scatter(chars, lats, c="#D32F2F", s=30, alpha=0.4, edgecolors="white", linewidth=0.3)
+code("""# RQ5 visualization: latency distribution
+if all_llm_results:
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+    model_names = list(all_llm_results.keys())
+    latency_data = []
+    for mn in model_names:
+        lats = [r["latency_s"] for r in all_llm_results[mn] if r["latency_s"] > 0]
+        latency_data.append(lats)
+    if any(latency_data):
+        axes[0].boxplot(latency_data, labels=model_names, vert=True)
+        axes[0].set_title("RQ5: Latency Distribution per Model")
+        axes[0].set_ylabel("Latency (seconds)")
+        axes[0].tick_params(axis='x', rotation=45)
 
-if len(chars) > 1:
-    z = np.polyfit(chars, lats, 1)
-    p = np.poly1d(z)
-    x_line = np.linspace(min(chars), max(chars), 50)
-    ax.plot(x_line, p(x_line), "--", color="gray", alpha=0.6, label=f"Trend (slope={z[0]:.5f})")
-    ax.legend()
+    costs = [sum(r["cost_usd"] for r in all_llm_results[mn]) for mn in model_names]
+    axes[1].bar(model_names, costs, color="#FF9800", alpha=0.85)
+    axes[1].set_title("RQ5: Total Estimated Cost per Model")
+    axes[1].set_ylabel("Cost (USD)")
+    axes[1].tick_params(axis='x', rotation=45)
 
-ax.set_xlabel("Code Size (characters)")
-ax.set_ylabel(f"Inference Latency (s) — {best_model_name}")
-ax.set_title("Figure 9: Latency vs. Code Size", fontweight="bold")
-plt.tight_layout()
-plt.savefig("fig9_latency_vs_size.png", dpi=300, bbox_inches="tight")
-plt.show()
-print("Saved: fig9_latency_vs_size.png")
-'''
-cells.append(nbf.v4.new_code_cell(fig9_code))
+    plt.tight_layout()
+    plt.savefig(f"{CFG.output_dir}/fig3_rq5_runtime_cost.png", dpi=CFG.figure_dpi, bbox_inches="tight")
+    plt.show()
+    print(f"Figure saved: {CFG.output_dir}/fig3_rq5_runtime_cost.png")
+else:
+    print("No runtime data available for visualization.")""")
 
-# ── RQ6 ──
-cells.append(nbf.v4.new_markdown_cell(
-    "### 4.6 RQ6: Code-Specialized vs. General-Purpose LLMs\n\n"
-    "**Research Question:** *Do code-specialized LLMs outperform general-purpose LLMs "
-    "on vulnerability detection tasks?*\n\n"
-    "**Justification:** Code-specialized models (DeepSeek-Coder-V2, CodeLlama) are pre-trained "
-    "or fine-tuned on large code corpora. The hypothesis is that this specialization should yield "
-    "better understanding of code semantics and vulnerability patterns. However, general-purpose "
-    "models (GPT-4o, Claude 3.5 Sonnet) may compensate through broader reasoning capabilities.\n\n"
-    "This comparison has practical implications: code-specialized models are often cheaper "
-    "and faster to run, making them attractive for CI/CD integration if they match or exceed "
-    "general-purpose model performance."
-))
 
-rq6_code = r'''# Group models by type
-general_models = [mc for mc in MODELS if mc["type"] == "general"]
-code_models = [mc for mc in MODELS if mc["type"] == "code"]
+# ── S15: RQ6 — Code-Specialized vs General-Purpose ──
+md("""## 15. RQ6: Code-Specialized vs. General-Purpose LLMs
 
-print("=" * 80)
-print("RQ6 RESULTS: Code-Specialized vs. General-Purpose LLMs")
-print("=" * 80)
+**Research Question:** Do code-specialized LLMs outperform general-purpose LLMs on vulnerability detection tasks?
 
-# Aggregate metrics by type
-type_metrics = {}
-for model_type, model_list in [("General-Purpose", general_models), ("Code-Specialized", code_models)]:
-    all_cls = []
-    for mc in model_list:
-        if mc["name"] in all_model_results:
-            all_cls.extend(all_model_results[mc["name"]]["classification"].tolist())
-    if all_cls:
-        m = compute_metrics(all_cls)
-        type_metrics[model_type] = m
-        print(f"\n{model_type} (aggregated over {len(model_list)} models, {len(all_cls)} predictions):")
-        print(f"  Precision: {m['Precision']:.3f}")
-        print(f"  Recall:    {m['Recall']:.3f}")
-        print(f"  F1-Score:  {m['F1-Score']:.3f}")
+**Methodology:** We group the evaluated models by type (general-purpose vs. code-specialized) and compare their aggregated performance metrics. We test for statistical significance using the Wilcoxon signed-rank test where applicable.""")
 
-# Per-model breakdown
-print(f"\nIndividual model breakdown:")
-for mc in MODELS:
-    name = mc["name"]
-    if name in all_model_results:
-        m = compute_metrics(all_model_results[name]["classification"].tolist())
-        lats = all_model_results[name]["latency_s"].values
-        print(f"  [{mc['type']:7s}] {name:25s}: F1={m['F1-Score']:.3f}  R={m['Recall']:.3f}  "
-              f"Latency={np.mean(lats):.2f}s")
-'''
-cells.append(nbf.v4.new_code_cell(rq6_code))
+code("""print("=== Table 8: Code-Specialized vs. General-Purpose ===\\n")
+model_type_map = {m["name"]: m["type"] for m in CFG.models}
+type_metrics = {"general": [], "code": []}
+for model_name, mm in llm_metrics.items():
+    mtype = model_type_map.get(model_name, "general")
+    type_metrics[mtype].append({"name": model_name, **mm})
 
-fig10_code = r'''# Figure 10: Code-specialized vs general-purpose comparison
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5))
+type_rows = []
+for mtype, models in type_metrics.items():
+    if models:
+        avg_f1 = np.mean([m["f1_mean"] for m in models])
+        avg_mcc = np.mean([m["mcc_mean"] for m in models])
+        avg_prec = np.mean([m["precision_mean"] for m in models])
+        avg_rec = np.mean([m["recall_mean"] for m in models])
+        type_rows.append({
+            "Type": mtype.capitalize(),
+            "Models": ", ".join(m["name"] for m in models),
+            "Avg F1": f"{avg_f1:.3f}",
+            "Avg Precision": f"{avg_prec:.3f}",
+            "Avg Recall": f"{avg_rec:.3f}",
+            "Avg MCC": f"{avg_mcc:.3f}",
+        })
 
-# (a) F1 by model type
-model_types_plot = {"General-Purpose": [], "Code-Specialized": []}
-for mc in MODELS:
-    if mc["name"] in all_model_results:
-        m = compute_metrics(all_model_results[mc["name"]]["classification"].tolist())
-        cat = "General-Purpose" if mc["type"] == "general" else "Code-Specialized"
-        model_types_plot[cat].append((mc["name"], m["F1-Score"], m["Recall"]))
+if type_rows:
+    df_type = pd.DataFrame(type_rows)
+    display(df_type)
+    df_type.to_csv(f"{CFG.output_dir}/table8_code_vs_general.csv", index=False)
+else:
+    print("No LLM results available for RQ6 analysis.")""")
 
-x_offset = 0
-xticks, xlabels = [], []
-for cat, models in model_types_plot.items():
-    color = "#1976D2" if cat == "General-Purpose" else "#FF9800"
-    for name, f1, recall in models:
-        ax1.bar(x_offset, f1, 0.6, color=color, alpha=0.85)
-        ax1.text(x_offset, f1 + 0.01, f"{f1:.2f}", ha="center", fontsize=8)
-        xticks.append(x_offset)
-        xlabels.append(name.replace(" ", "\n"))
-        x_offset += 1
-    x_offset += 0.5  # gap between groups
 
-ax1.set_xticks(xticks)
-ax1.set_xticklabels(xlabels, fontsize=8)
-ax1.set_ylabel("F1-Score")
-ax1.set_title("(a) F1-Score by Model")
-ax1.set_ylim(0, 1.12)
+# ── S16: STATISTICAL COMPARISON ──
+md("""## 16. Statistical Comparison
 
-# Add legend manually
-from matplotlib.patches import Patch
-legend_elements = [Patch(facecolor="#1976D2", alpha=0.85, label="General-Purpose"),
-                   Patch(facecolor="#FF9800", alpha=0.85, label="Code-Specialized")]
-ax1.legend(handles=legend_elements)
+**Justification:** Paired statistical tests are essential because all models evaluate the same samples. We use McNemar's test for binary detection outcomes (paired proportions) and bootstrap confidence intervals for metric differences. Effect sizes and adjusted p-values (Bonferroni) are reported for multiple comparisons.""")
 
-# (b) Recall vs Latency scatter
-for mc in MODELS:
-    name = mc["name"]
-    if name in all_model_results:
-        m = compute_metrics(all_model_results[name]["classification"].tolist())
-        lat = np.mean(all_model_results[name]["latency_s"].values)
-        color = "#1976D2" if mc["type"] == "general" else "#FF9800"
-        marker = "o" if mc["type"] == "general" else "s"
-        ax2.scatter(lat, m["Recall"], c=color, s=120, marker=marker, edgecolors="black", linewidth=0.5, zorder=5)
-        ax2.annotate(name, (lat, m["Recall"]), textcoords="offset points",
-                    xytext=(5, 5), fontsize=8)
+code("""print("=== Table 9: Statistical Comparison (McNemar's Test) ===\\n")
+stat_rows = []
 
-ax2.set_xlabel("Mean Latency (s)")
-ax2.set_ylabel("Recall")
-ax2.set_title("(b) Recall vs. Latency (Pareto Frontier)")
-ax2.legend(handles=legend_elements)
+# Get predictions for each method on the same samples
+method_preds = {}
 
-plt.suptitle("Figure 10: Code-Specialized vs. General-Purpose LLMs", fontsize=13, fontweight="bold")
-plt.tight_layout()
-plt.savefig("fig10_code_vs_general.png", dpi=300, bbox_inches="tight")
-plt.show()
-print("Saved: fig10_code_vs_general.png")
-'''
-cells.append(nbf.v4.new_code_cell(fig10_code))
+# Baseline predictions
+for bname, bres in baseline_results.items():
+    preds = {r["sample_id"]: int(r["is_vulnerable_pred"]) for r in bres}
+    method_preds[bname] = preds
 
-# ── Confusion Matrices ──
-cells.append(nbf.v4.new_markdown_cell(
-    "### 4.7 Detailed Classification Analysis\n\n"
-    "Confusion matrices for the baseline and top 3 performing models."
-))
+# LLM predictions (first run)
+for model_name, run_list in all_run_results.items():
+    if run_list:
+        preds = {}
+        for rec in run_list[0]:
+            if rec.get("parse_success"):
+                is_v, _ = extract_detection(rec.get("parsed_json", {}))
+                preds[rec["sample_id"]] = int(is_v)
+            else:
+                preds[rec["sample_id"]] = 0
+        method_preds[model_name] = preds
 
-fig11_code = r'''# Figure 11: Confusion matrices
-def plot_cm(classifications, title, ax):
-    tp = classifications.count("TP")
-    fp = classifications.count("FP")
-    fn = classifications.count("FN")
-    tn = classifications.count("TN")
-    cm = np.array([[tp, fp], [fn, tn]])
-    im = ax.imshow(cm, cmap="Blues", vmin=0, vmax=max(cm.flat) if max(cm.flat) > 0 else 1)
-    for i in range(2):
-        for j in range(2):
-            color = "white" if cm[i, j] > cm.max() / 2 else "black"
-            ax.text(j, i, str(cm[i, j]), ha="center", va="center", color=color, fontsize=14, fontweight="bold")
-    ax.set_xticks([0, 1]); ax.set_yticks([0, 1])
-    ax.set_xticklabels(["Positive", "Negative"]); ax.set_yticklabels(["Positive", "Negative"])
-    ax.set_xlabel("Predicted"); ax.set_ylabel("Actual")
-    ax.set_title(title, fontsize=10)
+# Pairwise McNemar's test
+method_names = list(method_preds.keys())
+sample_ids = [s["id"] for s in BENCHMARK]
+ground_truth = {s["id"]: int(s["is_vulnerable"]) for s in BENCHMARK}
 
-plot_models = ["Pattern-Based"] + top_models[:3]
-fig, axes = plt.subplots(1, 4, figsize=(16, 3.5))
+n_comparisons = len(method_names) * (len(method_names) - 1) // 2
+alpha_bonferroni = 0.05 / max(n_comparisons, 1)
 
-plot_cm(df_pattern["classification"].tolist(), "Pattern-Based", axes[0])
-for i, name in enumerate(top_models[:3]):
-    plot_cm(all_model_results[name]["classification"].tolist(), name, axes[i+1])
+for i in range(len(method_names)):
+    for j in range(i + 1, len(method_names)):
+        m1, m2 = method_names[i], method_names[j]
+        p1 = method_preds[m1]
+        p2 = method_preds[m2]
+        # Build contingency table for McNemar's
+        b = 0  # m1 correct, m2 wrong
+        c = 0  # m1 wrong, m2 correct
+        for sid in sample_ids:
+            gt = ground_truth.get(sid, 0)
+            pred1 = p1.get(sid, 0)
+            pred2 = p2.get(sid, 0)
+            correct1 = int(pred1 == gt)
+            correct2 = int(pred2 == gt)
+            if correct1 == 1 and correct2 == 0:
+                b += 1
+            elif correct1 == 0 and correct2 == 1:
+                c += 1
+        # McNemar's test with continuity correction
+        if b + c > 0:
+            chi2 = (abs(b - c) - 1) ** 2 / (b + c)
+            p_val = 1 - stats.chi2.cdf(chi2, df=1)
+        else:
+            chi2 = 0
+            p_val = 1.0
+        adjusted_p = min(p_val * n_comparisons, 1.0)
+        effect_size = (b - c) / max(b + c, 1)
+        stat_rows.append({
+            "Method A": m1, "Method B": m2,
+            "b (A>B)": b, "c (B>A)": c,
+            "chi2": f"{chi2:.3f}", "p-value": f"{p_val:.4f}",
+            "Adjusted p": f"{adjusted_p:.4f}",
+            "Effect size": f"{effect_size:.3f}",
+            "Significant": "Yes" if adjusted_p < 0.05 else "No",
+        })
 
-plt.suptitle("Figure 11: Confusion Matrices", fontsize=13, fontweight="bold")
-plt.tight_layout()
-plt.savefig("fig11_confusion_matrices.png", dpi=300, bbox_inches="tight")
-plt.show()
-print("Saved: fig11_confusion_matrices.png")
-'''
-cells.append(nbf.v4.new_code_cell(fig11_code))
+if stat_rows:
+    df_stat = pd.DataFrame(stat_rows)
+    display(df_stat)
+    df_stat.to_csv(f"{CFG.output_dir}/table9_statistical_comparison.csv", index=False)
+    print(f"\\nBonferroni-adjusted alpha: {alpha_bonferroni:.4f}")
+    print(f"Number of comparisons: {n_comparisons}")
+else:
+    print("Insufficient methods for statistical comparison.")""")
 
-# ── Performance by source ──
-cells.append(nbf.v4.new_markdown_cell(
-    "### 4.8 Performance by Dataset Source\n\n"
-    "**Justification:** Reporting per-dataset performance is essential per empirical software "
-    "engineering best practices (Wohlin et al., 2012). If a model performs significantly better "
-    "on one dataset, it may indicate overfitting to that dataset's characteristics rather than "
-    "true generalization."
-))
+code("""# Bootstrap confidence intervals for F1 difference between best LLM and best baseline
+if llm_metrics and baseline_metrics:
+    best_baseline = max(baseline_metrics.items(), key=lambda x: x[1]["f1"])
+    best_llm = max(llm_metrics.items(), key=lambda x: x[1]["f1_mean"])
+    print(f"\\nBootstrap CI: F1 difference between {best_llm[0]} and {best_baseline[0]}")
 
-source_code = r'''# Figure 12: Per-dataset performance (all models)
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+    # Get paired predictions
+    b_preds = method_preds.get(best_baseline[0], {})
+    l_preds = method_preds.get(best_llm[0], {})
 
-model_names_all = list(all_model_results.keys())
-x = np.arange(len(model_names_all))
-width = 0.35
+    y_true_arr = np.array([ground_truth[sid] for sid in sample_ids])
+    y_pred_b = np.array([b_preds.get(sid, 0) for sid in sample_ids])
+    y_pred_l = np.array([l_preds.get(sid, 0) for sid in sample_ids])
 
-# CrossVul F1
-cv_f1s = []
-cvf_f1s = []
-for name in model_names_all:
-    df = all_model_results[name]
-    cv_cls = df[df["source"] == "crossvul"]["classification"].tolist()
-    cvf_cls = df[df["source"] == "cvefixes"]["classification"].tolist()
-    cv_f1s.append(compute_metrics(cv_cls)["F1-Score"] if cv_cls else 0)
-    cvf_f1s.append(compute_metrics(cvf_cls)["F1-Score"] if cvf_cls else 0)
+    def f1_diff(y_t, idx):
+        from sklearn.metrics import f1_score as f1s
+        return f1s(y_t[idx], y_pred_l[idx], zero_division=0) - f1s(y_t[idx], y_pred_b[idx], zero_division=0)
 
-ax1.bar(x - width/2, cv_f1s, width, label="CrossVul", color="#1976D2", alpha=0.85)
-ax1.bar(x + width/2, cvf_f1s, width, label="CVEfixes", color="#388E3C", alpha=0.85)
-ax1.set_xticks(x)
-ax1.set_xticklabels(model_names_all, rotation=25, ha="right", fontsize=8)
-ax1.set_ylabel("F1-Score")
-ax1.set_title("(a) F1-Score by Dataset")
-ax1.set_ylim(0, 1.12)
-ax1.legend()
+    rng = np.random.RandomState(CFG.random_seed)
+    diffs = []
+    for _ in range(1000):
+        idx = rng.randint(0, len(y_true_arr), len(y_true_arr))
+        diffs.append(f1_diff(y_true_arr, idx))
 
-# Recall comparison
-cv_recalls = []
-cvf_recalls = []
-for name in model_names_all:
-    df = all_model_results[name]
-    cv_cls = df[df["source"] == "crossvul"]["classification"].tolist()
-    cvf_cls = df[df["source"] == "cvefixes"]["classification"].tolist()
-    cv_recalls.append(compute_metrics(cv_cls)["Recall"] if cv_cls else 0)
-    cvf_recalls.append(compute_metrics(cvf_cls)["Recall"] if cvf_cls else 0)
+    lo, hi = np.percentile(diffs, [2.5, 97.5])
+    print(f"  Mean F1 difference: {np.mean(diffs):.4f}")
+    print(f"  95% Bootstrap CI: [{lo:.4f}, {hi:.4f}]")
+    print(f"  Significant: {'Yes' if lo > 0 or hi < 0 else 'No (CI includes 0)'}")
+else:
+    print("Insufficient results for bootstrap CI comparison.")""")
 
-ax2.bar(x - width/2, cv_recalls, width, label="CrossVul", color="#1976D2", alpha=0.85)
-ax2.bar(x + width/2, cvf_recalls, width, label="CVEfixes", color="#388E3C", alpha=0.85)
-ax2.set_xticks(x)
-ax2.set_xticklabels(model_names_all, rotation=25, ha="right", fontsize=8)
-ax2.set_ylabel("Recall")
-ax2.set_title("(b) Recall by Dataset")
-ax2.set_ylim(0, 1.12)
-ax2.legend()
 
-plt.suptitle("Figure 12: Per-Dataset Performance Comparison", fontsize=13, fontweight="bold")
-plt.tight_layout()
-plt.savefig("fig12_per_dataset_performance.png", dpi=300, bbox_inches="tight")
-plt.show()
-print("Saved: fig12_per_dataset_performance.png")
-'''
-cells.append(nbf.v4.new_code_cell(source_code))
+# ── S17: ABLATION STUDY ──
+md("""## 17. Ablation Study
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Section 5 — Summary
-# ══════════════════════════════════════════════════════════════════════════════
-cells.append(nbf.v4.new_markdown_cell(
-    "## 5. Summary of Findings\n\n"
-    "### Key Results\n\n"
-    "| RQ | Finding | Evidence |\n"
-    "|----|---------|----------|\n"
-    "| **RQ1** | All LLMs significantly outperform pattern-based static analysis; best model achieves >0.85 recall on real-world vulnerabilities | Tables 1, 1.1, 1.2; Figures 1–2 |\n"
-    "| **RQ2** | Detection performance varies by language; well-represented languages (C, Python, JavaScript) achieve higher F1 across all models | Table 2; Figure 3 |\n"
-    "| **RQ3** | LLM severity classification shows reasonable alignment with CVEfixes CVSS ground truth; tendency to over-classify as 'high' | Table 3; Figures 4–6 |\n"
-    "| **RQ4** | Code-specialized and general-purpose LLMs both generate mitigations with high coverage, but specificity (code fix quality) varies | Table 4; Figure 7 |\n"
-    "| **RQ5** | Preprocessing is sub-millisecond; LLM inference averages 1–5s depending on model and provider; suitable for CI/CD integration | Table 5; Figures 8–9 |\n"
-    "| **RQ6** | Code-specialized LLMs (DeepSeek-Coder-V2) match or exceed general-purpose models on recall while offering lower latency | Figure 10 |\n\n"
-    "### Dataset Comparability\n\n"
-    "Fisher's exact test (§4.1) shows [check p-values above] — if p > 0.05 for most models, "
-    "the merged results are statistically justified. We recommend reporting both per-dataset "
-    "and merged results in the paper for transparency.\n\n"
-    "### Threats to Validity\n\n"
-    "1. **Internal**: Both datasets contain automatically extracted labels that may have noise; "
-    "simulated results for models without API keys are approximations\n"
-    "2. **External**: Results are specific to the 6 models evaluated; newer models may perform differently\n"
-    "3. **Construct**: The regex baseline is intentionally simple; production SAST tools (Semgrep, SonarQube) "
-    "would be a stronger comparison point\n"
-    "4. **Statistical**: 200 samples per dataset provides reasonable power but may not cover "
-    "all CWE types equally; language imbalance may bias per-language results\n\n"
-    "### Implications for Practice\n\n"
-    "1. **Model Selection**: Code-specialized models offer competitive accuracy at lower cost — "
-    "recommended for CI/CD integration\n"
-    "2. **Multi-Model Ensemble**: Combining detections from multiple models could improve recall "
-    "while maintaining precision\n"
-    "3. **Real-World Validation**: Using CrossVul + CVEfixes demonstrates effectiveness on "
-    "production code, not synthetic benchmarks\n"
-    "4. **Latency Trade-off**: Sub-5-second inference enables integration into PR review workflows; "
-    "pre-commit hooks may require faster models"
-))
+**Justification:** Ablation studies isolate the contribution of each experimental variable. We test the following controlled variants:
+1. **Prompt variant**: Detection + mitigation vs. detection-only
+2. **CWE hint**: With CWE hint vs. without
+3. **Temperature**: 0.0 vs. 0.1
+4. **Code truncation**: Full code vs. truncated (first 1000 chars)
+5. **Benchmark composition**: Vulnerable-only vs. mixed (vulnerable + non-vulnerable)
 
-# ── Export ──
-cells.append(nbf.v4.new_markdown_cell("## 6. Export Results for Paper"))
+Each ablation uses the same model on the same samples, changing only the target variable.""")
 
-export_code = r'''# Export all results
-timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M")
+code("""ablation_results = {}
 
-df_comparison.to_csv("results_table1_model_comparison.csv", index=False)
-df_lang.to_csv("results_table2_language_performance.csv", index=False)
-severity_comparison.to_csv("results_table3_severity_distribution.csv", index=False)
-df_mitigation.to_csv("results_table4_mitigation_quality.csv", index=False)
-df_latency.to_csv("results_table5_latency_throughput.csv", index=False)
+if AVAILABLE_MODELS:
+    ablation_model = AVAILABLE_MODELS[0]
+    print(f"Running ablation study with: {ablation_model['name']}")
+    ablation_samples = BENCHMARK[:min(50, len(BENCHMARK))]
+    print(f"  Using {len(ablation_samples)} samples for ablation")
 
-# Raw results per model
-for name, df in all_model_results.items():
-    safe_name = name.lower().replace(" ", "_").replace("-", "_").replace(".", "")
-    df.to_csv(f"results_raw_{safe_name}.csv", index=False)
+    # Ablation 1: Detection-only prompt
+    print("\\n  Ablation 1: Detection-only prompt...")
+    ab1_results = []
+    for s in ablation_samples:
+        r = run_llm_on_sample(ablation_model, s, prompt_id="v1.1-detection-only")
+        ab1_results.append(r)
+    ablation_results["detection_only_prompt"] = ab1_results
 
-df_pattern.to_csv("results_raw_pattern_baseline.csv", index=False)
-df_preprocess.to_csv("results_raw_preprocessing_latency.csv", index=False)
+    # Ablation 2: With CWE hint
+    print("  Ablation 2: With CWE hint...")
+    ab2_results = []
+    for s in ablation_samples:
+        r = run_llm_on_sample(ablation_model, s, prompt_id="v1.2-with-cwe-hint")
+        ab2_results.append(r)
+    ablation_results["with_cwe_hint"] = ab2_results
 
-# Benchmark metadata
-benchmark_meta = pd.DataFrame([{
-    "id": s["id"], "language": s["language"], "source": s["source"],
-    "is_vulnerable": s["is_vulnerable"], "ground_truth": str(s["ground_truth"]),
-    "severity": s.get("severity"), "cwe_id": s.get("cwe_id", ""),
-    "code_length": len(s["code"]),
-} for s in BENCHMARK_SAMPLES])
-benchmark_meta.to_csv("results_benchmark_metadata.csv", index=False)
+    # Ablation 3: Temperature 0
+    print("  Ablation 3: Temperature 0.0...")
+    ab3_results = []
+    for s in ablation_samples:
+        r = run_llm_on_sample(ablation_model, s, prompt_id=CFG.prompt_version, temperature=0.0)
+        ab3_results.append(r)
+    ablation_results["temperature_0"] = ab3_results
 
-# Summary JSON
-summary = {
-    "experiment_date": datetime.now(timezone.utc).isoformat(),
-    "models_evaluated": [mc["name"] for mc in MODELS],
-    "live_models": [mc["name"] for mc in live_models],
-    "simulated_models": [mc["name"] for mc in simulated_models],
-    "n_samples": len(BENCHMARK_SAMPLES),
-    "n_crossvul": sum(1 for s in BENCHMARK_SAMPLES if s["source"] == "crossvul"),
-    "n_cvefixes": sum(1 for s in BENCHMARK_SAMPLES if s["source"] == "cvefixes"),
-    "baseline_metrics": pattern_metrics,
-    "model_metrics": {name: compute_metrics(df["classification"].tolist()) for name, df in all_model_results.items()},
-    "figures": [f"fig{i}_*.png" for i in range(13)],
+    # Ablation 4: Truncated code (1000 chars)
+    print("  Ablation 4: Truncated code (1000 chars)...")
+    ab4_results = []
+    for s in ablation_samples:
+        r = run_llm_on_sample(ablation_model, s, prompt_id=CFG.prompt_version, truncate_code=1000)
+        ab4_results.append(r)
+    ablation_results["truncated_code"] = ab4_results
+
+    # Ablation 5: Vulnerable-only benchmark
+    print("  Ablation 5: Vulnerable-only subset...")
+    vuln_only = [s for s in ablation_samples if s["is_vulnerable"]]
+    ab5_results = []
+    for s in vuln_only:
+        r = run_llm_on_sample(ablation_model, s, prompt_id=CFG.prompt_version)
+        ab5_results.append(r)
+    ablation_results["vulnerable_only"] = ab5_results
+
+    print("  Ablation study complete.")
+else:
+    print("No models available for ablation study. Skipping.")""")
+
+code("""# Ablation results table
+print("=== Table 10: Ablation Study Results ===\\n")
+ablation_table_rows = []
+sample_map = {s["id"]: s for s in BENCHMARK}
+
+for ab_name, ab_records in ablation_results.items():
+    if not ab_records:
+        continue
+    y_true = []
+    y_pred = []
+    for rec in ab_records:
+        sample = sample_map.get(rec["sample_id"])
+        if sample:
+            y_true.append(int(sample["is_vulnerable"]))
+            if rec.get("parse_success"):
+                is_v, _ = extract_detection(rec.get("parsed_json", {}))
+                y_pred.append(int(is_v))
+            else:
+                y_pred.append(0)
+    if y_true:
+        m = compute_binary_metrics(y_true, y_pred)
+        ablation_table_rows.append({
+            "Variant": ab_name,
+            "N": len(y_true),
+            "Accuracy": f"{m['accuracy']:.3f}",
+            "Precision": f"{m['precision']:.3f}",
+            "Recall": f"{m['recall']:.3f}",
+            "F1": f"{m['f1']:.3f}",
+            "MCC": f"{m['mcc']:.3f}",
+        })
+
+if ablation_table_rows:
+    df_ablation = pd.DataFrame(ablation_table_rows)
+    display(df_ablation)
+    df_ablation.to_csv(f"{CFG.output_dir}/table10_ablation.csv", index=False)
+else:
+    print("No ablation results available.")""")
+
+
+# ── S18: CONFUSION MATRICES ──
+md("""## 18. Confusion Matrices
+
+**Justification:** Confusion matrices provide detailed insight into the types of errors each method makes, essential for understanding model behavior beyond aggregate metrics.""")
+
+code("""# Plot confusion matrices for all methods
+all_methods_cm = {}
+
+for bname, bres in baseline_results.items():
+    y_true = [int(r["is_vulnerable_true"]) for r in bres]
+    y_pred = [int(r["is_vulnerable_pred"]) for r in bres]
+    all_methods_cm[bname.capitalize()] = confusion_matrix(y_true, y_pred, labels=[0, 1])
+
+for model_name, run_list in all_run_results.items():
+    if run_list:
+        y_true = []
+        y_pred = []
+        sample_map_local = {s["id"]: s for s in BENCHMARK}
+        for rec in run_list[0]:
+            sample = sample_map_local.get(rec["sample_id"])
+            if sample:
+                y_true.append(int(sample["is_vulnerable"]))
+                if rec.get("parse_success"):
+                    is_v, _ = extract_detection(rec.get("parsed_json", {}))
+                    y_pred.append(int(is_v))
+                else:
+                    y_pred.append(0)
+        if y_true:
+            all_methods_cm[model_name] = confusion_matrix(y_true, y_pred, labels=[0, 1])
+
+n_methods = len(all_methods_cm)
+if n_methods > 0:
+    cols = min(3, n_methods)
+    rows_needed = (n_methods + cols - 1) // cols
+    fig, axes = plt.subplots(rows_needed, cols, figsize=(5 * cols, 4 * rows_needed))
+    if rows_needed == 1 and cols == 1:
+        axes = np.array([[axes]])
+    elif rows_needed == 1:
+        axes = axes.reshape(1, -1)
+    elif cols == 1:
+        axes = axes.reshape(-1, 1)
+
+    for idx, (mname, cm) in enumerate(all_methods_cm.items()):
+        r, c = divmod(idx, cols)
+        ax = axes[r][c]
+        im = ax.imshow(cm, cmap="Blues", interpolation="nearest")
+        ax.set_title(mname, fontsize=10)
+        ax.set_xlabel("Predicted")
+        ax.set_ylabel("True")
+        ax.set_xticks([0, 1])
+        ax.set_yticks([0, 1])
+        ax.set_xticklabels(["Non-vuln", "Vuln"])
+        ax.set_yticklabels(["Non-vuln", "Vuln"])
+        for i2 in range(2):
+            for j2 in range(2):
+                ax.text(j2, i2, str(cm[i2][j2]), ha="center", va="center",
+                        color="white" if cm[i2][j2] > cm.max() / 2 else "black", fontsize=12)
+
+    # Hide unused axes
+    for idx in range(n_methods, rows_needed * cols):
+        r, c = divmod(idx, cols)
+        axes[r][c].set_visible(False)
+
+    plt.tight_layout()
+    plt.savefig(f"{CFG.output_dir}/fig4_confusion_matrices.png", dpi=CFG.figure_dpi, bbox_inches="tight")
+    plt.show()
+    print(f"Figure saved: {CFG.output_dir}/fig4_confusion_matrices.png")
+else:
+    print("No confusion matrix data available.")""")
+
+
+# ── S19: SUMMARY ──
+md("""## 19. Summary and Conclusions
+
+**Note:** All conclusions below are derived solely from the experimental results obtained. We do not claim state-of-the-art performance, real-time capability, or generalizability beyond the datasets and models evaluated here.""")
+
+code("""print("=" * 70)
+print("EXPERIMENT SUMMARY")
+print("=" * 70)
+
+print(f"\\nDatasets: CrossVul + CVEfixes")
+print(f"Total benchmark samples: {len(BENCHMARK)}")
+print(f"  Vulnerable: {sum(1 for s in BENCHMARK if s['is_vulnerable'])}")
+print(f"  Non-vulnerable: {sum(1 for s in BENCHMARK if not s['is_vulnerable'])}")
+print(f"Languages: {len(set(s['language'] for s in BENCHMARK))}")
+print(f"CWE categories: {len(set(s['cwe'] for s in BENCHMARK if s['cwe'] not in ('N/A', 'unknown')))}")
+
+print(f"\\nBaselines evaluated: {list(baseline_metrics.keys())}")
+print(f"LLMs evaluated: {list(llm_metrics.keys())}")
+print(f"Repeated runs: {CFG.num_repeated_runs}")
+
+print(f"\\nKey findings:")
+if baseline_metrics:
+    best_bl = max(baseline_metrics.items(), key=lambda x: x[1]["f1"])
+    print(f"  Best baseline: {best_bl[0]} (F1={best_bl[1]['f1']:.3f})")
+if llm_metrics:
+    best_llm = max(llm_metrics.items(), key=lambda x: x[1]["f1_mean"])
+    print(f"  Best LLM: {best_llm[0]} (F1={best_llm[1]['f1_mean']:.3f} +/- {best_llm[1]['f1_std']:.3f})")
+
+print(f"\\nSimulation used: {'No (real results only)' if CFG.USE_REAL_LLMS_ONLY else 'Simulation included'}")
+print(f"Seed: {CFG.random_seed}")
+print(f"Prompt version: {CFG.prompt_version}")
+print("=" * 70)""")
+
+
+# ── S20: EXPORT RESULTS ──
+md("""## 20. Results Export
+
+All results are exported to CSV and JSON for direct inclusion in the paper.""")
+
+code("""# Export all raw results
+export_data = {
+    "config": asdict(CFG),
+    "benchmark_hash": benchmark_hash,
+    "benchmark_size": len(BENCHMARK),
+    "baseline_metrics": {},
+    "llm_metrics": {},
+    "timestamp": datetime.now(timezone.utc).isoformat(),
 }
-with open("results_summary.json", "w") as f:
-    json.dump(summary, f, indent=2, default=str)
+for bname, bm in baseline_metrics.items():
+    serializable = {k: v for k, v in bm.items() if k != "confusion_matrix"}
+    serializable["confusion_matrix"] = bm.get("confusion_matrix", [])
+    export_data["baseline_metrics"][bname] = serializable
+for mname, mm in llm_metrics.items():
+    export_data["llm_metrics"][mname] = mm
 
-print("All results exported:")
-print(f"  Tables:    results_table[1-5]_*.csv")
-print(f"  Raw data:  results_raw_*.csv ({len(all_model_results) + 2} files)")
-print(f"  Metadata:  results_benchmark_metadata.csv")
-print(f"  Summary:   results_summary.json")
-print(f"  Figures:   fig[0-12]_*.png (13 figures)")
-'''
-cells.append(nbf.v4.new_code_cell(export_code))
+with open(f"{CFG.output_dir}/all_results.json", "w") as f:
+    json.dump(export_data, f, indent=2, default=str)
 
-# ── Appendix ──
-cells.append(nbf.v4.new_markdown_cell(
-    "---\n\n"
-    "## Appendix A: Reproducibility\n\n"
-    "### Requirements\n"
-    "```bash\n"
-    "pip install datasets openai anthropic google-generativeai matplotlib pandas numpy scipy jupyter\n"
-    "```\n\n"
-    "### API Keys\n"
-    "```bash\n"
-    "export OPENAI_API_KEY=\"sk-...\"        # GPT-4o, GPT-4-Turbo\n"
-    "export ANTHROPIC_API_KEY=\"sk-ant-...\"  # Claude 3.5 Sonnet\n"
-    "export GOOGLE_API_KEY=\"AI...\"          # Gemini 1.5 Pro\n"
-    "export DEEPSEEK_API_KEY=\"sk-...\"       # DeepSeek-Coder-V2\n"
-    "export TOGETHER_API_KEY=\"...\"          # CodeLlama-70B\n"
-    "```\n\n"
-    "### Running\n"
-    "```bash\n"
-    "jupyter notebook research_experiments.ipynb\n"
-    "```\n\n"
-    "Models without API keys will automatically use simulated results.\n\n"
-    "### Dataset References\n\n"
-    "- **CrossVul**: Nikitopoulos, G., Mitropoulos, D., & Spinellis, D. (2021). "
-    "*CrossVul: a cross-language vulnerability dataset with commit data.* "
-    "[HuggingFace](https://huggingface.co/datasets/hitoshura25/crossvul)\n"
-    "- **CVEfixes**: Bhandari, G. P., Naseer, A., & Moonen, L. (2021). "
-    "*CVEfixes: Automated Collection of Vulnerabilities and Their Fixes from Open-Source Software.* "
-    "[HuggingFace](https://huggingface.co/datasets/hitoshura25/cvefixes)\n\n"
-    "### Model References\n\n"
-    "| Model | Reference |\n"
-    "|-------|-----------|\n"
-    "| GPT-4o | OpenAI (2024). *GPT-4o Technical Report.* |\n"
-    "| GPT-4-Turbo | OpenAI (2024). *GPT-4 Technical Report.* |\n"
-    "| Claude 3.5 Sonnet | Anthropic (2024). *Claude 3.5 Model Card.* |\n"
-    "| Gemini 1.5 Pro | Google DeepMind (2024). *Gemini 1.5 Technical Report.* |\n"
-    "| DeepSeek-Coder-V2 | DeepSeek AI (2024). *DeepSeek-Coder-V2 Technical Report.* |\n"
-    "| CodeLlama-70B | Rozière et al. (2024). *Code Llama: Open Foundation Models for Code.* |"
-))
+# Export raw LLM responses
+for model_name, records in all_llm_results.items():
+    safe_name = model_name.replace(" ", "_").replace("/", "_").lower()
+    export_records = []
+    for rec in records:
+        export_rec = {k: v for k, v in rec.items() if k != "raw_response"}
+        export_rec["raw_response_length"] = len(rec.get("raw_response", "") or "")
+        export_records.append(export_rec)
+    with open(f"{CFG.output_dir}/raw_results_{safe_name}.json", "w") as f:
+        json.dump(export_records, f, indent=2, default=str)
 
+print("Exported files:")
+for fname in sorted(os.listdir(CFG.output_dir)):
+    fpath = os.path.join(CFG.output_dir, fname)
+    fsize = os.path.getsize(fpath)
+    print(f"  {fname} ({fsize:,} bytes)")""")
+
+
+# ── S21: DATASET COMPOSITION VISUALIZATION ──
+md("## 21. Dataset Composition Visualization")
+
+code("""fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+
+# Language distribution
+lang_counts = Counter(s["language"] for s in BENCHMARK)
+langs = [l for l, _ in lang_counts.most_common()]
+counts = [c for _, c in lang_counts.most_common()]
+axes[0, 0].bar(langs, counts, color="#2196F3", alpha=0.85)
+axes[0, 0].set_title("Language Distribution")
+axes[0, 0].set_ylabel("Count")
+axes[0, 0].tick_params(axis='x', rotation=45)
+
+# Source distribution
+src_counts = Counter(s["source"] for s in BENCHMARK)
+axes[0, 1].pie(list(src_counts.values()), labels=list(src_counts.keys()),
+               autopct='%1.1f%%', colors=["#4CAF50", "#FF9800"], startangle=90)
+axes[0, 1].set_title("Dataset Source Distribution")
+
+# Vulnerability status
+vuln_counts = Counter("Vulnerable" if s["is_vulnerable"] else "Non-vulnerable" for s in BENCHMARK)
+axes[1, 0].bar(list(vuln_counts.keys()), list(vuln_counts.values()),
+               color=["#F44336", "#4CAF50"], alpha=0.85)
+axes[1, 0].set_title("Vulnerability Status Distribution")
+axes[1, 0].set_ylabel("Count")
+
+# Code length distribution
+code_lengths = [s["code_length"] for s in BENCHMARK]
+axes[1, 1].hist(code_lengths, bins=30, color="#9C27B0", alpha=0.7, edgecolor="white")
+axes[1, 1].set_title("Code Length Distribution")
+axes[1, 1].set_xlabel("Characters")
+axes[1, 1].set_ylabel("Count")
+
+plt.tight_layout()
+plt.savefig(f"{CFG.output_dir}/fig5_dataset_composition.png", dpi=CFG.figure_dpi, bbox_inches="tight")
+plt.show()
+print(f"Figure saved: {CFG.output_dir}/fig5_dataset_composition.png")""")
+
+
+md("### Model Configuration Table")
+
+code("""print("=== Table 11: Model Configuration ===\\n")
+model_config_rows = []
+for m in CFG.models:
+    env_key = API_KEY_MAP.get(m["provider"], "")
+    available = bool(os.environ.get(env_key, ""))
+    model_config_rows.append({
+        "Model": m["name"],
+        "Provider": m["provider"],
+        "Model ID": m["model_id"],
+        "Type": m["type"],
+        "Temperature": CFG.temperature,
+        "Max Tokens": CFG.max_tokens,
+        "Available": "Yes" if available else "No",
+    })
+df_model_config = pd.DataFrame(model_config_rows)
+display(df_model_config)
+df_model_config.to_csv(f"{CFG.output_dir}/table11_model_config.csv", index=False)""")
+
+
+md("### Repeated Runs Detail")
+
+code("""print("=== Table 12: Repeated Runs Detail ===\\n")
+runs_detail_rows = []
+for model_name, per_run in llm_per_run_metrics.items():
+    for rm in per_run:
+        runs_detail_rows.append({
+            "Model": model_name,
+            "Run": rm["run_idx"] + 1,
+            "Accuracy": f"{rm['accuracy']:.3f}",
+            "F1": f"{rm['f1']:.3f}",
+            "Precision": f"{rm['precision']:.3f}",
+            "Recall": f"{rm['recall']:.3f}",
+            "MCC": f"{rm['mcc']:.3f}",
+        })
+if runs_detail_rows:
+    df_runs = pd.DataFrame(runs_detail_rows)
+    display(df_runs)
+    df_runs.to_csv(f"{CFG.output_dir}/table12_repeated_runs.csv", index=False)
+else:
+    print("No repeated run data available.")""")
+
+
+md("### Confidence Intervals Table")
+
+code("""print("=== Table 13: 95% Confidence Intervals ===\\n")
+ci_rows = []
+for model_name, mm in llm_metrics.items():
+    ci_rows.append({
+        "Model": model_name,
+        "F1 mean": f"{mm['f1_mean']:.3f}",
+        "F1 95% CI": f"[{mm['f1_ci_lo']:.3f}, {mm['f1_ci_hi']:.3f}]",
+        "MCC mean": f"{mm['mcc_mean']:.3f}",
+        "MCC 95% CI": f"[{mm['mcc_ci_lo']:.3f}, {mm['mcc_ci_hi']:.3f}]",
+        "Acc mean": f"{mm['accuracy_mean']:.3f}",
+        "Acc 95% CI": f"[{mm['accuracy_ci_lo']:.3f}, {mm['accuracy_ci_hi']:.3f}]",
+    })
+if ci_rows:
+    df_ci = pd.DataFrame(ci_rows)
+    display(df_ci)
+    df_ci.to_csv(f"{CFG.output_dir}/table13_confidence_intervals.csv", index=False)
+else:
+    print("No CI data available.")""")
+
+
+md("### JSON Parse Success Rate")
+
+code("""print("=== Table 14: Parse Success Rate ===\\n")
+parse_rows = []
+for model_name, records in all_llm_results.items():
+    if not records:
+        continue
+    total = len(records)
+    success = sum(1 for r in records if r.get("parse_success"))
+    failed = total - success
+    errors = Counter(r.get("error", "none") for r in records if not r.get("parse_success"))
+    top_error = errors.most_common(1)[0] if errors else ("none", 0)
+    parse_rows.append({
+        "Model": model_name,
+        "Total calls": total,
+        "Parse success": success,
+        "Parse success (%)": f"{success/max(total,1)*100:.1f}",
+        "Failed": failed,
+        "Top error": f"{top_error[0]} ({top_error[1]})",
+    })
+if parse_rows:
+    df_parse = pd.DataFrame(parse_rows)
+    display(df_parse)
+    df_parse.to_csv(f"{CFG.output_dir}/table14_parse_success.csv", index=False)
+else:
+    print("No parse data available.")""")
+
+
+md("### Baseline Detail Table")
+
+code("""print("=== Table 15: Baseline Detail ===\\n")
+bl_rows = []
+for bname, bm in baseline_metrics.items():
+    bl_rows.append({
+        "Baseline": bname.capitalize(),
+        "Accuracy": f"{bm['accuracy']:.3f}",
+        "Precision": f"{bm['precision']:.3f}",
+        "Recall": f"{bm['recall']:.3f}",
+        "F1": f"{bm['f1']:.3f}",
+        "Specificity": f"{bm['specificity']:.3f}",
+        "FPR": f"{bm['fpr']:.3f}",
+        "FNR": f"{bm['fnr']:.3f}",
+        "MCC": f"{bm['mcc']:.3f}",
+        "Balanced Acc": f"{bm['balanced_accuracy']:.3f}",
+        "TP": bm["tp"], "FP": bm["fp"], "FN": bm["fn"], "TN": bm["tn"],
+    })
+df_bl = pd.DataFrame(bl_rows)
+display(df_bl)
+df_bl.to_csv(f"{CFG.output_dir}/table15_baseline_detail.csv", index=False)""")
+
+
+# ── APPENDIX A ──
+md("""## Appendix A: Reproducibility Instructions
+
+### Environment Setup
+
+```bash
+pip install datasets openai anthropic google-generativeai matplotlib pandas numpy scipy scikit-learn jupyter
+
+# Optional baselines
+pip install semgrep bandit
+
+# Set API keys
+export OPENAI_API_KEY="sk-..."
+export ANTHROPIC_API_KEY="sk-ant-..."
+export GOOGLE_API_KEY="..."
+export DEEPSEEK_API_KEY="..."
+export TOGETHER_API_KEY="..."
+```
+
+### Running the Experiment
+
+```bash
+jupyter notebook research_experiments.ipynb
+```
+
+### Reproducibility Checklist
+
+- [x] Centralized configuration class with all parameters
+- [x] Fixed random seed (42) for Python, NumPy, sampling
+- [x] Fixed benchmark sample list exported as CSV
+- [x] Identical prompt for all models (versioned)
+- [x] Repeated runs (configurable, default 3)
+- [x] Statistical tests with paired samples
+- [x] All results exported as CSV and JSON
+- [x] Configuration exported as JSON
+- [x] Clear separation of real vs. simulated results
+- [x] Benchmark hash for verification""")
+
+
+# ── APPENDIX B ──
+md("""## Appendix B: Limitations and Threats to Validity
+
+### Internal Validity
+- LLM outputs are non-deterministic even at low temperature; repeated runs mitigate but do not eliminate this
+- JSON parsing failures may systematically bias results against certain models
+- Prompt design may favor certain model architectures
+
+### External Validity
+- Results are limited to the CrossVul and CVEfixes datasets
+- Only 9 programming languages are evaluated
+- Code samples are limited to 5000 characters
+- Results may not generalize to proprietary codebases or novel vulnerability types
+
+### Construct Validity
+- Binary detection (vulnerable vs. non-vulnerable) is a simplification of real-world vulnerability assessment
+- CWE-to-vulnerability-type mapping is approximate
+- Mitigation quality is assessed quantitatively (presence/absence) rather than by expert review
+
+### Statistical Validity
+- Sample sizes per language and CWE category may be insufficient for robust per-category conclusions
+- Multiple comparisons are corrected using Bonferroni, which is conservative
+- Bootstrap CIs assume independent samples within the benchmark""")
+
+
+# ── FINALIZE NOTEBOOK ──
 nb.cells = cells
-nbf.write(nb, "research_experiments.ipynb")
-print("Notebook created: research_experiments.ipynb")
+with open("research_experiments.ipynb", "w") as f:
+    nbf.write(nb, f)
+print("Notebook saved: research_experiments.ipynb")
+print(f"Total cells: {len(cells)}")
+print(f"Markdown cells: {sum(1 for c in cells if c.cell_type == 'markdown')}")
+print(f"Code cells: {sum(1 for c in cells if c.cell_type == 'code')}")
