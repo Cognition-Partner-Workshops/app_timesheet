@@ -36,11 +36,11 @@ function logFailedLogin(email, ip, reason) {
   });
 }
 
-function logUnauthorizedAccess(ip, path, reason) {
+function logUnauthorizedAccess(ip, requestPath, reason) {
   logSecurityEvent({
     type: 'UNAUTHORIZED_ACCESS',
     ip,
-    path,
+    path: requestPath,
     reason
   });
 }
@@ -55,11 +55,11 @@ function logBulkDelete(email, ip, resourceType, count) {
   });
 }
 
-function logRateLimitHit(ip, path) {
+function logRateLimitHit(ip, requestPath) {
   logSecurityEvent({
     type: 'RATE_LIMIT_HIT',
     ip,
-    path
+    path: requestPath
   });
 }
 
