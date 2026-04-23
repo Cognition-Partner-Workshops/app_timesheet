@@ -6,6 +6,7 @@ const API_BASE_URL = '';
 
 class ApiClient {
   private client: AxiosInstance;
+  private csrfToken: string | null = null;
 
   constructor() {
     this.client = axios.create({
@@ -26,11 +27,8 @@ class ApiClient {
 
         // Include CSRF token for state-changing requests
         const method = (config.method || '').toUpperCase();
-        if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
-          const csrfToken = this.getCsrfTokenFromCookie();
-          if (csrfToken) {
-            config.headers['x-csrf-token'] = csrfToken;
-          }
+        if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method) && this.csrfToken) {
+          config.headers['x-csrf-token'] = this.csrfToken;
         }
 
         return config;
@@ -54,16 +52,11 @@ class ApiClient {
     );
   }
 
-  // Read CSRF token from cookie
-  private getCsrfTokenFromCookie(): string | null {
-    const match = document.cookie.match(/(?:^|;\s*)__csrf=([^;]*)/);
-    return match ? decodeURIComponent(match[1]) : null;
-  }
-
-  // Fetch a CSRF token from the server (call once before state-changing requests)
+  // Fetch and store CSRF token from the server
   async fetchCsrfToken() {
     const response = await this.client.get('/api/csrf-token');
-    return response.data.csrfToken;
+    this.csrfToken = response.data.csrfToken;
+    return this.csrfToken;
   }
 
   // Auth endpoints
