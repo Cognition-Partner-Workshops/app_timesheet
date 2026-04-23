@@ -590,4 +590,219 @@ describe('Report Routes', () => {
       );
     });
   });
+
+  describe('Invalid Input', () => {
+    test('should return 400 for non-numeric client ID in report', async () => {
+      const response = await request(app).get('/api/reports/client/abc');
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({ error: 'Invalid client ID' });
+    });
+
+    test('should return 400 for special characters in report client ID', async () => {
+      const response = await request(app).get('/api/reports/client/!@#');
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({ error: 'Invalid client ID' });
+    });
+
+    test('should return 400 for non-numeric CSV export client ID', async () => {
+      const response = await request(app).get('/api/reports/export/csv/abc');
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({ error: 'Invalid client ID' });
+    });
+
+    test('should return 400 for non-numeric PDF export client ID', async () => {
+      const response = await request(app).get('/api/reports/export/pdf/xyz');
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({ error: 'Invalid client ID' });
+    });
+
+    test('should handle zero client ID as valid parse but return 404', async () => {
+      mockDb.get.mockImplementation((query, params, callback) => {
+        callback(null, null);
+      });
+
+      const response = await request(app).get('/api/reports/client/0');
+
+      expect(response.status).toBe(404);
+    });
+
+    test('should handle negative client ID as valid parse but return 404', async () => {
+      mockDb.get.mockImplementation((query, params, callback) => {
+        callback(null, null);
+      });
+
+      const response = await request(app).get('/api/reports/client/-5');
+
+      expect(response.status).toBe(404);
+    });
+  });
+
+  describe('Empty Results', () => {
+    test('should return zero total hours for client with no work entries', async () => {
+      mockDb.get.mockImplementation((query, params, callback) => {
+        callback(null, { id: 1, name: 'Empty Client' });
+      });
+
+      mockDb.all.mockImplementation((query, params, callback) => {
+        callback(null, []);
+      });
+
+      const response = await request(app).get('/api/reports/client/1');
+
+      expect(response.status).toBe(200);
+      expect(response.body.totalHours).toBe(0);
+      expect(response.body.entryCount).toBe(0);
+      expect(response.body.workEntries).toEqual([]);
+    });
+
+    test('should return 404 for report on non-existent client', async () => {
+      mockDb.get.mockImplementation((query, params, callback) => {
+        callback(null, null);
+      });
+
+      const response = await request(app).get('/api/reports/client/99999');
+
+      expect(response.status).toBe(404);
+      expect(response.body).toEqual({ error: 'Client not found' });
+    });
+
+    test('should return 404 for CSV export on non-existent client', async () => {
+      mockDb.get.mockImplementation((query, params, callback) => {
+        callback(null, null);
+      });
+
+      const response = await request(app).get('/api/reports/export/csv/99999');
+
+      expect(response.status).toBe(404);
+    });
+
+    test('should return 404 for PDF export on non-existent client', async () => {
+      mockDb.get.mockImplementation((query, params, callback) => {
+        callback(null, null);
+      });
+
+      const response = await request(app).get('/api/reports/export/pdf/99999');
+
+      expect(response.status).toBe(404);
+    });
+
+    test('should generate PDF with zero entries successfully', async () => {
+      mockDb.get.mockImplementation((query, params, callback) => {
+        callback(null, { id: 1, name: 'Empty Client' });
+      });
+
+      mockDb.all.mockImplementation((query, params, callback) => {
+        callback(null, []);
+      });
+
+      const PDFDocument = require('pdfkit');
+
+      const response = await request(app).get('/api/reports/export/pdf/1');
+
+      const mockPdfInstance = PDFDocument.mock.results[PDFDocument.mock.results.length - 1].value;
+      expect(mockPdfInstance.pipe).toHaveBeenCalled();
+      expect(mockPdfInstance.end).toHaveBeenCalled();
+    });
+  });
+
+  describe('Cross-User Isolation', () => {
+    test('should include user_email in report client lookup', async () => {
+      mockDb.get.mockImplementation((query, params, callback) => {
+        callback(null, { id: 1, name: 'Test Client' });
+      });
+
+      mockDb.all.mockImplementation((query, params, callback) => {
+        callback(null, []);
+      });
+
+      await request(app).get('/api/reports/client/1');
+
+      expect(mockDb.get).toHaveBeenCalledWith(
+        expect.stringContaining('user_email = ?'),
+        [1, 'test@example.com'],
+        expect.any(Function)
+      );
+    });
+
+    test('should include user_email in report work entries lookup', async () => {
+      mockDb.get.mockImplementation((query, params, callback) => {
+        callback(null, { id: 1, name: 'Test Client' });
+      });
+
+      mockDb.all.mockImplementation((query, params, callback) => {
+        callback(null, []);
+      });
+
+      await request(app).get('/api/reports/client/1');
+
+      expect(mockDb.all).toHaveBeenCalledWith(
+        expect.stringContaining('user_email = ?'),
+        [1, 'test@example.com'],
+        expect.any(Function)
+      );
+    });
+
+    test('should include user_email in CSV export client lookup', async () => {
+      mockDb.get.mockImplementation((query, params, callback) => {
+        callback(null, { id: 1, name: 'Test Client' });
+      });
+
+      mockDb.all.mockImplementation((query, params, callback) => {
+        callback(null, []);
+      });
+
+      const csvWriter = require('csv-writer');
+      csvWriter.createObjectCsvWriter.mockReturnValue({
+        writeRecords: jest.fn().mockRejectedValue(new Error('Write failed'))
+      });
+
+      await request(app).get('/api/reports/export/csv/1');
+
+      expect(mockDb.get).toHaveBeenCalledWith(
+        expect.stringContaining('user_email = ?'),
+        [1, 'test@example.com'],
+        expect.any(Function)
+      );
+    });
+
+    test('should include user_email in PDF export client lookup', async () => {
+      mockDb.get.mockImplementation((query, params, callback) => {
+        callback(null, { id: 1, name: 'Test Client' });
+      });
+
+      mockDb.all.mockImplementation((query, params, callback) => {
+        callback(null, []);
+      });
+
+      await request(app).get('/api/reports/export/pdf/1');
+
+      expect(mockDb.get).toHaveBeenCalledWith(
+        expect.stringContaining('user_email = ?'),
+        [1, 'test@example.com'],
+        expect.any(Function)
+      );
+    });
+
+    test('should include user_email in PDF export work entries lookup', async () => {
+      mockDb.get.mockImplementation((query, params, callback) => {
+        callback(null, { id: 1, name: 'Test Client' });
+      });
+
+      mockDb.all.mockImplementation((query, params, callback) => {
+        callback(null, []);
+      });
+
+      await request(app).get('/api/reports/export/pdf/1');
+
+      expect(mockDb.all).toHaveBeenCalledWith(
+        expect.stringContaining('user_email = ?'),
+        [1, 'test@example.com'],
+        expect.any(Function)
+      );
+    });
+  });
 });
