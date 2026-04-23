@@ -16,13 +16,23 @@ class ApiClient {
       },
     });
 
-    // Request interceptor to add email header
+    // Request interceptor to add auth header and CSRF token
     this.client.interceptors.request.use(
       (config) => {
         const userEmail = localStorage.getItem('userEmail');
         if (userEmail) {
           config.headers['x-user-email'] = userEmail;
         }
+
+        // Include CSRF token for state-changing requests
+        const method = (config.method || '').toUpperCase();
+        if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
+          const csrfToken = this.getCsrfTokenFromCookie();
+          if (csrfToken) {
+            config.headers['x-csrf-token'] = csrfToken;
+          }
+        }
+
         return config;
       },
       (error) => {
@@ -42,6 +52,18 @@ class ApiClient {
         return Promise.reject(error);
       }
     );
+  }
+
+  // Read CSRF token from cookie
+  private getCsrfTokenFromCookie(): string | null {
+    const match = document.cookie.match(/(?:^|;\s*)__csrf=([^;]*)/);
+    return match ? decodeURIComponent(match[1]) : null;
+  }
+
+  // Fetch a CSRF token from the server (call once before state-changing requests)
+  async fetchCsrfToken() {
+    const response = await this.client.get('/api/csrf-token');
+    return response.data.csrfToken;
   }
 
   // Auth endpoints
@@ -82,7 +104,7 @@ class ApiClient {
   }
 
   async deleteAllClients() {
-    const response = await this.client.delete('/api/clients');
+    const response = await this.client.delete('/api/clients', { data: { confirm: true } });
     return response.data;
   }
 
