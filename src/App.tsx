@@ -26,11 +26,11 @@ const enrollmentData = [
 ]
 
 const facultyData = [
-  { year: '2021', professors: 12, associateProfessors: 18, assistantProfessors: 25, lecturers: 15, total: 70 },
-  { year: '2022', professors: 14, associateProfessors: 20, assistantProfessors: 28, lecturers: 16, total: 78 },
-  { year: '2023', professors: 16, associateProfessors: 22, assistantProfessors: 32, lecturers: 18, total: 88 },
-  { year: '2024', professors: 18, associateProfessors: 25, assistantProfessors: 35, lecturers: 20, total: 98 },
-  { year: '2025', professors: 21, associateProfessors: 28, assistantProfessors: 38, lecturers: 22, total: 109 },
+  { year: '2021', professors: 8, associateProfessors: 6, assistantProfessors: 20, lecturers: 14, total: 48 },
+  { year: '2022', professors: 9, associateProfessors: 7, assistantProfessors: 22, lecturers: 15, total: 53 },
+  { year: '2023', professors: 10, associateProfessors: 7, assistantProfessors: 23, lecturers: 16, total: 56 },
+  { year: '2024', professors: 10, associateProfessors: 8, assistantProfessors: 25, lecturers: 17, total: 60 },
+  { year: '2025', professors: 11, associateProfessors: 8, assistantProfessors: 26, lecturers: 18, total: 75 },
 ]
 
 const researchData = [
@@ -333,7 +333,7 @@ function App() {
               <p className="text-green-200 text-sm">Students (2025)</p>
             </div>
             <div className="bg-white/10 backdrop-blur-sm rounded-xl px-6 py-4 min-w-36">
-              <p className="text-3xl font-bold text-white">109</p>
+              <p className="text-3xl font-bold text-white">75</p>
               <p className="text-green-200 text-sm">Faculty Members</p>
             </div>
             <div className="bg-white/10 backdrop-blur-sm rounded-xl px-6 py-4 min-w-36">
@@ -361,7 +361,7 @@ function App() {
           <StatCard
             icon={<Users size={24} style={{ color: KSU_GREEN }} />}
             title="Faculty Members"
-            value="109"
+            value="75"
             change="56%"
             positive={true}
           />
@@ -536,7 +536,7 @@ function App() {
               <p className="text-sm text-gray-400">diverse international faculty</p>
             </div>
             <div className="bg-gray-50 rounded-xl p-6 border border-gray-100 text-center">
-              <p className="text-4xl font-bold" style={{ color: KSU_GOLD }}>1:10</p>
+              <p className="text-4xl font-bold" style={{ color: KSU_GOLD }}>1:15</p>
               <p className="text-gray-600 mt-2">Faculty-Student Ratio</p>
               <p className="text-sm text-gray-400">personalized education</p>
             </div>
