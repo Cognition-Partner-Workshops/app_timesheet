@@ -144,6 +144,35 @@ describe('Database Initialization', () => {
     });
   });
 
+  describe('closeDatabase - edge cases', () => {
+    test('should resolve when db is null (never initialized)', async () => {
+      // Don't call getDatabase - db should be null
+      // resetModules in beforeEach ensures fresh state
+      const { closeDatabase: freshCloseDatabase } = require('../../database/init');
+      await expect(freshCloseDatabase()).resolves.toBeUndefined();
+    });
+
+    test('should handle being called twice in sequence (isClosed = true)', async () => {
+      // Re-register the default (non-error) sqlite3 mock for this fresh module load
+      jest.doMock('sqlite3', () => {
+        const mockDb = {
+          serialize: jest.fn((cb) => cb()),
+          run: jest.fn((query, cb) => { if (typeof cb === 'function') cb(null); }),
+          close: jest.fn((cb) => cb(null))
+        };
+        return {
+          verbose: jest.fn(() => ({
+            Database: jest.fn((path, cb) => { cb(null); return mockDb; })
+          }))
+        };
+      });
+      const { getDatabase: freshGetDatabase, closeDatabase: freshCloseDatabase } = require('../../database/init');
+      freshGetDatabase();
+      await freshCloseDatabase();
+      await expect(freshCloseDatabase()).resolves.toBeUndefined();
+    });
+  });
+
   describe('Database Schema', () => {
     test('users table should have correct structure', async () => {
       const db = getDatabase();
