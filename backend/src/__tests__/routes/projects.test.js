@@ -53,6 +53,11 @@ describe('Project Routes', () => {
 
       expect(response.status).toBe(200);
       expect(response.body).toEqual({ projects: mockProjects });
+      expect(mockDb.all).toHaveBeenCalledWith(
+        expect.stringContaining('user_email'),
+        ['test@example.com'],
+        expect.any(Function)
+      );
     });
 
     test('should return empty array when no projects exist', async () => {

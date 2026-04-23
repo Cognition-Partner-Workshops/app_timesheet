@@ -17,8 +17,9 @@ router.get('/', (req, res) => {
             c.name as client_name
      FROM projects p
      LEFT JOIN clients c ON p.client_id = c.id
+     WHERE p.user_email = ?
      ORDER BY p.name`,
-    [],
+    [req.userEmail],
     (err, rows) => {
       if (err) {
         console.error('Database error:', err);
@@ -45,8 +46,8 @@ router.get('/:id', (req, res) => {
             c.name as client_name
      FROM projects p
      LEFT JOIN clients c ON p.client_id = c.id
-     WHERE p.id = ?`,
-    [projectId],
+     WHERE p.id = ? AND p.user_email = ?`,
+    [projectId, req.userEmail],
     (err, row) => {
       if (err) {
         console.error('Database error:', err);
@@ -151,8 +152,8 @@ router.put('/:id', (req, res, next) => {
 
     // Check if project exists
     db.get(
-      'SELECT id FROM projects WHERE id = ?',
-      [projectId],
+      'SELECT id FROM projects WHERE id = ? AND user_email = ?',
+      [projectId, req.userEmail],
       (err, row) => {
         if (err) {
           console.error('Database error:', err);
@@ -196,7 +197,8 @@ router.put('/:id', (req, res, next) => {
           updates.push('updated_at = CURRENT_TIMESTAMP');
           values.push(projectId);
 
-          const query = `UPDATE projects SET ${updates.join(', ')} WHERE id = ?`;
+          values.push(req.userEmail);
+          const query = `UPDATE projects SET ${updates.join(', ')} WHERE id = ? AND user_email = ?`;
 
           db.run(query, values, function(err) {
             if (err) {
@@ -267,8 +269,8 @@ router.delete('/:id', (req, res) => {
 
   // Check if project exists
   db.get(
-    'SELECT id FROM projects WHERE id = ?',
-    [projectId],
+    'SELECT id FROM projects WHERE id = ? AND user_email = ?',
+    [projectId, req.userEmail],
     (err, row) => {
       if (err) {
         console.error('Database error:', err);
@@ -280,8 +282,8 @@ router.delete('/:id', (req, res) => {
       }
 
       db.run(
-        'DELETE FROM projects WHERE id = ?',
-        [projectId],
+        'DELETE FROM projects WHERE id = ? AND user_email = ?',
+        [projectId, req.userEmail],
         function(err) {
           if (err) {
             console.error('Database error:', err);
