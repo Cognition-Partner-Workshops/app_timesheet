@@ -13,7 +13,7 @@ permissions:
 jobs:
   analyze-changes:
     name: Analyze Changes & Maintain Tests
-    if: "!contains(github.event.pull_request.user.login, 'devin')"
+    # if: "!contains(github.event.pull_request.user.login, 'devin')"  # Temporarily disabled for testing
     runs-on: ubuntu-latest
 
     steps:
