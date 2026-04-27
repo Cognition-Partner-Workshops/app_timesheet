@@ -208,20 +208,28 @@ jobs:
       - name: Comment analysis on PR
         env:
           GH_TOKEN: ${{ github.token }}
+          NEEDS: ${{ steps.categorize.outputs.needs_test_update }}
+          SUMMARY: ${{ steps.categorize.outputs.summary }}
+          TESTS_REPORT: ${{ steps.categorize.outputs.tests_report }}
+          PR_NUM: ${{ github.event.pull_request.number }}
         run: |
-          NEEDS="${{ steps.categorize.outputs.needs_test_update }}"
+          {
+            echo "## Test Suite Maintenance – Change Analysis"
+            echo ""
+            echo "$SUMMARY"
+            echo ""
+            if [ "$NEEDS" = "true" ]; then
+              echo "### Test Coverage Gap Detected"
+              echo ""
+              echo "$TESTS_REPORT"
+              echo ""
+              echo "> A Devin session will be triggered to maintain the test suite automatically."
+            else
+              echo "All changed source files have corresponding tests, or changes are limited to config/env files. No test maintenance required."
+            fi
+          } > /tmp/pr_comment.md
 
-          COMMENT="## Test Suite Maintenance – Change Analysis"
-          COMMENT="${COMMENT}\n\n${{ steps.categorize.outputs.summary }}"
-
-          if [ "$NEEDS" = "true" ]; then
-            COMMENT="${COMMENT}\n### Test Coverage Gap Detected\n\n${{ steps.categorize.outputs.tests_report }}"
-            COMMENT="${COMMENT}\n\n> A Devin session will be triggered to maintain the test suite automatically."
-          else
-            COMMENT="${COMMENT}\n\nAll changed source files have corresponding tests, or changes are limited to config/env files. No test maintenance required."
-          fi
-
-          echo -e "$COMMENT" | gh pr comment ${{ github.event.pull_request.number }} --body-file -
+          gh pr comment "$PR_NUM" --body-file /tmp/pr_comment.md
 
       - name: Trigger Devin test maintenance
         if: steps.categorize.outputs.needs_test_update == 'true'
