@@ -12,8 +12,129 @@ permissions:
   issues: write
 
 jobs:
+  base-health-check:
+    name: Health Check (Base Branch)
+    if: "!contains(github.event.pull_request.user.login, 'devin')"
+    runs-on: ubuntu-latest
+    outputs:
+      backend_passed: ${{ steps.backend-tests.outputs.passed }}
+      frontend_passed: ${{ steps.frontend-tests.outputs.passed }}
+      frontend_coverage: ${{ steps.frontend-coverage.outputs.summary }}
+      backend_coverage: ${{ steps.backend-coverage.outputs.summary }}
+
+    steps:
+      - name: Checkout base branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          (cd frontend && npm ci)
+          (cd backend && npm ci)
+
+      - name: Run backend tests
+        id: backend-tests
+        continue-on-error: true
+        run: |
+          set +e
+          BACKEND_OUTPUT=$(cd backend && npm test 2>&1)
+          BACKEND_EXIT=$?
+          echo "$BACKEND_OUTPUT"
+
+          if [ $BACKEND_EXIT -eq 0 ]; then
+            echo "passed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "passed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run frontend tests
+        id: frontend-tests
+        continue-on-error: true
+        run: |
+          set +e
+          FRONTEND_OUTPUT=$(cd frontend && npm run test 2>&1)
+          FRONTEND_EXIT=$?
+          echo "$FRONTEND_OUTPUT"
+
+          if [ $FRONTEND_EXIT -eq 0 ]; then
+            echo "passed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "passed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run backend coverage
+        id: backend-coverage
+        continue-on-error: true
+        run: |
+          set +e
+          COVERAGE_OUTPUT=$(cd backend && npm run test:coverage 2>&1)
+          echo "$COVERAGE_OUTPUT"
+
+          SUMMARY=$(echo "$COVERAGE_OUTPUT" | sed -n '/^-\{5,\}/,/^-\{5,\}$/p' || echo "Coverage table not available")
+
+          {
+            echo "summary<<BCOV_EOF"
+            echo "$SUMMARY"
+            echo "BCOV_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Run frontend coverage
+        id: frontend-coverage
+        continue-on-error: true
+        run: |
+          set +e
+          COVERAGE_OUTPUT=$(cd frontend && npm run test:coverage 2>&1)
+          echo "$COVERAGE_OUTPUT"
+
+          SUMMARY=$(echo "$COVERAGE_OUTPUT" | sed -n '/^-\{5,\}/,/^-\{5,\}$/p' || echo "Coverage table not available")
+
+          {
+            echo "summary<<FCOV_EOF"
+            echo "$SUMMARY"
+            echo "FCOV_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Comment base branch health check on PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          FRONTEND="${{ steps.frontend-tests.outputs.passed }}"
+          BACKEND="${{ steps.backend-tests.outputs.passed }}"
+
+          if [ "$FRONTEND" = "true" ] && [ "$BACKEND" = "true" ]; then
+            STATUS_ICON="✅"
+            HEADLINE="All Tests Passing on Base Branch"
+          else
+            STATUS_ICON="⚠️"
+            HEADLINE="Base Branch Has Test Failures"
+          fi
+
+          COMMENT="## ${STATUS_ICON} Health Check — Base Branch (\`${{ github.event.pull_request.base.ref }}\`)\n\n"
+          COMMENT="${COMMENT}| Suite | Status |\n|---|---|\n"
+          COMMENT="${COMMENT}| Backend | $([ "$BACKEND" = "true" ] && echo '✅ Passed' || echo '❌ Failed') |\n"
+          COMMENT="${COMMENT}| Frontend | $([ "$FRONTEND" = "true" ] && echo '✅ Passed' || echo '❌ Failed') |\n\n"
+
+          if [ -n "${{ steps.backend-coverage.outputs.summary }}" ]; then
+            COMMENT="${COMMENT}<details><summary>Backend Coverage Report</summary>\n\n\`\`\`\n${{ steps.backend-coverage.outputs.summary }}\n\`\`\`\n\n</details>\n\n"
+          fi
+
+          if [ -n "${{ steps.frontend-coverage.outputs.summary }}" ]; then
+            COMMENT="${COMMENT}<details><summary>Frontend Coverage Report</summary>\n\n\`\`\`\n${{ steps.frontend-coverage.outputs.summary }}\n\`\`\`\n\n</details>\n\n"
+          fi
+
+          COMMENT="${COMMENT}> This is the baseline health check before analyzing PR changes."
+
+          echo -e "$COMMENT" | gh pr comment ${{ github.event.pull_request.number }} --body-file -
+
   analyze-changes:
     name: Analyze Changes
+    needs: [base-health-check]
     if: "!contains(github.event.pull_request.user.login, 'devin')"
     runs-on: ubuntu-latest
     outputs:
