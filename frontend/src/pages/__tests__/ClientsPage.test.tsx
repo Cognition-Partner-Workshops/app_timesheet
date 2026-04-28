@@ -218,4 +218,27 @@ describe('ClientsPage', () => {
       expect(phoneInput.value).toBe('555-4321');
     });
   });
+
+  describe('create client without phone', () => {
+    it('should not send phone when field is left empty', async () => {
+      mockGetClients.mockResolvedValue({ clients: [] });
+      mockCreateClient.mockResolvedValue({ client: { id: 2, name: 'Minimal Client' } });
+
+      renderWithQueryClient(<ClientsPage />);
+
+      const addButton = await screen.findByRole('button', { name: /add client/i });
+      await userEvent.click(addButton);
+
+      await userEvent.type(screen.getByLabelText(/client name/i), 'Minimal Client');
+
+      const form = screen.getByText('Add New Client').closest('div')?.querySelector('form');
+      fireEvent.submit(form!);
+
+      await waitFor(() => {
+        expect(mockCreateClient).toHaveBeenCalledWith({
+          name: 'Minimal Client',
+        });
+      });
+    });
+  });
 });
