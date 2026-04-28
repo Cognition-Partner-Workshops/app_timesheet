@@ -634,3 +634,75 @@ jobs:
           fi
 
           gh pr comment ${{ github.event.pull_request.number }} --body-file /tmp/jira_comment.md
+
+  workflow-summary:
+    name: Workflow Summary
+    needs: [base-health-check, pr-health-check, devin-update-tests, verify-tests, create-jira-ticket]
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Post workflow summary on PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_RESULT: ${{ needs.base-health-check.result }}
+          PR_RESULT: ${{ needs.pr-health-check.result }}
+          DEVIN_RESULT: ${{ needs.devin-update-tests.result }}
+          VERIFY_RESULT: ${{ needs.verify-tests.result }}
+          JIRA_RESULT: ${{ needs.create-jira-ticket.result }}
+          ALL_PASSED: ${{ needs.verify-tests.outputs.all_passed }}
+          FE_PASSED: ${{ needs.verify-tests.outputs.frontend_passed }}
+          BE_PASSED: ${{ needs.verify-tests.outputs.backend_passed }}
+        run: |
+          status_icon() {
+            case "$1" in
+              success)  echo "✅" ;;
+              failure)  echo "❌" ;;
+              skipped)  echo "⏭️" ;;
+              *)        echo "⚠️" ;;
+            esac
+          }
+
+          {
+            echo "## 📋 Test Suite Maintenance — Workflow Summary"
+            echo ""
+            echo "| Stage | Status |"
+            echo "|---|---|"
+            echo "| Health Check (Base Branch) | $(status_icon "$BASE_RESULT") ${BASE_RESULT} |"
+            echo "| Health Check (PR Branch) | $(status_icon "$PR_RESULT") ${PR_RESULT} |"
+            echo "| Devin Test Update Session | $(status_icon "$DEVIN_RESULT") ${DEVIN_RESULT} |"
+
+            if [ "$VERIFY_RESULT" = "success" ] || [ "$VERIFY_RESULT" = "failure" ]; then
+              echo "| Verify Tests — Frontend | $([ "$FE_PASSED" = "true" ] && echo "✅ passed" || echo "❌ failed") |"
+              echo "| Verify Tests — Backend | $([ "$BE_PASSED" = "true" ] && echo "✅ passed" || echo "❌ failed") |"
+            else
+              echo "| Verify Tests | $(status_icon "$VERIFY_RESULT") ${VERIFY_RESULT} |"
+            fi
+
+            echo "| Jira Ticket | $(status_icon "$JIRA_RESULT") ${JIRA_RESULT} |"
+            echo ""
+
+            if [ "$ALL_PASSED" = "true" ]; then
+              echo "### ✅ All tests passing"
+              echo ""
+              echo "The automated test suite maintenance completed successfully. All frontend and backend tests pass after Devin's updates."
+            elif [ "$VERIFY_RESULT" = "success" ] && [ "$ALL_PASSED" = "false" ]; then
+              echo "### ⚠️ Tests still failing after maintenance"
+              echo ""
+              echo "Devin updated the test suite, but some tests are still failing. This indicates a **code-level defect** in the PR changes — the tests are correct, but the underlying code needs to be fixed."
+            elif [ "$DEVIN_RESULT" = "skipped" ]; then
+              echo "### ⏭️ Workflow skipped"
+              echo ""
+              echo "The Devin test update session was skipped (likely a Devin-authored PR)."
+            elif [ "$DEVIN_RESULT" = "failure" ]; then
+              echo "### ❌ Devin session failed"
+              echo ""
+              echo "The Devin test update session encountered an error. Please check the workflow logs for details."
+            else
+              echo "### ⚠️ Workflow incomplete"
+              echo ""
+              echo "Some stages did not complete. Please check the workflow run for details."
+            fi
+          } > /tmp/summary_comment.md
+
+          gh pr comment ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --body-file /tmp/summary_comment.md
