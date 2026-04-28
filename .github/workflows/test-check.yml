@@ -265,6 +265,7 @@ jobs:
 
     steps:
       - name: Trigger Devin test update session
+        id: trigger-devin
         env:
           DEVIN_API_KEY: ${{ secrets.DEVIN_API_KEY }}
           DEVIN_ORG_ID: ${{ secrets.DEVIN_ORG_ID }}
@@ -325,6 +326,8 @@ jobs:
             SESSION_URL=$(echo "$HTTP_BODY" | jq -r '.url')
             SESSION_ID=$(echo "$HTTP_BODY" | jq -r '.session_id')
             echo "Devin session created: ${SESSION_URL}"
+            echo "session_id=${SESSION_ID}" >> "$GITHUB_OUTPUT"
+            echo "session_url=${SESSION_URL}" >> "$GITHUB_OUTPUT"
 
             {
               echo "## Devin Test Update Triggered"
@@ -343,16 +346,65 @@ jobs:
         if: success()
         env:
           GH_TOKEN: ${{ github.token }}
+          SESSION_URL: ${{ steps.trigger-devin.outputs.session_url }}
         run: |
           {
             echo "## Devin Test Update Triggered"
             echo ""
             echo "A Devin session has been created to analyze changes and automatically update/create tests for the changed code."
             echo ""
+            echo "**Session:** ${SESSION_URL}"
+            echo ""
             echo "> The Devin session will push test updates directly to this PR branch."
           } > /tmp/devin_comment.md
 
           gh pr comment ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --body-file /tmp/devin_comment.md
+
+      - name: Wait for Devin session to complete
+        env:
+          DEVIN_API_KEY: ${{ secrets.DEVIN_API_KEY }}
+          DEVIN_ORG_ID: ${{ secrets.DEVIN_ORG_ID }}
+          SESSION_ID: ${{ steps.trigger-devin.outputs.session_id }}
+        run: |
+          echo "Polling Devin session ${SESSION_ID} until completion..."
+          MAX_ATTEMPTS=60  # 60 * 30s = 30 minutes max
+          ATTEMPT=0
+
+          while [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+            ATTEMPT=$((ATTEMPT + 1))
+
+            RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" \
+              -H "Authorization: Bearer ${DEVIN_API_KEY}" \
+              "https://api.devin.ai/v3/organizations/${DEVIN_ORG_ID}/sessions/${SESSION_ID}")
+
+            BODY=$(echo "$RESPONSE" | sed '/^HTTP_STATUS:/d')
+            CODE=$(echo "$RESPONSE" | grep '^HTTP_STATUS:' | cut -d: -f2)
+
+            if [ "$CODE" -ne 200 ]; then
+              echo "::warning::Failed to poll session (HTTP ${CODE}), retrying..."
+              sleep 30
+              continue
+            fi
+
+            STATUS=$(echo "$BODY" | jq -r '.status_enum // .status')
+            echo "Attempt ${ATTEMPT}/${MAX_ATTEMPTS} — Session status: ${STATUS}"
+
+            case "$STATUS" in
+              finished|stopped)
+                echo "Devin session completed with status: ${STATUS}"
+                exit 0
+                ;;
+              failed|error)
+                echo "::error::Devin session failed with status: ${STATUS}"
+                exit 1
+                ;;
+            esac
+
+            sleep 30
+          done
+
+          echo "::error::Timed out waiting for Devin session to complete after $((MAX_ATTEMPTS * 30 / 60)) minutes"
+          exit 1
 
   verify-tests:
     name: Verify Updated Test Suite
