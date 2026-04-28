@@ -16,11 +16,6 @@ jobs:
     name: Health Check (Base Branch)
     if: "!contains(github.event.pull_request.user.login, 'devin')"
     runs-on: ubuntu-latest
-    outputs:
-      backend_passed: ${{ steps.backend-tests.outputs.passed }}
-      frontend_passed: ${{ steps.frontend-tests.outputs.passed }}
-      frontend_coverage: ${{ steps.frontend-coverage.outputs.summary }}
-      backend_coverage: ${{ steps.backend-coverage.outputs.summary }}
 
     steps:
       - name: Checkout base branch
@@ -38,103 +33,231 @@ jobs:
           (cd frontend && npm ci)
           (cd backend && npm ci)
 
-      - name: Run backend tests
+      - name: Run backend tests and capture results
         id: backend-tests
         continue-on-error: true
         run: |
           set +e
-          BACKEND_OUTPUT=$(cd backend && npm test 2>&1)
-          BACKEND_EXIT=$?
-          echo "$BACKEND_OUTPUT"
+          OUTPUT=$(cd backend && npm test 2>&1)
+          EXIT_CODE=$?
+          echo "$OUTPUT"
 
-          if [ $BACKEND_EXIT -eq 0 ]; then
-            echo "passed=true" >> "$GITHUB_OUTPUT"
+          TOTAL=$(echo "$OUTPUT" | grep -oP 'Tests:\s+.*?(\d+)\s+total' | grep -oP '\d+\s+total' | grep -oP '^\d+' || echo "0")
+          PASSED=$(echo "$OUTPUT" | grep -oP '(\d+)\s+passed' | grep -oP '^\d+' || echo "0")
+          FAILED=$(echo "$OUTPUT" | grep -oP '(\d+)\s+failed' | grep -oP '^\d+' || echo "0")
+
+          if [ "$TOTAL" -gt 0 ] 2>/dev/null; then
+            PCT=$(( PASSED * 100 / TOTAL ))
           else
-            echo "passed=false" >> "$GITHUB_OUTPUT"
+            if [ $EXIT_CODE -eq 0 ]; then
+              PCT=100
+              TOTAL="all"
+              PASSED="all"
+              FAILED=0
+            else
+              PCT=0
+            fi
           fi
 
-      - name: Run frontend tests
+          echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
+          echo "passed=$PASSED" >> "$GITHUB_OUTPUT"
+          echo "failed=$FAILED" >> "$GITHUB_OUTPUT"
+          echo "pct=$PCT" >> "$GITHUB_OUTPUT"
+          echo "exit_code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
+
+      - name: Run frontend tests and capture results
         id: frontend-tests
         continue-on-error: true
         run: |
           set +e
-          FRONTEND_OUTPUT=$(cd frontend && npm run test 2>&1)
-          FRONTEND_EXIT=$?
-          echo "$FRONTEND_OUTPUT"
+          OUTPUT=$(cd frontend && npm run test 2>&1)
+          EXIT_CODE=$?
+          echo "$OUTPUT"
 
-          if [ $FRONTEND_EXIT -eq 0 ]; then
-            echo "passed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "passed=false" >> "$GITHUB_OUTPUT"
+          TOTAL=$(echo "$OUTPUT" | grep -oP 'Tests\s+(\d+)\s+(passed|failed)' | head -1 | grep -oP '^\d+' || echo "0")
+          PASSED_LINE=$(echo "$OUTPUT" | grep -i "tests.*passed" || true)
+          FAILED_LINE=$(echo "$OUTPUT" | grep -i "tests.*failed" || true)
+
+          TOTAL=$(echo "$OUTPUT" | grep -oP '\d+(?=\s+test(s)?\s+(passed|failed|total))' | tail -1 || echo "0")
+          PASSED=$(echo "$OUTPUT" | grep -oP '\d+(?=\s+passed)' | tail -1 || echo "0")
+          FAILED=$(echo "$OUTPUT" | grep -oP '\d+(?=\s+failed)' | tail -1 || echo "0")
+
+          if [ -z "$TOTAL" ] || [ "$TOTAL" = "0" ]; then
+            TOTAL_FILES=$(echo "$OUTPUT" | grep -oP '\d+(?=\s+test files?)' | tail -1 || echo "0")
+            TOTAL_TESTS=$(echo "$OUTPUT" | grep -oP '\d+(?=\s+tests?)' | tail -1 || echo "0")
+            TOTAL=${TOTAL_TESTS:-$TOTAL_FILES}
           fi
 
-      - name: Run backend coverage
-        id: backend-coverage
-        continue-on-error: true
-        run: |
-          set +e
-          COVERAGE_OUTPUT=$(cd backend && npm run test:coverage 2>&1)
-          echo "$COVERAGE_OUTPUT"
+          if [ "$TOTAL" -gt 0 ] 2>/dev/null; then
+            PCT=$(( PASSED * 100 / TOTAL ))
+          else
+            if [ $EXIT_CODE -eq 0 ]; then
+              PCT=100
+              TOTAL="all"
+              PASSED="all"
+              FAILED=0
+            else
+              PCT=0
+            fi
+          fi
 
-          SUMMARY=$(echo "$COVERAGE_OUTPUT" | sed -n '/^-\{5,\}/,/^-\{5,\}$/p' || echo "Coverage table not available")
+          echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
+          echo "passed=$PASSED" >> "$GITHUB_OUTPUT"
+          echo "failed=$FAILED" >> "$GITHUB_OUTPUT"
+          echo "pct=$PCT" >> "$GITHUB_OUTPUT"
+          echo "exit_code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
 
-          {
-            echo "summary<<BCOV_EOF"
-            echo "$SUMMARY"
-            echo "BCOV_EOF"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Run frontend coverage
-        id: frontend-coverage
-        continue-on-error: true
-        run: |
-          set +e
-          COVERAGE_OUTPUT=$(cd frontend && npm run test:coverage 2>&1)
-          echo "$COVERAGE_OUTPUT"
-
-          SUMMARY=$(echo "$COVERAGE_OUTPUT" | sed -n '/^-\{5,\}/,/^-\{5,\}$/p' || echo "Coverage table not available")
-
-          {
-            echo "summary<<FCOV_EOF"
-            echo "$SUMMARY"
-            echo "FCOV_EOF"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Comment base branch health check on PR
+      - name: Comment base branch results on PR
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          FRONTEND="${{ steps.frontend-tests.outputs.passed }}"
-          BACKEND="${{ steps.backend-tests.outputs.passed }}"
+          BE_EXIT="${{ steps.backend-tests.outputs.exit_code }}"
+          FE_EXIT="${{ steps.frontend-tests.outputs.exit_code }}"
+          BE_PCT="${{ steps.backend-tests.outputs.pct }}"
+          FE_PCT="${{ steps.frontend-tests.outputs.pct }}"
+          BE_PASSED="${{ steps.backend-tests.outputs.passed }}"
+          BE_TOTAL="${{ steps.backend-tests.outputs.total }}"
+          FE_PASSED="${{ steps.frontend-tests.outputs.passed }}"
+          FE_TOTAL="${{ steps.frontend-tests.outputs.total }}"
 
-          if [ "$FRONTEND" = "true" ] && [ "$BACKEND" = "true" ]; then
-            STATUS_ICON="✅"
-            HEADLINE="All Tests Passing on Base Branch"
+          if [ "$BE_EXIT" = "0" ] && [ "$FE_EXIT" = "0" ]; then
+            STATUS="✅"
           else
-            STATUS_ICON="⚠️"
-            HEADLINE="Base Branch Has Test Failures"
+            STATUS="❌"
           fi
 
-          COMMENT="## ${STATUS_ICON} Health Check — Base Branch (\`${{ github.event.pull_request.base.ref }}\`)\n\n"
-          COMMENT="${COMMENT}| Suite | Status |\n|---|---|\n"
-          COMMENT="${COMMENT}| Backend | $([ "$BACKEND" = "true" ] && echo '✅ Passed' || echo '❌ Failed') |\n"
-          COMMENT="${COMMENT}| Frontend | $([ "$FRONTEND" = "true" ] && echo '✅ Passed' || echo '❌ Failed') |\n\n"
+          COMMENT="${STATUS} **Health Check — Base Branch (\`${{ github.event.pull_request.base.ref }}\`)**"
+          COMMENT="${COMMENT}\n\n"
+          COMMENT="${COMMENT}**Backend tests:** ${BE_PCT}% passed (${BE_PASSED}/${BE_TOTAL})\n"
+          COMMENT="${COMMENT}**Frontend tests:** ${FE_PCT}% passed (${FE_PASSED}/${FE_TOTAL})\n"
 
-          if [ -n "${{ steps.backend-coverage.outputs.summary }}" ]; then
-            COMMENT="${COMMENT}<details><summary>Backend Coverage Report</summary>\n\n\`\`\`\n${{ steps.backend-coverage.outputs.summary }}\n\`\`\`\n\n</details>\n\n"
+          echo -e "$COMMENT" | gh pr comment ${{ github.event.pull_request.number }} --body-file -
+
+  pr-health-check:
+    name: Health Check (PR Branch)
+    needs: [base-health-check]
+    if: "!contains(github.event.pull_request.user.login, 'devin')"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          (cd frontend && npm ci)
+          (cd backend && npm ci)
+
+      - name: Run backend tests and capture results
+        id: backend-tests
+        continue-on-error: true
+        run: |
+          set +e
+          OUTPUT=$(cd backend && npm test 2>&1)
+          EXIT_CODE=$?
+          echo "$OUTPUT"
+
+          TOTAL=$(echo "$OUTPUT" | grep -oP 'Tests:\s+.*?(\d+)\s+total' | grep -oP '\d+\s+total' | grep -oP '^\d+' || echo "0")
+          PASSED=$(echo "$OUTPUT" | grep -oP '(\d+)\s+passed' | grep -oP '^\d+' || echo "0")
+          FAILED=$(echo "$OUTPUT" | grep -oP '(\d+)\s+failed' | grep -oP '^\d+' || echo "0")
+
+          if [ "$TOTAL" -gt 0 ] 2>/dev/null; then
+            PCT=$(( PASSED * 100 / TOTAL ))
+          else
+            if [ $EXIT_CODE -eq 0 ]; then
+              PCT=100
+              TOTAL="all"
+              PASSED="all"
+              FAILED=0
+            else
+              PCT=0
+            fi
           fi
 
-          if [ -n "${{ steps.frontend-coverage.outputs.summary }}" ]; then
-            COMMENT="${COMMENT}<details><summary>Frontend Coverage Report</summary>\n\n\`\`\`\n${{ steps.frontend-coverage.outputs.summary }}\n\`\`\`\n\n</details>\n\n"
+          echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
+          echo "passed=$PASSED" >> "$GITHUB_OUTPUT"
+          echo "failed=$FAILED" >> "$GITHUB_OUTPUT"
+          echo "pct=$PCT" >> "$GITHUB_OUTPUT"
+          echo "exit_code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
+
+      - name: Run frontend tests and capture results
+        id: frontend-tests
+        continue-on-error: true
+        run: |
+          set +e
+          OUTPUT=$(cd frontend && npm run test 2>&1)
+          EXIT_CODE=$?
+          echo "$OUTPUT"
+
+          TOTAL=$(echo "$OUTPUT" | grep -oP 'Tests\s+(\d+)\s+(passed|failed)' | head -1 | grep -oP '^\d+' || echo "0")
+          PASSED_LINE=$(echo "$OUTPUT" | grep -i "tests.*passed" || true)
+          FAILED_LINE=$(echo "$OUTPUT" | grep -i "tests.*failed" || true)
+
+          TOTAL=$(echo "$OUTPUT" | grep -oP '\d+(?=\s+test(s)?\s+(passed|failed|total))' | tail -1 || echo "0")
+          PASSED=$(echo "$OUTPUT" | grep -oP '\d+(?=\s+passed)' | tail -1 || echo "0")
+          FAILED=$(echo "$OUTPUT" | grep -oP '\d+(?=\s+failed)' | tail -1 || echo "0")
+
+          if [ -z "$TOTAL" ] || [ "$TOTAL" = "0" ]; then
+            TOTAL_FILES=$(echo "$OUTPUT" | grep -oP '\d+(?=\s+test files?)' | tail -1 || echo "0")
+            TOTAL_TESTS=$(echo "$OUTPUT" | grep -oP '\d+(?=\s+tests?)' | tail -1 || echo "0")
+            TOTAL=${TOTAL_TESTS:-$TOTAL_FILES}
           fi
 
-          COMMENT="${COMMENT}> This is the baseline health check before analyzing PR changes."
+          if [ "$TOTAL" -gt 0 ] 2>/dev/null; then
+            PCT=$(( PASSED * 100 / TOTAL ))
+          else
+            if [ $EXIT_CODE -eq 0 ]; then
+              PCT=100
+              TOTAL="all"
+              PASSED="all"
+              FAILED=0
+            else
+              PCT=0
+            fi
+          fi
+
+          echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
+          echo "passed=$PASSED" >> "$GITHUB_OUTPUT"
+          echo "failed=$FAILED" >> "$GITHUB_OUTPUT"
+          echo "pct=$PCT" >> "$GITHUB_OUTPUT"
+          echo "exit_code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
+
+      - name: Comment PR branch results on PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BE_EXIT="${{ steps.backend-tests.outputs.exit_code }}"
+          FE_EXIT="${{ steps.frontend-tests.outputs.exit_code }}"
+          BE_PCT="${{ steps.backend-tests.outputs.pct }}"
+          FE_PCT="${{ steps.frontend-tests.outputs.pct }}"
+          BE_PASSED="${{ steps.backend-tests.outputs.passed }}"
+          BE_TOTAL="${{ steps.backend-tests.outputs.total }}"
+          FE_PASSED="${{ steps.frontend-tests.outputs.passed }}"
+          FE_TOTAL="${{ steps.frontend-tests.outputs.total }}"
+
+          if [ "$BE_EXIT" = "0" ] && [ "$FE_EXIT" = "0" ]; then
+            STATUS="✅"
+          else
+            STATUS="❌"
+          fi
+
+          COMMENT="${STATUS} **Health Check — PR Branch (\`${{ github.event.pull_request.head.ref }}\`)**"
+          COMMENT="${COMMENT}\n\n"
+          COMMENT="${COMMENT}**Backend tests:** ${BE_PCT}% passed (${BE_PASSED}/${BE_TOTAL})\n"
+          COMMENT="${COMMENT}**Frontend tests:** ${FE_PCT}% passed (${FE_PASSED}/${FE_TOTAL})\n"
 
           echo -e "$COMMENT" | gh pr comment ${{ github.event.pull_request.number }} --body-file -
 
   analyze-changes:
     name: Analyze Changes
-    needs: [base-health-check]
+    needs: [pr-health-check]
     if: "!contains(github.event.pull_request.user.login, 'devin')"
     runs-on: ubuntu-latest
     outputs:
