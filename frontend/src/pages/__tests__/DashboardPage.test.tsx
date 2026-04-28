@@ -68,4 +68,94 @@ describe('DashboardPage', () => {
 
     expect(mockNavigate).toHaveBeenCalledWith('/reports');
   });
+
+  it('should render Dashboard heading', async () => {
+    renderWithQueryClient(<DashboardPage />);
+
+    expect(await screen.findByText('Dashboard')).toBeInTheDocument();
+  });
+
+  it('should display the correct total hours', async () => {
+    renderWithQueryClient(<DashboardPage />);
+
+    // 8 + 4.5 = 12.50
+    expect(await screen.findByText('12.50')).toBeInTheDocument();
+  });
+
+  it('should display correct client and work entry counts', async () => {
+    renderWithQueryClient(<DashboardPage />);
+
+    // Wait for data to load by waiting for a known data element
+    await screen.findByText('12.50');
+
+    const totalClientsCard = screen.getByText('Total Clients');
+    const clientValue = totalClientsCard.closest('.MuiCardContent-root')?.querySelector('.MuiTypography-h4');
+    expect(clientValue).toHaveTextContent('2');
+
+    const totalEntriesCard = screen.getByText('Total Work Entries');
+    const entriesValue = totalEntriesCard.closest('.MuiCardContent-root')?.querySelector('.MuiTypography-h4');
+    expect(entriesValue).toHaveTextContent('2');
+  });
+
+  it('should render recent work entries', async () => {
+    renderWithQueryClient(<DashboardPage />);
+
+    expect(await screen.findByText('Acme Corp')).toBeInTheDocument();
+    expect(screen.getByText('Globex Inc')).toBeInTheDocument();
+    expect(screen.getByText(/8 hours/)).toBeInTheDocument();
+    expect(screen.getByText(/4\.5 hours/)).toBeInTheDocument();
+  });
+
+  it('should render work entry descriptions', async () => {
+    renderWithQueryClient(<DashboardPage />);
+
+    expect(await screen.findByText('Dev work')).toBeInTheDocument();
+    expect(screen.getByText('Consulting')).toBeInTheDocument();
+  });
+
+  it('should navigate to /clients when New Client quick action is clicked', async () => {
+    renderWithQueryClient(<DashboardPage />);
+
+    const button = await screen.findByRole('button', { name: /New Client/i });
+    fireEvent.click(button);
+
+    expect(mockNavigate).toHaveBeenCalledWith('/clients');
+  });
+
+  it('should navigate to /work-entry when Log Time quick action is clicked', async () => {
+    renderWithQueryClient(<DashboardPage />);
+
+    const button = await screen.findByRole('button', { name: /Log Time/i });
+    fireEvent.click(button);
+
+    expect(mockNavigate).toHaveBeenCalledWith('/work-entry');
+  });
+
+  it('should navigate to /reports when See Reports quick action is clicked', async () => {
+    renderWithQueryClient(<DashboardPage />);
+
+    const button = await screen.findByRole('button', { name: /See Reports/i });
+    fireEvent.click(button);
+
+    expect(mockNavigate).toHaveBeenCalledWith('/reports');
+  });
+
+  it('should navigate to /work-entries when Add Entry button is clicked', async () => {
+    renderWithQueryClient(<DashboardPage />);
+
+    const button = await screen.findByRole('button', { name: /Add Entry/i });
+    fireEvent.click(button);
+
+    expect(mockNavigate).toHaveBeenCalledWith('/work-entries');
+  });
+
+  it('should show empty state when no work entries exist', async () => {
+    const apiClient = await import('../../api/client');
+    vi.mocked(apiClient.default.getWorkEntries).mockResolvedValueOnce({ workEntries: [] });
+    vi.mocked(apiClient.default.getClients).mockResolvedValueOnce({ clients: [] });
+
+    renderWithQueryClient(<DashboardPage />);
+
+    expect(await screen.findByText('No work entries yet')).toBeInTheDocument();
+  });
 });

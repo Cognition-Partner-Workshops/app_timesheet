@@ -186,19 +186,19 @@ describe('DashboardPage E2E', () => {
       mockGetWorkEntries.mockResolvedValue({ workEntries: [] });
     });
 
-    it('should render the Add Client quick action button', async () => {
+    it('should render the New Client quick action button', async () => {
       renderWithProviders(<DashboardPage />);
-      expect(await screen.findByRole('button', { name: /add client/i })).toBeInTheDocument();
+      expect(await screen.findByRole('button', { name: /new client/i })).toBeInTheDocument();
     });
 
-    it('should render the Add Work Entry quick action button', async () => {
+    it('should render the Log Time quick action button', async () => {
       renderWithProviders(<DashboardPage />);
-      expect(await screen.findByRole('button', { name: /add work entry/i })).toBeInTheDocument();
+      expect(await screen.findByRole('button', { name: /log time/i })).toBeInTheDocument();
     });
 
-    it('should render the View Reports quick action button', async () => {
+    it('should render the See Reports quick action button', async () => {
       renderWithProviders(<DashboardPage />);
-      expect(await screen.findByRole('button', { name: /view reports/i })).toBeInTheDocument();
+      expect(await screen.findByRole('button', { name: /see reports/i })).toBeInTheDocument();
     });
   });
 
@@ -232,21 +232,21 @@ describe('DashboardPage E2E', () => {
       expect(mockNavigate).toHaveBeenCalledWith('/reports');
     });
 
-    it('should navigate to /clients when Add Client button is clicked', async () => {
+    it('should navigate to /clients when New Client button is clicked', async () => {
       renderWithProviders(<DashboardPage />);
-      await userEvent.click(await screen.findByRole('button', { name: /add client/i }));
+      await userEvent.click(await screen.findByRole('button', { name: /new client/i }));
       expect(mockNavigate).toHaveBeenCalledWith('/clients');
     });
 
-    it('should navigate to /work-entries when Add Work Entry button is clicked', async () => {
+    it('should navigate to /work-entry when Log Time button is clicked', async () => {
       renderWithProviders(<DashboardPage />);
-      await userEvent.click(await screen.findByRole('button', { name: /add work entry/i }));
-      expect(mockNavigate).toHaveBeenCalledWith('/work-entries');
+      await userEvent.click(await screen.findByRole('button', { name: /log time/i }));
+      expect(mockNavigate).toHaveBeenCalledWith('/work-entry');
     });
 
-    it('should navigate to /reports when View Reports button is clicked', async () => {
+    it('should navigate to /reports when See Reports button is clicked', async () => {
       renderWithProviders(<DashboardPage />);
-      await userEvent.click(await screen.findByRole('button', { name: /view reports/i }));
+      await userEvent.click(await screen.findByRole('button', { name: /see reports/i }));
       expect(mockNavigate).toHaveBeenCalledWith('/reports');
     });
 
