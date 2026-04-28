@@ -157,15 +157,15 @@ const DashboardPage: React.FC = () => {
                 onClick={() => navigate('/clients')}
                 fullWidth
               >
-                Add Client
+                New Client
               </Button>
               <Button
                 variant="contained"
                 startIcon={<AddIcon />}
-                onClick={() => navigate('/work-entries')}
+                onClick={() => navigate('/work-entry')}
                 fullWidth
               >
-                Add Work Entry
+                Log Time
               </Button>
               <Button
                 variant="outlined"
@@ -173,7 +173,7 @@ const DashboardPage: React.FC = () => {
                 onClick={() => navigate('/reports')}
                 fullWidth
               >
-                View Reports
+                See Reports
               </Button>
             </Box>
           </Paper>
