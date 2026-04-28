@@ -101,7 +101,7 @@ const ClientsPage: React.FC = () => {
         description: client.description || '',
         department: client.department || '',
         email: client.email || '',
-        phone: (client as Client & { phone?: string }).phone || ''
+        phone: client.phone || ''
       });
     } else {
       setEditingClient(null);
@@ -239,9 +239,9 @@ const ClientsPage: React.FC = () => {
                       )}
                     </TableCell>
                     <TableCell>
-                      {(client as Client & { phone?: string }).phone ? (
+                      {client.phone ? (
                         <Typography variant="body2" color="text.secondary">
-                          {(client as Client & { phone?: string }).phone}
+                          {client.phone}
                         </Typography>
                       ) : (
                         <Chip label="-" size="small" variant="outlined" />
