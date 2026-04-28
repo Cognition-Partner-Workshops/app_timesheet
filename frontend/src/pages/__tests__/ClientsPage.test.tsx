@@ -101,7 +101,7 @@ describe('ClientsPage', () => {
     it('should call deleteClient when delete is confirmed', async () => {
       mockGetClients.mockResolvedValue({
         clients: [
-          { id: 1, name: 'Acme Corp', description: 'Test', department: 'Eng', email: 'acme@test.com', created_at: '2024-01-01', updated_at: '2024-01-01' },
+          { id: 1, name: 'Acme Corp', description: 'Test', department: 'Eng', email: 'acme@test.com', phone: '555-0001', created_at: '2024-01-01', updated_at: '2024-01-01' },
         ],
       });
 
@@ -123,7 +123,7 @@ describe('ClientsPage', () => {
     it('should not call deleteClient when delete is cancelled', async () => {
       mockGetClients.mockResolvedValue({
         clients: [
-          { id: 1, name: 'Acme Corp', description: 'Test', department: 'Eng', email: 'acme@test.com', created_at: '2024-01-01', updated_at: '2024-01-01' },
+          { id: 1, name: 'Acme Corp', description: 'Test', department: 'Eng', email: 'acme@test.com', phone: '555-0001', created_at: '2024-01-01', updated_at: '2024-01-01' },
         ],
       });
 
