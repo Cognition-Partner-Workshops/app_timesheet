@@ -352,7 +352,7 @@ jobs:
             echo "> The Devin session will push test updates directly to this PR branch."
           } > /tmp/devin_comment.md
 
-          gh pr comment ${{ github.event.pull_request.number }} --body-file /tmp/devin_comment.md
+          gh pr comment ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --body-file /tmp/devin_comment.md
 
   verify-tests:
     name: Verify Updated Test Suite
