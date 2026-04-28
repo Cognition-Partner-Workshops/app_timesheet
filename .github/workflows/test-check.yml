@@ -257,339 +257,45 @@ jobs:
 
           echo -e "$COMMENT" | gh pr comment ${{ github.event.pull_request.number }} --body-file -
 
-  analyze-changes:
-    name: Analyze Changes
+  devin-update-tests:
+    name: Devin Session - Update Tests
     needs: [pr-health-check]
     if: "!contains(github.event.pull_request.user.login, 'devin')"
     runs-on: ubuntu-latest
-    outputs:
-      needs_test_update: ${{ steps.categorize.outputs.needs_test_update }}
-      summary: ${{ steps.categorize.outputs.summary }}
-      tests_report: ${{ steps.categorize.outputs.tests_report }}
-      ui_changes: ${{ steps.categorize.outputs.ui_changes }}
-      backend_changes: ${{ steps.categorize.outputs.backend_changes }}
-      ui_missing: ${{ steps.categorize.outputs.ui_missing }}
-      ui_existing: ${{ steps.categorize.outputs.ui_existing }}
-      backend_missing: ${{ steps.categorize.outputs.backend_missing }}
-      backend_existing: ${{ steps.categorize.outputs.backend_existing }}
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Get changed files
-        id: changed
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          CHANGED_FILES=$(gh pr diff ${{ github.event.pull_request.number }} --name-only)
-          echo "Changed files:"
-          echo "$CHANGED_FILES"
-
-          {
-            echo "files<<FILES_EOF"
-            echo "$CHANGED_FILES"
-            echo "FILES_EOF"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Categorize changes and check test coverage
-        id: categorize
-        run: |
-          CHANGED_FILES="${{ steps.changed.outputs.files }}"
-
-          UI_CHANGES=""
-          BACKEND_CHANGES=""
-          ENV_CHANGES=""
-          CONFIG_CHANGES=""
-
-          UI_MISSING_TESTS=""
-          UI_EXISTING_TESTS=""
-          BACKEND_MISSING_TESTS=""
-          BACKEND_EXISTING_TESTS=""
-
-          while IFS= read -r file; do
-            [ -z "$file" ] && continue
-
-            # UI: frontend source files (excluding test files and config)
-            if echo "$file" | grep -qE '^frontend/src/.*\.(tsx?|css)$' && ! echo "$file" | grep -qE '__tests__|\.test\.|\.spec\.'; then
-              UI_CHANGES="${UI_CHANGES}${file}\n"
-
-              DIR=$(dirname "$file")
-              BASENAME=$(basename "$file")
-              NAME_NO_EXT="${BASENAME%.*}"
-              EXT="${BASENAME##*.}"
-
-              if [ "$EXT" = "css" ]; then
-                continue
-              fi
-
-              TEST_FILE="${DIR}/__tests__/${NAME_NO_EXT}.test.${EXT}"
-              SPEC_FILE="${DIR}/__tests__/${NAME_NO_EXT}.spec.${EXT}"
-
-              if [ -f "$TEST_FILE" ] || [ -f "$SPEC_FILE" ]; then
-                UI_EXISTING_TESTS="${UI_EXISTING_TESTS}- ${file} → test exists (${TEST_FILE})\n"
-              else
-                UI_MISSING_TESTS="${UI_MISSING_TESTS}- ${file} → no test found (expected ${TEST_FILE})\n"
-              fi
-
-            # Backend: backend source files (excluding test files and config)
-            elif echo "$file" | grep -qE '^backend/src/.*\.js$' && ! echo "$file" | grep -qE '__tests__|\.test\.|\.spec\.'; then
-              BACKEND_CHANGES="${BACKEND_CHANGES}${file}\n"
-
-              REL_PATH="${file#backend/src/}"
-              DIR=$(dirname "$REL_PATH")
-              BASENAME=$(basename "$REL_PATH")
-              NAME_NO_EXT="${BASENAME%.js}"
-
-              TEST_FILE="backend/src/__tests__/${DIR}/${NAME_NO_EXT}.test.js"
-
-              if [ -f "$TEST_FILE" ]; then
-                BACKEND_EXISTING_TESTS="${BACKEND_EXISTING_TESTS}- ${file} → test exists (${TEST_FILE})\n"
-              else
-                BACKEND_MISSING_TESTS="${BACKEND_MISSING_TESTS}- ${file} → no test found (expected ${TEST_FILE})\n"
-              fi
-
-            # Environment: .env files, docker, deployment configs
-            elif echo "$file" | grep -qE '\.env|docker/|Dockerfile|DEPLOYMENT|\.env\.example'; then
-              ENV_CHANGES="${ENV_CHANGES}${file}\n"
-
-            # Config: package.json, tsconfig, eslint, vite, jest, sonar, CI workflows, etc.
-            elif echo "$file" | grep -qE 'package\.json|package-lock\.json|tsconfig|eslint|vite\.config|jest\.config|sonar-project|\.github/|\.windsurf/'; then
-              CONFIG_CHANGES="${CONFIG_CHANGES}${file}\n"
-            fi
-
-          done <<< "$CHANGED_FILES"
-
-          # --- Build summary ---
-          SUMMARY=""
-          NEEDS_TEST_UPDATE="false"
-
-          if [ -n "$UI_CHANGES" ]; then
-            SUMMARY="${SUMMARY}### UI Changes\n\`\`\`\n$(echo -e "$UI_CHANGES")\`\`\`\n\n"
-          fi
-          if [ -n "$BACKEND_CHANGES" ]; then
-            SUMMARY="${SUMMARY}### Backend Changes\n\`\`\`\n$(echo -e "$BACKEND_CHANGES")\`\`\`\n\n"
-          fi
-          if [ -n "$ENV_CHANGES" ]; then
-            SUMMARY="${SUMMARY}### Environment Changes\n\`\`\`\n$(echo -e "$ENV_CHANGES")\`\`\`\n\n"
-          fi
-          if [ -n "$CONFIG_CHANGES" ]; then
-            SUMMARY="${SUMMARY}### Config Changes\n\`\`\`\n$(echo -e "$CONFIG_CHANGES")\`\`\`\n\n"
-          fi
-
-          TESTS_REPORT=""
-          if [ -n "$UI_EXISTING_TESTS" ]; then
-            TESTS_REPORT="${TESTS_REPORT}#### UI – Tests to Update\n$(echo -e "$UI_EXISTING_TESTS")\n"
-            NEEDS_TEST_UPDATE="true"
-          fi
-          if [ -n "$UI_MISSING_TESTS" ]; then
-            TESTS_REPORT="${TESTS_REPORT}#### UI – Tests to Create\n$(echo -e "$UI_MISSING_TESTS")\n"
-            NEEDS_TEST_UPDATE="true"
-          fi
-          if [ -n "$BACKEND_EXISTING_TESTS" ]; then
-            TESTS_REPORT="${TESTS_REPORT}#### Backend – Tests to Update\n$(echo -e "$BACKEND_EXISTING_TESTS")\n"
-            NEEDS_TEST_UPDATE="true"
-          fi
-          if [ -n "$BACKEND_MISSING_TESTS" ]; then
-            TESTS_REPORT="${TESTS_REPORT}#### Backend – Tests to Create\n$(echo -e "$BACKEND_MISSING_TESTS")\n"
-            NEEDS_TEST_UPDATE="true"
-          fi
-
-          echo "needs_test_update=${NEEDS_TEST_UPDATE}" >> "$GITHUB_OUTPUT"
-
-          {
-            echo "summary<<SUMMARY_EOF"
-            echo -e "$SUMMARY"
-            echo "SUMMARY_EOF"
-          } >> "$GITHUB_OUTPUT"
-
-          {
-            echo "tests_report<<TESTS_EOF"
-            echo -e "$TESTS_REPORT"
-            echo "TESTS_EOF"
-          } >> "$GITHUB_OUTPUT"
-
-          {
-            echo "ui_changes<<UI_EOF"
-            echo -e "$UI_CHANGES"
-            echo "UI_EOF"
-          } >> "$GITHUB_OUTPUT"
-
-          {
-            echo "backend_changes<<BE_EOF"
-            echo -e "$BACKEND_CHANGES"
-            echo "BE_EOF"
-          } >> "$GITHUB_OUTPUT"
-
-          {
-            echo "ui_missing<<UIM_EOF"
-            echo -e "$UI_MISSING_TESTS"
-            echo "UIM_EOF"
-          } >> "$GITHUB_OUTPUT"
-
-          {
-            echo "ui_existing<<UIE_EOF"
-            echo -e "$UI_EXISTING_TESTS"
-            echo "UIE_EOF"
-          } >> "$GITHUB_OUTPUT"
-
-          {
-            echo "backend_missing<<BEM_EOF"
-            echo -e "$BACKEND_MISSING_TESTS"
-            echo "BEM_EOF"
-          } >> "$GITHUB_OUTPUT"
-
-          {
-            echo "backend_existing<<BEE_EOF"
-            echo -e "$BACKEND_EXISTING_TESTS"
-            echo "BEE_EOF"
-          } >> "$GITHUB_OUTPUT"
-
-          if [ "$NEEDS_TEST_UPDATE" = "true" ]; then
-            echo "Test maintenance needed."
-          else
-            echo "No test maintenance needed — changes are config/env only or all tests already exist."
-          fi
-
-      - name: Comment analysis on PR
-        env:
-          GH_TOKEN: ${{ github.token }}
-          NEEDS: ${{ steps.categorize.outputs.needs_test_update }}
-          SUMMARY: ${{ steps.categorize.outputs.summary }}
-          TESTS_REPORT: ${{ steps.categorize.outputs.tests_report }}
-        run: |
-          {
-            echo "## Test Suite Maintenance – Change Analysis"
-            echo ""
-            echo "$SUMMARY"
-            echo ""
-
-            if [ "$NEEDS" = "true" ]; then
-              echo "### Test Coverage Gap Detected"
-              echo ""
-              echo "$TESTS_REPORT"
-              echo ""
-              echo "> A Devin session will be triggered to maintain the test suite automatically."
-            else
-              echo "All changed source files have corresponding tests, or changes are limited to config/env files. No test maintenance required."
-            fi
-          } > /tmp/pr_comment.md
-
-          gh pr comment ${{ github.event.pull_request.number }} --body-file /tmp/pr_comment.md
-
-  maintain-tests:
-    name: Devin Session - Maintain Tests
-    needs: [analyze-changes]
-    if: needs.analyze-changes.outputs.needs_test_update == 'true'
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Trigger Devin test maintenance session
+      - name: Trigger Devin test update session
         env:
           DEVIN_API_KEY: ${{ secrets.DEVIN_API_KEY }}
           DEVIN_ORG_ID: ${{ secrets.DEVIN_ORG_ID }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+          BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
           REPO: ${{ github.repository }}
-          UI_CHANGES: ${{ needs.analyze-changes.outputs.ui_changes }}
-          BACKEND_CHANGES: ${{ needs.analyze-changes.outputs.backend_changes }}
-          UI_MISSING: ${{ needs.analyze-changes.outputs.ui_missing }}
-          UI_EXISTING: ${{ needs.analyze-changes.outputs.ui_existing }}
-          BACKEND_MISSING: ${{ needs.analyze-changes.outputs.backend_missing }}
-          BACKEND_EXISTING: ${{ needs.analyze-changes.outputs.backend_existing }}
         run: |
-          CHILD_TASKS=""
-
-          # --- UI test tasks ---
-          if [ -n "$UI_EXISTING" ] || [ -n "$UI_MISSING" ]; then
-            CHILD_TASKS="${CHILD_TASKS}
-
-          CHILD TASK — UI Test Maintenance:
-          The following frontend source files were changed in PR #${PR_NUMBER}:
-          ${UI_CHANGES}
-          "
-            if [ -n "$UI_EXISTING" ]; then
-              CHILD_TASKS="${CHILD_TASKS}
-          Tests that exist and need updating to match the new code:
-          ${UI_EXISTING}
-
-          For each file above, review the code diff and update the corresponding test file so it validates the new behavior. Do not remove existing valid test cases — add or modify as needed."
-            fi
-
-            if [ -n "$UI_MISSING" ]; then
-              CHILD_TASKS="${CHILD_TASKS}
-          Tests that need to be created:
-          ${UI_MISSING}
-
-          For each file above, create a new test file at the expected path. Write meaningful unit tests using vitest and @testing-library/react that cover the component's rendering, user interactions, and key behaviors. Aim for at least 80% coverage of the changed file."
-            fi
-
-            CHILD_TASKS="${CHILD_TASKS}
-
-          UI Test Constraints:
-          - Use vitest with @testing-library/react for all frontend tests.
-          - The test setup file is at frontend/src/test/setup.ts (imports jest-dom matchers).
-          - Place tests in the __tests__/ subdirectory adjacent to the source file.
-          - Run \`cd frontend && npm run test\` to verify tests pass.
-          - Run \`cd frontend && npm run build\` to verify the build still succeeds.
-          - Do NOT modify source components — only add or update test files."
-          fi
-
-          # --- Backend test tasks ---
-          if [ -n "$BACKEND_EXISTING" ] || [ -n "$BACKEND_MISSING" ]; then
-            CHILD_TASKS="${CHILD_TASKS}
-
-          CHILD TASK — Backend Test Maintenance:
-          The following backend source files were changed in PR #${PR_NUMBER}:
-          ${BACKEND_CHANGES}
-          "
-            if [ -n "$BACKEND_EXISTING" ]; then
-              CHILD_TASKS="${CHILD_TASKS}
-          Tests that exist and need updating to match the new code:
-          ${BACKEND_EXISTING}
-
-          For each file above, review the code diff and update the corresponding test file so it validates the new behavior. Do not remove existing valid test cases — add or modify as needed."
-            fi
-
-            if [ -n "$BACKEND_MISSING" ]; then
-              CHILD_TASKS="${CHILD_TASKS}
-          Tests that need to be created:
-          ${BACKEND_MISSING}
-
-          For each file above, create a new test file at the expected path under backend/src/__tests__/. Write meaningful unit tests using Jest that cover the module's exported functions, error handling, and edge cases."
-            fi
-
-            CHILD_TASKS="${CHILD_TASKS}
-
-          Backend Test Constraints:
-          - Use Jest for all backend tests. Test setup is in backend/src/__tests__/setup.js.
-          - Place tests in backend/src/__tests__/ mirroring the source directory structure.
-          - Run \`cd backend && npm test\` to verify tests pass.
-          - Do NOT modify source code — only add or update test files."
-          fi
-
           PROMPT=$(cat <<PROMPT_END
-          You are a test maintenance engineer. PR #${PR_NUMBER} in repository ${REPO} on branch '${PR_BRANCH}' contains code changes that require test suite updates.
+          You are a test engineer working on repository ${REPO}.
+          A PR (#${PR_NUMBER}) has been opened on branch '${PR_BRANCH}' targeting '${BASE_BRANCH}'.
 
-          Your job:
-          1. Clone the repository ${REPO} and checkout branch '${PR_BRANCH}'.
-          2. Review the code changes in the PR to understand what behavior changed.
-          3. For each task below, either update existing tests or create new ones:
-          ${CHILD_TASKS}
+          Your task:
+          1. Clone the repository and checkout branch '${PR_BRANCH}'.
+          2. Run \`git diff origin/${BASE_BRANCH}...HEAD --name-only\` to identify all files changed in this PR.
+          3. For each changed source file (frontend .tsx/.ts files in src/, backend .js files in src/), check whether corresponding test files exist and whether they adequately cover the changes.
+          4. For files with missing or outdated tests, write new tests or update existing ones.
 
-          4. After completing all test updates:
-             - Run all test suites to confirm everything passes.
-             - Run the build to confirm nothing is broken.
-          5. Commit with a clear message summarizing the test changes.
-          6. Push to branch '${PR_BRANCH}'.
+          CRITICAL CONSTRAINTS:
+          - You are ONLY allowed to add or edit TEST files. Do NOT modify any source code, components, routes, middleware, or configuration files.
+          - If a test fails because of a bug in the source code, LEAVE IT FAILING. Do not fix the source code. The failing test correctly identifies a code defect.
+          - Only add or edit files in __tests__/ directories or files matching *.test.* / *.spec.* patterns.
 
-          General constraints:
-          - ONLY modify or create test files. Do NOT change source code.
-          - Tests must be meaningful — validate real behavior, not just assert true.
-          - Maintain consistent style with the existing test files in the repo.
-          - If a changed file is a CSS file, a config file, or an env file, skip it — no tests needed.
+          Testing conventions:
+          - Frontend: Use Vitest with @testing-library/react. Tests go in __tests__/ subdirectory adjacent to the source file (e.g., frontend/src/pages/__tests__/ClientsPage.test.tsx). Test setup is at frontend/src/test/setup.ts (imports jest-dom matchers).
+          - Backend: Use Jest with supertest. Tests go in backend/src/__tests__/ mirroring the source structure.
+          - Run \`cd frontend && npm run test\` to verify frontend tests.
+          - Run \`cd backend && npm test\` to verify backend tests.
+          - Run \`cd frontend && npm run build\` to ensure the build still succeeds.
+
+          After making changes, commit with message "test: update test suite for PR #${PR_NUMBER}" and push to branch '${PR_BRANCH}'.
           PROMPT_END
           )
 
@@ -597,7 +303,7 @@ jobs:
 
           REQUEST_BODY=$(jq -n \
             --argjson prompt "$ESCAPED_PROMPT" \
-            --arg title "Maintain test suite for PR #${PR_NUMBER}" \
+            --arg title "Update test suite for PR #${PR_NUMBER}" \
             --arg repo "$REPO" \
             '{
               prompt: $prompt,
@@ -621,9 +327,9 @@ jobs:
             echo "Devin session created: ${SESSION_URL}"
 
             {
-              echo "## Devin Test Maintenance Triggered"
+              echo "## Devin Test Update Triggered"
               echo ""
-              echo "A Devin session has been created to update/create tests for the changed code."
+              echo "A Devin session has been created to analyze changes and update/create tests."
               echo ""
               echo "**Session:** ${SESSION_URL}"
             } >> "$GITHUB_STEP_SUMMARY"
@@ -639,9 +345,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           {
-            echo "## Devin Test Maintenance Triggered"
+            echo "## Devin Test Update Triggered"
             echo ""
-            echo "A Devin session has been created to automatically update/create tests for the changed code."
+            echo "A Devin session has been created to analyze changes and automatically update/create tests for the changed code."
             echo ""
             echo "> The Devin session will push test updates directly to this PR branch."
           } > /tmp/devin_comment.md
@@ -650,8 +356,8 @@ jobs:
 
   verify-tests:
     name: Verify Updated Test Suite
-    needs: [maintain-tests]
-    if: always() && needs.maintain-tests.result == 'success'
+    needs: [devin-update-tests]
+    if: always() && needs.devin-update-tests.result == 'success'
     runs-on: ubuntu-latest
     outputs:
       frontend_passed: ${{ steps.frontend-tests.outputs.passed }}
@@ -796,12 +502,13 @@ jobs:
 
   create-jira-ticket:
     name: Create Jira Ticket for Code Flaw
-    needs: [verify-tests, analyze-changes]
+    needs: [verify-tests]
     if: always() && needs.verify-tests.outputs.all_passed == 'false'
     runs-on: ubuntu-latest
 
     steps:
       - name: Create Jira ticket
+        id: create-ticket
         env:
           JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
           JIRA_USER_EMAIL: ${{ secrets.JIRA_USER_EMAIL }}
@@ -813,6 +520,24 @@ jobs:
           PR_BRANCH: ${{ github.event.pull_request.head.ref }}
           FAILURE_SUMMARY: ${{ needs.verify-tests.outputs.failure_summary }}
         run: |
+          if [ -z "$JIRA_BASE_URL" ] || [ -z "$JIRA_USER_EMAIL" ] || [ -z "$JIRA_API_TOKEN" ] || [ -z "$JIRA_PROJECT_KEY" ]; then
+            echo "::warning::Jira credentials not configured. Ticket creation skipped."
+            echo "jira_skipped=true" >> "$GITHUB_OUTPUT"
+
+            echo "## Jira Ticket Creation — Auth Not Configured" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Tests are still failing after automated test suite maintenance, indicating a **code-level defect**." >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "A Jira ticket **would** have been created with:" >> "$GITHUB_STEP_SUMMARY"
+            echo "- **Summary:** Code flaw detected — tests failing after auto-maintenance on PR #${PR_NUMBER}" >> "$GITHUB_STEP_SUMMARY"
+            echo "- **Type:** Bug" >> "$GITHUB_STEP_SUMMARY"
+            echo "- **Priority:** High" >> "$GITHUB_STEP_SUMMARY"
+            echo "- **Labels:** auto-detected, ci-failure, test-maintenance" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Jira integration is not configured. Please set up JIRA_BASE_URL, JIRA_USER_EMAIL, JIRA_API_TOKEN, and JIRA_PROJECT_KEY secrets." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
           DESCRIPTION=$(cat <<EOF
           h2. Persistent Test Failures on PR #${PR_NUMBER}
 
@@ -876,17 +601,36 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_SKIPPED: ${{ steps.create-ticket.outputs.jira_skipped }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          {
-            echo "## 🎫 Jira Ticket Created"
-            echo ""
-            echo "Tests are still failing after automated test suite maintenance."
-            echo "This indicates a **code-level defect** in the PR changes."
-            echo ""
-            echo "A Jira ticket has been created to track this issue."
-            echo "Please review the failing tests and fix the underlying code."
-            echo ""
-            echo "${{ needs.verify-tests.outputs.failure_summary }}"
-          } > /tmp/jira_comment.md
+          if [ "$JIRA_SKIPPED" = "true" ]; then
+            {
+              echo "## Jira Ticket Creation — Skipped (Auth Not Configured)"
+              echo ""
+              echo "Tests are still failing after automated test suite maintenance, indicating a **code-level defect** in the PR changes."
+              echo ""
+              echo "A Jira ticket **would** have been created to track this issue, but Jira credentials are not configured."
+              echo ""
+              echo "**What would have been filed:**"
+              echo "- Summary: Code flaw detected — tests failing after auto-maintenance on PR #${PR_NUMBER}"
+              echo "- Type: Bug | Priority: High"
+              echo "- Labels: auto-detected, ci-failure, test-maintenance"
+              echo ""
+              echo "Please review the failing tests and fix the underlying code."
+            } > /tmp/jira_comment.md
+          else
+            {
+              echo "## 🎫 Jira Ticket Created"
+              echo ""
+              echo "Tests are still failing after automated test suite maintenance."
+              echo "This indicates a **code-level defect** in the PR changes."
+              echo ""
+              echo "A Jira ticket has been created to track this issue."
+              echo "Please review the failing tests and fix the underlying code."
+              echo ""
+              echo "${{ needs.verify-tests.outputs.failure_summary }}"
+            } > /tmp/jira_comment.md
+          fi
 
           gh pr comment ${{ github.event.pull_request.number }} --body-file /tmp/jira_comment.md
