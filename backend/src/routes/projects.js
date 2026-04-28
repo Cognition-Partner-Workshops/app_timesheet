@@ -98,7 +98,7 @@ router.post('/', (req, res, next) => {
     function insertProject() {
       db.run(
         'INSERT INTO projects (name, description, client_id, start_date, end_date, status, hourly_rate, user_email) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        [name, description || null, clientId || null, startDate || null, endDate || null, status, hourlyRate || null, req.userEmail],
+        [name, description || null, clientId || null, startDate || null, endDate || null, status, hourlyRate ?? null, req.userEmail],
         function(err) {
           if (err) {
             console.error('Database error:', err);
@@ -222,7 +222,7 @@ router.put('/:id', (req, res, next) => {
 
           if (value.hourlyRate !== undefined) {
             updates.push('hourly_rate = ?');
-            values.push(value.hourlyRate || null);
+            values.push(value.hourlyRate ?? null);
           }
 
           updates.push('updated_at = CURRENT_TIMESTAMP');
