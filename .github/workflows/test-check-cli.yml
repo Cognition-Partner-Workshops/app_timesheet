@@ -1,10 +1,11 @@
 name: Test Suite Maintenance (Devin CLI)
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
-    branches:
-      - feature/pr-test-update-workflow
+  workflow_dispatch: # Disabled auto-trigger; run manually if needed
+  # pull_request:
+  #   types: [opened, synchronize, reopened]
+  #   branches:
+  #     - feature/pr-test-update-workflow
 
 permissions:
   contents: write
