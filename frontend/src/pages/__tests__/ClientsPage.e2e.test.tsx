@@ -35,6 +35,7 @@ const fullClient = {
   description: 'A large enterprise',
   department: 'Engineering',
   email: 'acme@example.com',
+  phone: '555-1234',
   created_at: '2024-03-15',
   updated_at: '2024-03-15',
 };
@@ -45,6 +46,7 @@ const minimalClient = {
   description: null,
   department: null,
   email: null,
+  phone: undefined,
   created_at: '2024-06-01',
   updated_at: '2024-06-01',
 };
@@ -63,7 +65,7 @@ describe('ClientsPage E2E', () => {
   // ---------------------------------------------------------------------------
   describe('page loading and initial display', () => {
     it('should show a loading spinner while clients are being fetched', () => {
-      mockGetClients.mockReturnValue(new Promise(() => {}));
+      mockGetClients.mockReturnValue(new Promise(() => {})); // never resolves
       renderWithQueryClient(<ClientsPage />);
 
       expect(screen.getByRole('progressbar')).toBeInTheDocument();
@@ -77,13 +79,13 @@ describe('ClientsPage E2E', () => {
       expect(screen.getByRole('button', { name: /add client/i })).toBeInTheDocument();
     });
 
-    it('should render all six table column headers', async () => {
+    it('should render all seven table column headers', async () => {
       mockGetClients.mockResolvedValue({ clients: [] });
       renderWithQueryClient(<ClientsPage />);
 
       await screen.findByText('No clients found. Create your first client to get started.');
 
-      const expectedHeaders = ['Name', 'Department', 'Email', 'Description', 'Created', 'Actions'];
+      const expectedHeaders = ['Name', 'Department', 'Email', 'Phone', 'Description', 'Created', 'Actions'];
       for (const header of expectedHeaders) {
         expect(screen.getByText(header)).toBeInTheDocument();
       }
@@ -140,6 +142,12 @@ describe('ClientsPage E2E', () => {
       expect(screen.getByText('acme@example.com')).toBeInTheDocument();
     });
 
+    it('should display the phone value', async () => {
+      renderWithQueryClient(<ClientsPage />);
+      await screen.findByText('Acme Corp');
+      expect(screen.getByText('555-1234')).toBeInTheDocument();
+    });
+
     it('should display the description value', async () => {
       renderWithQueryClient(<ClientsPage />);
       await screen.findByText('Acme Corp');
@@ -170,12 +178,12 @@ describe('ClientsPage E2E', () => {
       mockGetClients.mockResolvedValue({ clients: [minimalClient] });
     });
 
-    it('should show dash chips for missing department and email', async () => {
+    it('should show dash chips for missing department, email, and phone', async () => {
       renderWithQueryClient(<ClientsPage />);
       await screen.findByText('Beta LLC');
 
       const dashChips = screen.getAllByText('-');
-      expect(dashChips.length).toBeGreaterThanOrEqual(2);
+      expect(dashChips.length).toBeGreaterThanOrEqual(3);
     });
 
     it('should show "No description" chip when description is missing', async () => {
@@ -219,11 +227,13 @@ describe('ClientsPage E2E', () => {
       const nameInput = screen.getByLabelText(/client name/i) as HTMLInputElement;
       const deptInput = screen.getByLabelText(/department/i) as HTMLInputElement;
       const emailInput = screen.getByLabelText(/email/i) as HTMLInputElement;
+      const phoneInput = screen.getByLabelText(/phone/i) as HTMLInputElement;
       const descInput = screen.getByLabelText(/description/i) as HTMLInputElement;
 
       expect(nameInput.value).toBe('');
       expect(deptInput.value).toBe('');
       expect(emailInput.value).toBe('');
+      expect(phoneInput.value).toBe('');
       expect(descInput.value).toBe('');
     });
 
@@ -240,7 +250,7 @@ describe('ClientsPage E2E', () => {
       });
     });
 
-    it('should submit all fields when creating a client', async () => {
+    it('should submit all fields including phone when creating a client', async () => {
       renderWithQueryClient(<ClientsPage />);
 
       await userEvent.click(await screen.findByRole('button', { name: /add client/i }));
@@ -248,6 +258,7 @@ describe('ClientsPage E2E', () => {
       await userEvent.type(screen.getByLabelText(/client name/i), 'Gamma Inc');
       await userEvent.type(screen.getByLabelText(/department/i), 'Sales');
       await userEvent.type(screen.getByLabelText(/email/i), 'gamma@test.com');
+      await userEvent.type(screen.getByLabelText(/phone/i), '555-9999');
       await userEvent.type(screen.getByLabelText(/description/i), 'Gamma description');
 
       const form = screen.getByText('Add New Client').closest('div')?.querySelector('form');
@@ -258,6 +269,7 @@ describe('ClientsPage E2E', () => {
           name: 'Gamma Inc',
           department: 'Sales',
           email: 'gamma@test.com',
+          phone: '555-9999',
           description: 'Gamma description',
         });
       });
@@ -277,6 +289,7 @@ describe('ClientsPage E2E', () => {
           name: 'NameOnly Corp',
           department: undefined,
           email: undefined,
+          phone: undefined,
           description: undefined,
         });
       });
@@ -351,6 +364,7 @@ describe('ClientsPage E2E', () => {
       expect((screen.getByLabelText(/client name/i) as HTMLInputElement).value).toBe('Acme Corp');
       expect((screen.getByLabelText(/department/i) as HTMLInputElement).value).toBe('Engineering');
       expect((screen.getByLabelText(/email/i) as HTMLInputElement).value).toBe('acme@example.com');
+      expect((screen.getByLabelText(/phone/i) as HTMLInputElement).value).toBe('555-1234');
       expect((screen.getByLabelText(/description/i) as HTMLInputElement).value).toBe('A large enterprise');
     });
 
@@ -368,7 +382,7 @@ describe('ClientsPage E2E', () => {
       expect(screen.queryByRole('button', { name: /^create$/i })).not.toBeInTheDocument();
     });
 
-    it('should call updateClient with the modified data', async () => {
+    it('should call updateClient with the modified data including phone', async () => {
       renderWithQueryClient(<ClientsPage />);
       await screen.findByText('Acme Corp');
 
@@ -378,9 +392,9 @@ describe('ClientsPage E2E', () => {
         expect(screen.getByText('Edit Client')).toBeInTheDocument();
       });
 
-      const emailInput = screen.getByLabelText(/email/i);
-      await userEvent.clear(emailInput);
-      await userEvent.type(emailInput, 'new@example.com');
+      const phoneInput = screen.getByLabelText(/phone/i);
+      await userEvent.clear(phoneInput);
+      await userEvent.type(phoneInput, '999-0000');
 
       const form = screen.getByText('Edit Client').closest('div')?.querySelector('form');
       fireEvent.submit(form!);
@@ -389,7 +403,8 @@ describe('ClientsPage E2E', () => {
         expect(mockUpdateClient).toHaveBeenCalledWith(1, {
           name: 'Acme Corp',
           department: 'Engineering',
-          email: 'new@example.com',
+          email: 'acme@example.com',
+          phone: '999-0000',
           description: 'A large enterprise',
         });
       });
@@ -425,6 +440,7 @@ describe('ClientsPage E2E', () => {
 
       expect((screen.getByLabelText(/department/i) as HTMLInputElement).value).toBe('');
       expect((screen.getByLabelText(/email/i) as HTMLInputElement).value).toBe('');
+      expect((screen.getByLabelText(/phone/i) as HTMLInputElement).value).toBe('');
       expect((screen.getByLabelText(/description/i) as HTMLInputElement).value).toBe('');
     });
 
@@ -532,6 +548,7 @@ describe('ClientsPage E2E', () => {
       mockGetClients.mockResolvedValue({ clients: [] });
       renderWithQueryClient(<ClientsPage />);
 
+      // Open dialog and trigger validation error
       await userEvent.click(await screen.findByRole('button', { name: /add client/i }));
 
       const form = screen.getByText('Add New Client').closest('div')?.querySelector('form');
@@ -541,6 +558,7 @@ describe('ClientsPage E2E', () => {
         expect(screen.getByText('Client name is required')).toBeInTheDocument();
       });
 
+      // Cancel and re-open — error should be cleared
       await userEvent.click(screen.getByRole('button', { name: /cancel/i }));
 
       await waitFor(() => {
@@ -561,7 +579,8 @@ describe('ClientsPage E2E', () => {
   // Full user journey: create → see in table → edit → delete
   // ---------------------------------------------------------------------------
   describe('full user journey', () => {
-    it('should support creating a client, then editing it', async () => {
+    it('should support creating a client with phone, then editing phone', async () => {
+      // Start with empty list, after create the list refreshes with the new client
       let callCount = 0;
       mockGetClients.mockImplementation(() => {
         callCount++;
@@ -570,19 +589,22 @@ describe('ClientsPage E2E', () => {
         }
         return Promise.resolve({
           clients: [
-            { id: 10, name: 'Journey Corp', description: 'Journey desc', department: 'QA', email: 'j@test.com', created_at: '2024-08-01', updated_at: '2024-08-01' },
+            { id: 10, name: 'Journey Corp', description: 'Journey desc', department: 'QA', email: 'j@test.com', phone: '111-2222', created_at: '2024-08-01', updated_at: '2024-08-01' },
           ],
         });
       });
 
       renderWithQueryClient(<ClientsPage />);
 
+      // Wait for empty state
       await screen.findByText('No clients found. Create your first client to get started.');
 
+      // Create
       await userEvent.click(screen.getByRole('button', { name: /add client/i }));
       await userEvent.type(screen.getByLabelText(/client name/i), 'Journey Corp');
       await userEvent.type(screen.getByLabelText(/department/i), 'QA');
       await userEvent.type(screen.getByLabelText(/email/i), 'j@test.com');
+      await userEvent.type(screen.getByLabelText(/phone/i), '111-2222');
       await userEvent.type(screen.getByLabelText(/description/i), 'Journey desc');
 
       const form = screen.getByText('Add New Client').closest('div')?.querySelector('form');
@@ -593,21 +615,25 @@ describe('ClientsPage E2E', () => {
           name: 'Journey Corp',
           department: 'QA',
           email: 'j@test.com',
+          phone: '111-2222',
           description: 'Journey desc',
         });
       });
 
+      // After successful create, the client appears in table
       await screen.findByText('Journey Corp');
+      expect(screen.getByText('111-2222')).toBeInTheDocument();
 
+      // Edit the phone
       await userEvent.click(screen.getAllByTestId('EditIcon')[0].closest('button')!);
 
       await waitFor(() => {
         expect(screen.getByText('Edit Client')).toBeInTheDocument();
       });
 
-      const emailInput = screen.getByLabelText(/email/i);
-      await userEvent.clear(emailInput);
-      await userEvent.type(emailInput, 'updated@test.com');
+      const phoneInput = screen.getByLabelText(/phone/i);
+      await userEvent.clear(phoneInput);
+      await userEvent.type(phoneInput, '333-4444');
 
       const editForm = screen.getByText('Edit Client').closest('div')?.querySelector('form');
       fireEvent.submit(editForm!);
@@ -616,7 +642,8 @@ describe('ClientsPage E2E', () => {
         expect(mockUpdateClient).toHaveBeenCalledWith(10, {
           name: 'Journey Corp',
           department: 'QA',
-          email: 'updated@test.com',
+          email: 'j@test.com',
+          phone: '333-4444',
           description: 'Journey desc',
         });
       });

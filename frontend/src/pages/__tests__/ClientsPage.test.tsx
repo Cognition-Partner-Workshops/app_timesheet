@@ -49,6 +49,7 @@ describe('ClientsPage', () => {
       expect(screen.getByLabelText(/client name/i)).toBeInTheDocument();
       expect(screen.getByLabelText(/department/i)).toBeInTheDocument();
       expect(screen.getByLabelText(/email/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/phone/i)).toBeInTheDocument();
       expect(screen.getByLabelText(/description/i)).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /create/i })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
@@ -78,6 +79,7 @@ describe('ClientsPage', () => {
       await userEvent.type(screen.getByLabelText(/client name/i), 'New Client');
       await userEvent.type(screen.getByLabelText(/department/i), 'Engineering');
       await userEvent.type(screen.getByLabelText(/email/i), 'client@example.com');
+      await userEvent.type(screen.getByLabelText(/phone/i), '555-1234');
       await userEvent.type(screen.getByLabelText(/description/i), 'A test client');
 
       const form = screen.getByText('Add New Client').closest('div')?.querySelector('form');
@@ -88,6 +90,7 @@ describe('ClientsPage', () => {
           name: 'New Client',
           department: 'Engineering',
           email: 'client@example.com',
+          phone: '555-1234',
           description: 'A test client',
         });
       });
@@ -98,7 +101,7 @@ describe('ClientsPage', () => {
     it('should call deleteClient when delete is confirmed', async () => {
       mockGetClients.mockResolvedValue({
         clients: [
-          { id: 1, name: 'Acme Corp', description: 'Test', department: 'Eng', email: 'acme@test.com', created_at: '2024-01-01', updated_at: '2024-01-01' },
+          { id: 1, name: 'Acme Corp', description: 'Test', department: 'Eng', email: 'acme@test.com', phone: '555-0001', created_at: '2024-01-01', updated_at: '2024-01-01' },
         ],
       });
 
@@ -120,7 +123,7 @@ describe('ClientsPage', () => {
     it('should not call deleteClient when delete is cancelled', async () => {
       mockGetClients.mockResolvedValue({
         clients: [
-          { id: 1, name: 'Acme Corp', description: 'Test', department: 'Eng', email: 'acme@test.com', created_at: '2024-01-01', updated_at: '2024-01-01' },
+          { id: 1, name: 'Acme Corp', description: 'Test', department: 'Eng', email: 'acme@test.com', phone: '555-0001', created_at: '2024-01-01', updated_at: '2024-01-01' },
         ],
       });
 
@@ -148,10 +151,19 @@ describe('ClientsPage', () => {
       expect(message).toBeInTheDocument();
     });
 
-    it('should display client data in the table', async () => {
+    it('should render Phone column header in the table', async () => {
+      mockGetClients.mockResolvedValue({ clients: [] });
+
+      renderWithQueryClient(<ClientsPage />);
+
+      await screen.findByText('No clients found. Create your first client to get started.');
+      expect(screen.getByText('Phone')).toBeInTheDocument();
+    });
+
+    it('should display client data in the table including phone', async () => {
       mockGetClients.mockResolvedValue({
         clients: [
-          { id: 1, name: 'Acme Corp', description: 'Big company', department: 'Engineering', email: 'acme@test.com', created_at: '2024-01-15', updated_at: '2024-01-15' },
+          { id: 1, name: 'Acme Corp', description: 'Big company', department: 'Engineering', email: 'acme@test.com', phone: '555-9876', created_at: '2024-01-15', updated_at: '2024-01-15' },
         ],
       });
 
@@ -160,7 +172,73 @@ describe('ClientsPage', () => {
       expect(await screen.findByText('Acme Corp')).toBeInTheDocument();
       expect(screen.getByText('Engineering')).toBeInTheDocument();
       expect(screen.getByText('acme@test.com')).toBeInTheDocument();
+      expect(screen.getByText('555-9876')).toBeInTheDocument();
       expect(screen.getByText('Big company')).toBeInTheDocument();
+    });
+
+    it('should display a dash chip when phone is not provided', async () => {
+      mockGetClients.mockResolvedValue({
+        clients: [
+          { id: 1, name: 'Acme Corp', description: 'Big company', department: 'Engineering', email: 'acme@test.com', created_at: '2024-01-15', updated_at: '2024-01-15' },
+        ],
+      });
+
+      renderWithQueryClient(<ClientsPage />);
+
+      await screen.findByText('Acme Corp');
+      const dashChips = screen.getAllByText('-');
+      expect(dashChips.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  describe('edit client with phone', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it('should pre-populate phone field when editing a client', async () => {
+      mockGetClients.mockResolvedValue({
+        clients: [
+          { id: 1, name: 'Acme Corp', description: 'Test', department: 'Eng', email: 'acme@test.com', phone: '555-4321', created_at: '2024-01-01', updated_at: '2024-01-01' },
+        ],
+      });
+
+      renderWithQueryClient(<ClientsPage />);
+
+      await screen.findByText('Acme Corp');
+
+      const editButtons = screen.getAllByTestId('EditIcon');
+      await userEvent.click(editButtons[0].closest('button')!);
+
+      await waitFor(() => {
+        expect(screen.getByText('Edit Client')).toBeInTheDocument();
+      });
+
+      const phoneInput = screen.getByLabelText(/phone/i) as HTMLInputElement;
+      expect(phoneInput.value).toBe('555-4321');
+    });
+  });
+
+  describe('create client without phone', () => {
+    it('should not send phone when field is left empty', async () => {
+      mockGetClients.mockResolvedValue({ clients: [] });
+      mockCreateClient.mockResolvedValue({ client: { id: 2, name: 'Minimal Client' } });
+
+      renderWithQueryClient(<ClientsPage />);
+
+      const addButton = await screen.findByRole('button', { name: /add client/i });
+      await userEvent.click(addButton);
+
+      await userEvent.type(screen.getByLabelText(/client name/i), 'Minimal Client');
+
+      const form = screen.getByText('Add New Client').closest('div')?.querySelector('form');
+      fireEvent.submit(form!);
+
+      await waitFor(() => {
+        expect(mockCreateClient).toHaveBeenCalledWith({
+          name: 'Minimal Client',
+        });
+      });
     });
   });
 });
