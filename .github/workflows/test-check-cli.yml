@@ -42,9 +42,14 @@ jobs:
           EXIT_CODE=$?
           echo "$OUTPUT"
 
-          TOTAL=$(echo "$OUTPUT" | grep -oP 'Tests:\s+.*?(\d+)\s+total' | grep -oP '\d+\s+total' | grep -oP '^\d+' || echo "0")
-          PASSED=$(echo "$OUTPUT" | grep -oP '(\d+)\s+passed' | grep -oP '^\d+' || echo "0")
-          FAILED=$(echo "$OUTPUT" | grep -oP '(\d+)\s+failed' | grep -oP '^\d+' || echo "0")
+          # Strip ANSI color codes for reliable parsing
+          CLEAN=$(echo "$OUTPUT" | sed 's/\x1b\[[0-9;]*m//g')
+
+          # Jest output: "Tests:       2 failed, 159 passed, 161 total"
+          TESTS_LINE=$(echo "$CLEAN" | grep 'Tests:' | tail -1)
+          TOTAL=$(echo "$TESTS_LINE" | grep -oP '(\d+)\s+total' | grep -oP '\d+' || echo "0")
+          PASSED=$(echo "$TESTS_LINE" | grep -oP '(\d+)\s+passed' | grep -oP '\d+' || echo "0")
+          FAILED=$(echo "$TESTS_LINE" | grep -oP '(\d+)\s+failed' | grep -oP '\d+' || echo "0")
 
           if [ "$TOTAL" -gt 0 ] 2>/dev/null; then
             PCT=$(( PASSED * 100 / TOTAL ))
@@ -74,19 +79,15 @@ jobs:
           EXIT_CODE=$?
           echo "$OUTPUT"
 
-          TOTAL=$(echo "$OUTPUT" | grep -oP 'Tests\s+(\d+)\s+(passed|failed)' | head -1 | grep -oP '^\d+' || echo "0")
-          PASSED_LINE=$(echo "$OUTPUT" | grep -i "tests.*passed" || true)
-          FAILED_LINE=$(echo "$OUTPUT" | grep -i "tests.*failed" || true)
+          # Strip ANSI color codes for reliable parsing
+          CLEAN=$(echo "$OUTPUT" | sed 's/\x1b\[[0-9;]*m//g')
 
-          TOTAL=$(echo "$OUTPUT" | grep -oP '\d+(?=\s+test(s)?\s+(passed|failed|total))' | tail -1 || echo "0")
-          PASSED=$(echo "$OUTPUT" | grep -oP '\d+(?=\s+passed)' | tail -1 || echo "0")
-          FAILED=$(echo "$OUTPUT" | grep -oP '\d+(?=\s+failed)' | tail -1 || echo "0")
-
-          if [ -z "$TOTAL" ] || [ "$TOTAL" = "0" ]; then
-            TOTAL_FILES=$(echo "$OUTPUT" | grep -oP '\d+(?=\s+test files?)' | tail -1 || echo "0")
-            TOTAL_TESTS=$(echo "$OUTPUT" | grep -oP '\d+(?=\s+tests?)' | tail -1 || echo "0")
-            TOTAL=${TOTAL_TESTS:-$TOTAL_FILES}
-          fi
+          # Vitest output: "      Tests  136 passed (136)" or "      Tests  5 failed | 131 passed (136)"
+          TESTS_LINE=$(echo "$CLEAN" | grep '^\s*Tests\s' | grep -v 'Test Files' | tail -1)
+          # Total is in parentheses at end: (136)
+          TOTAL=$(echo "$TESTS_LINE" | grep -oP '\(\d+\)' | grep -oP '\d+' || echo "0")
+          PASSED=$(echo "$TESTS_LINE" | grep -oP '(\d+)\s+passed' | grep -oP '\d+' || echo "0")
+          FAILED=$(echo "$TESTS_LINE" | grep -oP '(\d+)\s+failed' | grep -oP '\d+' || echo "0")
 
           if [ "$TOTAL" -gt 0 ] 2>/dev/null; then
             PCT=$(( PASSED * 100 / TOTAL ))
@@ -164,9 +165,14 @@ jobs:
           EXIT_CODE=$?
           echo "$OUTPUT"
 
-          TOTAL=$(echo "$OUTPUT" | grep -oP 'Tests:\s+.*?(\d+)\s+total' | grep -oP '\d+\s+total' | grep -oP '^\d+' || echo "0")
-          PASSED=$(echo "$OUTPUT" | grep -oP '(\d+)\s+passed' | grep -oP '^\d+' || echo "0")
-          FAILED=$(echo "$OUTPUT" | grep -oP '(\d+)\s+failed' | grep -oP '^\d+' || echo "0")
+          # Strip ANSI color codes for reliable parsing
+          CLEAN=$(echo "$OUTPUT" | sed 's/\x1b\[[0-9;]*m//g')
+
+          # Jest output: "Tests:       2 failed, 159 passed, 161 total"
+          TESTS_LINE=$(echo "$CLEAN" | grep 'Tests:' | tail -1)
+          TOTAL=$(echo "$TESTS_LINE" | grep -oP '(\d+)\s+total' | grep -oP '\d+' || echo "0")
+          PASSED=$(echo "$TESTS_LINE" | grep -oP '(\d+)\s+passed' | grep -oP '\d+' || echo "0")
+          FAILED=$(echo "$TESTS_LINE" | grep -oP '(\d+)\s+failed' | grep -oP '\d+' || echo "0")
 
           if [ "$TOTAL" -gt 0 ] 2>/dev/null; then
             PCT=$(( PASSED * 100 / TOTAL ))
@@ -196,19 +202,15 @@ jobs:
           EXIT_CODE=$?
           echo "$OUTPUT"
 
-          TOTAL=$(echo "$OUTPUT" | grep -oP 'Tests\s+(\d+)\s+(passed|failed)' | head -1 | grep -oP '^\d+' || echo "0")
-          PASSED_LINE=$(echo "$OUTPUT" | grep -i "tests.*passed" || true)
-          FAILED_LINE=$(echo "$OUTPUT" | grep -i "tests.*failed" || true)
+          # Strip ANSI color codes for reliable parsing
+          CLEAN=$(echo "$OUTPUT" | sed 's/\x1b\[[0-9;]*m//g')
 
-          TOTAL=$(echo "$OUTPUT" | grep -oP '\d+(?=\s+test(s)?\s+(passed|failed|total))' | tail -1 || echo "0")
-          PASSED=$(echo "$OUTPUT" | grep -oP '\d+(?=\s+passed)' | tail -1 || echo "0")
-          FAILED=$(echo "$OUTPUT" | grep -oP '\d+(?=\s+failed)' | tail -1 || echo "0")
-
-          if [ -z "$TOTAL" ] || [ "$TOTAL" = "0" ]; then
-            TOTAL_FILES=$(echo "$OUTPUT" | grep -oP '\d+(?=\s+test files?)' | tail -1 || echo "0")
-            TOTAL_TESTS=$(echo "$OUTPUT" | grep -oP '\d+(?=\s+tests?)' | tail -1 || echo "0")
-            TOTAL=${TOTAL_TESTS:-$TOTAL_FILES}
-          fi
+          # Vitest output: "      Tests  136 passed (136)" or "      Tests  5 failed | 131 passed (136)"
+          TESTS_LINE=$(echo "$CLEAN" | grep '^\s*Tests\s' | grep -v 'Test Files' | tail -1)
+          # Total is in parentheses at end: (136)
+          TOTAL=$(echo "$TESTS_LINE" | grep -oP '\(\d+\)' | grep -oP '\d+' || echo "0")
+          PASSED=$(echo "$TESTS_LINE" | grep -oP '(\d+)\s+passed' | grep -oP '\d+' || echo "0")
+          FAILED=$(echo "$TESTS_LINE" | grep -oP '(\d+)\s+failed' | grep -oP '\d+' || echo "0")
 
           if [ "$TOTAL" -gt 0 ] 2>/dev/null; then
             PCT=$(( PASSED * 100 / TOTAL ))
