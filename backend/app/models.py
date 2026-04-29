@@ -62,6 +62,7 @@ class Interview(Base):
     status = Column(String(50), default=InterviewStatus.SCHEDULED)
     meeting_link = Column(String(500), nullable=True)
     notes = Column(Text, nullable=True)
+    panel_id = Column(Integer, ForeignKey("panels.id"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -71,6 +72,7 @@ class Interview(Base):
     candidate = relationship(
         "User", back_populates="interviews_as_candidate", foreign_keys=[candidate_id]
     )
+    panel = relationship("Panel", back_populates="interviews")
     interview_questions = relationship("InterviewQuestion", back_populates="interview")
     feedbacks = relationship("Feedback", back_populates="interview")
     code_submissions = relationship("CodeSubmission", back_populates="interview")
@@ -138,3 +140,27 @@ class CodeSubmission(Base):
     submitted_at = Column(DateTime, default=datetime.utcnow)
 
     interview = relationship("Interview", back_populates="code_submissions")
+
+
+class Panel(Base):
+    __tablename__ = "panels"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(255), nullable=False)
+    description = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    members = relationship("PanelMember", back_populates="panel", cascade="all, delete-orphan")
+    interviews = relationship("Interview", back_populates="panel")
+
+
+class PanelMember(Base):
+    __tablename__ = "panel_members"
+
+    id = Column(Integer, primary_key=True, index=True)
+    panel_id = Column(Integer, ForeignKey("panels.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    role_in_panel = Column(String(50), default="member")
+
+    panel = relationship("Panel", back_populates="members")
+    user = relationship("User")

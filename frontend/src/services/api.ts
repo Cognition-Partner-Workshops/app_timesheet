@@ -84,4 +84,24 @@ export const submitCode = (data: any) =>
 export const getSubmissions = (interviewId: number) =>
   api.get(`/api/code/submissions/${interviewId}`);
 
+// Users (create)
+export const createUser = (data: any) =>
+  api.post('/api/users/', data);
+
+// Panels
+export const getPanels = () =>
+  api.get('/api/panels/');
+
+export const getPanel = (id: number) =>
+  api.get(`/api/panels/${id}`);
+
+export const createPanel = (data: any) =>
+  api.post('/api/panels/', data);
+
+export const updatePanel = (id: number, data: any) =>
+  api.put(`/api/panels/${id}`, data);
+
+export const deletePanel = (id: number) =>
+  api.delete(`/api/panels/${id}`);
+
 export default api;

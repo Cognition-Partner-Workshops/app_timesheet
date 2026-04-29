@@ -83,6 +83,7 @@ class InterviewBase(BaseModel):
     duration_minutes: int = 60
     meeting_link: Optional[str] = None
     notes: Optional[str] = None
+    panel_id: Optional[int] = None
 
 
 class InterviewCreate(InterviewBase):
@@ -167,6 +168,44 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     email: Optional[str] = None
+
+
+# Panel schemas
+class PanelMemberBase(BaseModel):
+    user_id: int
+    role_in_panel: str = "member"
+
+
+class PanelMemberResponse(PanelMemberBase):
+    id: int
+    user: Optional[UserResponse] = None
+
+    class Config:
+        from_attributes = True
+
+
+class PanelBase(BaseModel):
+    name: str
+    description: Optional[str] = None
+
+
+class PanelCreate(PanelBase):
+    member_ids: Optional[List[int]] = None
+
+
+class PanelResponse(PanelBase):
+    id: int
+    created_at: datetime
+    members: Optional[List[PanelMemberResponse]] = None
+
+    class Config:
+        from_attributes = True
+
+
+class PanelUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    member_ids: Optional[List[int]] = None
 
 
 # Dashboard stats

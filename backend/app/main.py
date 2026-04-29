@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import engine, Base
-from app.routers import auth, users, interviews, questions, feedback, code, dashboard
+from app.routers import auth, users, interviews, questions, feedback, code, dashboard, panels
 from app.seed import seed_database
 
 Base.metadata.create_all(bind=engine)
@@ -28,6 +28,7 @@ app.include_router(questions.router)
 app.include_router(feedback.router)
 app.include_router(code.router)
 app.include_router(dashboard.router)
+app.include_router(panels.router)
 
 
 @app.on_event("startup")

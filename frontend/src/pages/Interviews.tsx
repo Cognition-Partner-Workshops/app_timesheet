@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box, Typography, Card, CardContent, Grid, Button, Chip, Avatar,
   Dialog, DialogTitle, DialogContent, DialogActions, TextField,
   MenuItem, IconButton, Tooltip, Tab, Tabs, Select,
-  FormControl, InputLabel, InputAdornment,
+  FormControl, InputLabel, InputAdornment, Alert, Snackbar,
 } from '@mui/material';
 import {
   Add as AddIcon, Search as SearchIcon,
@@ -11,8 +12,10 @@ import {
   Cancel as CancelIcon, AccessTime as TimeIcon,
   Delete as DeleteIcon,
   CalendarMonth as CalendarIcon,
+  VideoCall as VideoCallIcon,
+  Groups as GroupsIcon,
 } from '@mui/icons-material';
-import { getInterviews, createInterview, updateInterview, deleteInterview, getUsers } from '../services/api';
+import { getInterviews, createInterview, updateInterview, deleteInterview, getUsers, getPanels } from '../services/api';
 
 interface Interview {
   id: number;
@@ -22,6 +25,7 @@ interface Interview {
   scheduled_at: string;
   duration_minutes: number;
   meeting_link: string;
+  panel_id: number | null;
   interviewer?: { id: number; full_name: string; email: string };
   candidate?: { id: number; full_name: string; email: string };
 }
@@ -33,13 +37,23 @@ interface User {
   role: string;
 }
 
+interface Panel {
+  id: number;
+  name: string;
+  description: string;
+  members: { user: { full_name: string } }[];
+}
+
 const Interviews: React.FC = () => {
+  const navigate = useNavigate();
   const [interviews, setInterviews] = useState<Interview[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [panels, setPanels] = useState<Panel[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [activeTab, setActiveTab] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
 
   const [form, setForm] = useState({
     title: '',
@@ -49,6 +63,7 @@ const Interviews: React.FC = () => {
     scheduled_at: '',
     duration_minutes: 60,
     meeting_link: '',
+    panel_id: '',
   });
 
   useEffect(() => {
@@ -57,12 +72,14 @@ const Interviews: React.FC = () => {
 
   const fetchData = async () => {
     try {
-      const [interviewsRes, usersRes] = await Promise.all([
+      const [interviewsRes, usersRes, panelsRes] = await Promise.all([
         getInterviews(),
         getUsers(),
+        getPanels(),
       ]);
       setInterviews(interviewsRes.data);
       setUsers(usersRes.data);
+      setPanels(panelsRes.data);
     } catch (err) {
       console.error(err);
     } finally {
@@ -76,15 +93,21 @@ const Interviews: React.FC = () => {
         ...form,
         interviewer_id: Number(form.interviewer_id),
         candidate_id: Number(form.candidate_id),
+        panel_id: form.panel_id ? Number(form.panel_id) : null,
       });
       setDialogOpen(false);
       setForm({
         title: '', description: '', interviewer_id: '', candidate_id: '',
-        scheduled_at: '', duration_minutes: 60, meeting_link: '',
+        scheduled_at: '', duration_minutes: 60, meeting_link: '', panel_id: '',
       });
+      setSnackbar({ open: true, message: 'Interview scheduled successfully!', severity: 'success' });
       fetchData();
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      setSnackbar({
+        open: true,
+        message: err.response?.data?.detail || 'Failed to schedule interview',
+        severity: 'error',
+      });
     }
   };
 
@@ -106,6 +129,15 @@ const Interviews: React.FC = () => {
         console.error(err);
       }
     }
+  };
+
+  const handleJoinCall = (interview: Interview) => {
+    const params = new URLSearchParams({
+      title: interview.title,
+      candidate: interview.candidate?.full_name || 'Candidate',
+      interviewer: interview.interviewer?.full_name || 'Interviewer',
+    });
+    navigate(`/video-call?${params.toString()}`);
   };
 
   const statusTabs = ['all', 'scheduled', 'in_progress', 'completed', 'cancelled'];
@@ -134,6 +166,12 @@ const Interviews: React.FC = () => {
       weekday: 'short', month: 'short', day: 'numeric',
       hour: '2-digit', minute: '2-digit',
     });
+  };
+
+  const getPanelName = (panelId: number | null) => {
+    if (!panelId) return null;
+    const panel = panels.find(p => p.id === panelId);
+    return panel?.name || null;
   };
 
   return (
@@ -199,6 +237,7 @@ const Interviews: React.FC = () => {
       <Grid container spacing={3}>
         {filteredInterviews.map((interview) => {
           const config = getStatusConfig(interview.status);
+          const panelName = getPanelName(interview.panel_id);
           return (
             <Grid size={{ xs: 12, md: 6, lg: 4 }} key={interview.id}>
               <Card sx={{
@@ -209,17 +248,38 @@ const Interviews: React.FC = () => {
                 <CardContent sx={{ p: 3 }}>
                   {/* Status & Actions */}
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-                    <Chip
-                      icon={config.icon}
-                      label={interview.status.replace('_', ' ')}
-                      size="small"
-                      sx={{
-                        bgcolor: config.bg, color: config.color,
-                        fontWeight: 600, textTransform: 'capitalize',
-                        '& .MuiChip-icon': { color: config.color },
-                      }}
-                    />
+                    <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                      <Chip
+                        icon={config.icon}
+                        label={interview.status.replace('_', ' ')}
+                        size="small"
+                        sx={{
+                          bgcolor: config.bg, color: config.color,
+                          fontWeight: 600, textTransform: 'capitalize',
+                          '& .MuiChip-icon': { color: config.color },
+                        }}
+                      />
+                      {panelName && (
+                        <Chip
+                          icon={<GroupsIcon sx={{ fontSize: 14 }} />}
+                          label={panelName}
+                          size="small"
+                          sx={{ bgcolor: '#f0fdf4', color: '#16a34a', fontWeight: 600, fontSize: '0.7rem' }}
+                        />
+                      )}
+                    </Box>
                     <Box>
+                      {(interview.status === 'scheduled' || interview.status === 'in_progress') && (
+                        <Tooltip title="Join Video Call">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleJoinCall(interview)}
+                            sx={{ color: '#6366f1' }}
+                          >
+                            <VideoCallIcon fontSize="small" />
+                          </IconButton>
+                        </Tooltip>
+                      )}
                       {interview.status === 'scheduled' && (
                         <Tooltip title="Start Interview">
                           <IconButton
@@ -318,6 +378,23 @@ const Interviews: React.FC = () => {
                       </Typography>
                     </Box>
                   </Box>
+
+                  {/* Join Call Button */}
+                  {(interview.status === 'scheduled' || interview.status === 'in_progress') && (
+                    <Button
+                      fullWidth
+                      variant="outlined"
+                      startIcon={<VideoCallIcon />}
+                      onClick={() => handleJoinCall(interview)}
+                      sx={{
+                        mt: 2, borderColor: '#6366f1', color: '#6366f1',
+                        fontWeight: 600,
+                        '&:hover': { bgcolor: '#6366f1', color: '#fff', borderColor: '#6366f1' },
+                      }}
+                    >
+                      Join Video Call
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
             </Grid>
@@ -376,6 +453,21 @@ const Interviews: React.FC = () => {
               ))}
             </Select>
           </FormControl>
+          <FormControl fullWidth margin="dense">
+            <InputLabel>Interview Panel (Optional)</InputLabel>
+            <Select
+              value={form.panel_id}
+              label="Interview Panel (Optional)"
+              onChange={(e) => setForm({ ...form, panel_id: e.target.value as string })}
+            >
+              <MenuItem value="">None</MenuItem>
+              {panels.map(p => (
+                <MenuItem key={p.id} value={p.id}>
+                  {p.name} ({p.members.length} members)
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
           <TextField
             fullWidth label="Scheduled At" type="datetime-local" margin="dense"
             value={form.scheduled_at}
@@ -402,6 +494,22 @@ const Interviews: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Snackbar */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert
+          severity={snackbar.severity}
+          onClose={() => setSnackbar({ ...snackbar, open: false })}
+          sx={{ borderRadius: 2 }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

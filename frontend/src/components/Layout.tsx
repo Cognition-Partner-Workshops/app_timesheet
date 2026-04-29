@@ -10,6 +10,7 @@ import {
   Event as EventIcon,
   QuestionAnswer as QuestionIcon,
   People as PeopleIcon,
+  Groups as GroupsIcon,
   Code as CodeIcon,
   Assessment as AssessmentIcon,
   Notifications as NotificationsIcon,
@@ -27,6 +28,7 @@ const menuItems = [
   { text: 'Interviews', icon: <EventIcon />, path: '/interviews' },
   { text: 'Questions', icon: <QuestionIcon />, path: '/questions' },
   { text: 'Candidates', icon: <PeopleIcon />, path: '/candidates' },
+  { text: 'Panels', icon: <GroupsIcon />, path: '/panels' },
   { text: 'Code Editor', icon: <CodeIcon />, path: '/code-editor' },
   { text: 'Reports', icon: <AssessmentIcon />, path: '/reports' },
 ];

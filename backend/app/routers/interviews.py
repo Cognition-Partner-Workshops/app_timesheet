@@ -66,6 +66,7 @@ def create_interview(data: InterviewCreate, db: Session = Depends(get_db)):
         duration_minutes=data.duration_minutes,
         meeting_link=data.meeting_link,
         notes=data.notes,
+        panel_id=data.panel_id,
     )
     db.add(interview)
     db.commit()

@@ -2,7 +2,7 @@
 from datetime import datetime, timedelta
 
 from app.database import SessionLocal, engine, Base
-from app.models import User, Question, Interview, Feedback
+from app.models import User, Question, Interview, Feedback, Panel, PanelMember
 from app.auth import get_password_hash
 
 
@@ -242,6 +242,38 @@ def seed_database():
     ]
     for f in feedbacks:
         db.add(f)
+    db.commit()
+
+    # Create panels
+    panels = [
+        Panel(
+            name="Frontend Engineering Panel",
+            description="Panel for evaluating frontend engineering candidates on React, JavaScript, CSS, and UI/UX skills",
+        ),
+        Panel(
+            name="Backend Engineering Panel",
+            description="Panel for evaluating backend engineering candidates on Python, APIs, databases, and system design",
+        ),
+        Panel(
+            name="Full Stack Panel",
+            description="Cross-functional panel for evaluating full stack developer candidates",
+        ),
+    ]
+    for p in panels:
+        db.add(p)
+    db.commit()
+
+    # Add panel members
+    panel_members = [
+        PanelMember(panel_id=1, user_id=1, role_in_panel="lead"),
+        PanelMember(panel_id=1, user_id=2, role_in_panel="member"),
+        PanelMember(panel_id=2, user_id=1, role_in_panel="lead"),
+        PanelMember(panel_id=2, user_id=3, role_in_panel="member"),
+        PanelMember(panel_id=3, user_id=2, role_in_panel="member"),
+        PanelMember(panel_id=3, user_id=3, role_in_panel="member"),
+    ]
+    for pm in panel_members:
+        db.add(pm)
     db.commit()
 
     db.close()

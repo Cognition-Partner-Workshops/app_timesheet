@@ -8,8 +8,10 @@ import Dashboard from './pages/Dashboard';
 import Interviews from './pages/Interviews';
 import Questions from './pages/Questions';
 import Candidates from './pages/Candidates';
+import Panels from './pages/Panels';
 import CodeEditor from './pages/CodeEditor';
 import Reports from './pages/Reports';
+import VideoCall from './pages/VideoCall';
 
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const token = localStorage.getItem('token');
@@ -38,8 +40,10 @@ const App: React.FC = () => {
             <Route path="interviews" element={<Interviews />} />
             <Route path="questions" element={<Questions />} />
             <Route path="candidates" element={<Candidates />} />
+            <Route path="panels" element={<Panels />} />
             <Route path="code-editor" element={<CodeEditor />} />
             <Route path="reports" element={<Reports />} />
+            <Route path="video-call" element={<VideoCall />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

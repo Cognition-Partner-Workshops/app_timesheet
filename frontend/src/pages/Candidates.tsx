@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import {
   Box, Typography, Card, CardContent, Grid, Avatar, Chip,
-  TextField, InputAdornment, Button,
+  TextField, InputAdornment, Button, Dialog, DialogTitle,
+  DialogContent, DialogActions, MenuItem, Alert, Snackbar,
 } from '@mui/material';
 import {
   Search as SearchIcon, Email as EmailIcon, Phone as PhoneIcon,
   PersonAdd as PersonAddIcon,
 } from '@mui/icons-material';
-import { getUsers, getInterviews } from '../services/api';
+import { getUsers, getInterviews, createUser } from '../services/api';
 
 interface User {
   id: number;
@@ -29,22 +30,44 @@ const Candidates: React.FC = () => {
   const [candidates, setCandidates] = useState<User[]>([]);
   const [interviews, setInterviews] = useState<Interview[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
+  const [form, setForm] = useState({
+    full_name: '', email: '', password: 'password123', role: 'candidate', phone: '',
+  });
+
+  const fetchData = async () => {
+    try {
+      const [usersRes, interviewsRes] = await Promise.all([
+        getUsers('candidate'),
+        getInterviews(),
+      ]);
+      setCandidates(usersRes.data);
+      setInterviews(interviewsRes.data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [usersRes, interviewsRes] = await Promise.all([
-          getUsers('candidate'),
-          getInterviews(),
-        ]);
-        setCandidates(usersRes.data);
-        setInterviews(interviewsRes.data);
-      } catch (err) {
-        console.error(err);
-      }
-    };
     fetchData();
   }, []);
+
+  const handleCreateCandidate = async () => {
+    try {
+      await createUser(form);
+      setDialogOpen(false);
+      setForm({ full_name: '', email: '', password: 'password123', role: 'candidate', phone: '' });
+      setSnackbar({ open: true, message: 'Candidate added successfully!', severity: 'success' });
+      fetchData();
+    } catch (err: any) {
+      setSnackbar({
+        open: true,
+        message: err.response?.data?.detail || 'Failed to add candidate',
+        severity: 'error',
+      });
+    }
+  };
 
   const getCandidateInterviews = (candidateId: number) => {
     return interviews.filter(i => i.candidate_id === candidateId);
@@ -79,7 +102,12 @@ const Candidates: React.FC = () => {
             Track and manage all candidates in your pipeline
           </Typography>
         </Box>
-        <Button variant="contained" startIcon={<PersonAddIcon />}>
+        <Button
+          variant="contained"
+          startIcon={<PersonAddIcon />}
+          onClick={() => setDialogOpen(true)}
+          sx={{ px: 3, py: 1.2 }}
+        >
           Add Candidate
         </Button>
       </Box>
@@ -207,8 +235,75 @@ const Candidates: React.FC = () => {
           <Typography variant="h6" sx={{ color: 'text.secondary' }}>
             No candidates found
           </Typography>
+          <Typography variant="body2" sx={{ color: 'text.secondary', mt: 1 }}>
+            Add your first candidate to get started
+          </Typography>
         </Box>
       )}
+
+      {/* Add Candidate Dialog */}
+      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700, pb: 1 }}>Add New Candidate</DialogTitle>
+        <DialogContent sx={{ pt: '16px !important' }}>
+          <TextField
+            fullWidth label="Full Name" margin="dense" required
+            value={form.full_name}
+            onChange={(e) => setForm({ ...form, full_name: e.target.value })}
+          />
+          <TextField
+            fullWidth label="Email Address" margin="dense" type="email" required
+            value={form.email}
+            onChange={(e) => setForm({ ...form, email: e.target.value })}
+          />
+          <TextField
+            fullWidth label="Phone Number" margin="dense"
+            value={form.phone}
+            onChange={(e) => setForm({ ...form, phone: e.target.value })}
+          />
+          <TextField
+            fullWidth label="Role" margin="dense" select
+            value={form.role}
+            onChange={(e) => setForm({ ...form, role: e.target.value })}
+          >
+            <MenuItem value="candidate">Candidate</MenuItem>
+            <MenuItem value="interviewer">Interviewer</MenuItem>
+          </TextField>
+          <TextField
+            fullWidth label="Password" margin="dense" type="password"
+            value={form.password}
+            onChange={(e) => setForm({ ...form, password: e.target.value })}
+            helperText="Default password for the new account"
+          />
+        </DialogContent>
+        <DialogActions sx={{ p: 2, pt: 1 }}>
+          <Button onClick={() => setDialogOpen(false)} sx={{ color: 'text.secondary' }}>
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleCreateCandidate}
+            disabled={!form.full_name || !form.email}
+          >
+            Add Candidate
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Snackbar */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+      >
+        <Alert
+          severity={snackbar.severity}
+          onClose={() => setSnackbar({ ...snackbar, open: false })}
+          sx={{ borderRadius: 2 }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

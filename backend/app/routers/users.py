@@ -4,7 +4,8 @@ from typing import List
 
 from app.database import get_db
 from app.models import User
-from app.schemas import UserResponse, UserUpdate
+from app.schemas import UserResponse, UserUpdate, UserCreate
+from app.auth import get_password_hash
 
 router = APIRouter(prefix="/api/users", tags=["Users"])
 
@@ -15,6 +16,26 @@ def get_users(role: str = None, db: Session = Depends(get_db)):
     if role:
         query = query.filter(User.role == role)
     return query.all()
+
+
+@router.post("/", response_model=UserResponse)
+def create_user(user_data: UserCreate, db: Session = Depends(get_db)):
+    existing = db.query(User).filter(User.email == user_data.email).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already registered")
+
+    user = User(
+        email=user_data.email,
+        hashed_password=get_password_hash(user_data.password),
+        full_name=user_data.full_name,
+        role=user_data.role,
+        phone=user_data.phone,
+        avatar_url=user_data.avatar_url,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
 
 
 @router.get("/{user_id}", response_model=UserResponse)
