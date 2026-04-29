@@ -28,7 +28,13 @@ const Login: React.FC = () => {
       localStorage.setItem('user', JSON.stringify({ email }));
       navigate('/');
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Login failed. Please try again.');
+      if (err.response) {
+        setError(err.response.data?.detail || 'Invalid credentials. Please try again.');
+      } else if (err.request) {
+        setError('Cannot connect to the backend server. Make sure the backend is running on http://localhost:8000');
+      } else {
+        setError('Login failed. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
