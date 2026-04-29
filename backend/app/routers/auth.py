@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import User
 from app.schemas import UserCreate, UserLogin, UserResponse, Token
-from app.auth import verify_password, get_password_hash, create_access_token
+from app.auth import verify_password, get_password_hash, create_access_token, oauth2_scheme
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
@@ -44,11 +44,20 @@ def login(user_data: UserLogin, db: Session = Depends(get_db)):
 @router.get("/me", response_model=UserResponse)
 def get_me(
     db: Session = Depends(get_db),
-    token: str = Depends(__import__("app.auth", fromlist=["oauth2_scheme"]).oauth2_scheme),
+    token: str = Depends(oauth2_scheme),
 ):
-    from app.auth import get_current_user
-    import asyncio
-    user = asyncio.get_event_loop().run_until_complete(get_current_user(token, db))
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    try:
+        from jose import jwt
+        from app.auth import SECRET_KEY, ALGORITHM
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email = payload.get("sub")
+        if not email:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+    except Exception:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    user = db.query(User).filter(User.email == email).first()
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
     return user
