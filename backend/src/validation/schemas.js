@@ -11,7 +11,7 @@ const workEntrySchema = Joi.object({
   clientId: Joi.number().integer().positive().required(),
   hours: Joi.number().positive().max(24).precision(2).required(),
   description: Joi.string().trim().max(1000).optional().allow(''),
-  date: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).required().messages({
+  date: Joi.string().pattern(/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/).required().messages({
     'string.pattern.base': 'Date must be in YYYY-MM-DD format'
   })
 });
@@ -20,7 +20,7 @@ const updateWorkEntrySchema = Joi.object({
   clientId: Joi.number().integer().positive().optional(),
   hours: Joi.number().positive().max(24).precision(2).optional(),
   description: Joi.string().trim().max(1000).optional().allow(''),
-  date: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional().messages({
+  date: Joi.string().pattern(/^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/).optional().messages({
     'string.pattern.base': 'Date must be in YYYY-MM-DD format'
   })
 }).min(1); // At least one field must be provided
