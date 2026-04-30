@@ -7,12 +7,14 @@ import {
   Box,
   Button,
   Paper,
+  Alert,
 } from '@mui/material';
 import {
   Business as BusinessIcon,
   Assignment as AssignmentIcon,
   Assessment as AssessmentIcon,
   Add as AddIcon,
+  WavingHand as WavingHandIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -63,6 +65,25 @@ const DashboardPage: React.FC = () => {
 
   return (
     <Box>
+      <Alert
+        severity="info"
+        icon={<WavingHandIcon fontSize="inherit" />}
+        sx={{
+          mb: 3,
+          background: 'linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%)',
+          border: '1px solid #bbdefb',
+          borderRadius: 2,
+          '& .MuiAlert-message': { width: '100%' },
+        }}
+      >
+        <Typography variant="h6" sx={{ fontWeight: 600 }}>
+          Welcome to Time Tracker!
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          Track your work hours, manage clients, and generate reports — all in one place.
+        </Typography>
+      </Alert>
+
       <Typography variant="h4" gutterBottom>
         Dashboard
       </Typography>
