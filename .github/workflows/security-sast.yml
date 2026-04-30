@@ -77,7 +77,7 @@ jobs:
             exit 1
           elif [ "$HIGH" -gt 0 ]; then
             echo "::warning::Found $HIGH high vulnerabilities in backend dependencies (non-blocking)"
-            npm audit
+            npm audit || true
           else
             echo "No high/critical vulnerabilities found in backend."
           fi
