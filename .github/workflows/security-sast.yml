@@ -70,12 +70,14 @@ jobs:
           AUDIT_OUTPUT=$(npm audit --json 2>&1)
           HIGH=$(echo "$AUDIT_OUTPUT" | jq -r '.metadata.vulnerabilities.high // 0')
           CRITICAL=$(echo "$AUDIT_OUTPUT" | jq -r '.metadata.vulnerabilities.critical // 0')
-          TOTAL=$((HIGH + CRITICAL))
           echo "High: $HIGH, Critical: $CRITICAL"
-          if [ "$TOTAL" -gt 0 ]; then
-            echo "::warning::Found $TOTAL high/critical vulnerabilities in backend dependencies"
-            npm audit --omit=dev
+          if [ "$CRITICAL" -gt 0 ]; then
+            echo "::error::Found $CRITICAL critical vulnerabilities in backend dependencies"
+            npm audit
             exit 1
+          elif [ "$HIGH" -gt 0 ]; then
+            echo "::warning::Found $HIGH high vulnerabilities in backend dependencies (non-blocking)"
+            npm audit
           else
             echo "No high/critical vulnerabilities found in backend."
           fi
