@@ -38,7 +38,7 @@ const projectSchema = Joi.object({
 
 const updateProjectSchema = Joi.object({
   name: Joi.string().trim().min(1).max(255).optional(),
-  description: Joi.string().trim().max(1000).optional().allow(''),
+  description: Joi.string().trim().max(1000).optional().allow('', null),
   clientId: Joi.number().integer().positive().optional().allow(null),
   startDate: Joi.date().iso().optional().allow(null),
   status: Joi.string().trim().valid('active', 'completed', 'on-hold').optional()
