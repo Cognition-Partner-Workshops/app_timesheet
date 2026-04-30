@@ -132,12 +132,18 @@ describe('Project Routes', () => {
       const newProject = { name: 'New Project', description: 'New Description', clientId: 1, startDate: '2024-06-01', status: 'active' };
       const createdProject = { id: 1, name: 'New Project', description: 'New Description', client_id: 1, start_date: '2024-06-01', status: 'active', client_name: 'Client A', created_at: '2024-01-01', updated_at: '2024-01-01' };
 
+      // First get: client ownership check
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, { id: 1 });
+      });
+
       mockDb.run.mockImplementation(function(query, params, callback) {
         this.lastID = 1;
         callback.call(this, null);
       });
 
-      mockDb.get.mockImplementation((query, params, callback) => {
+      // Second get: retrieve created project
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
         callback(null, createdProject);
       });
 
@@ -184,6 +190,19 @@ describe('Project Routes', () => {
         .send({ name: '' });
 
       expect(response.status).toBe(400);
+    });
+
+    test('should return 400 if client not found', async () => {
+      mockDb.get.mockImplementation((query, params, callback) => {
+        callback(null, null);
+      });
+
+      const response = await request(app)
+        .post('/api/projects')
+        .send({ name: 'Test Project', clientId: 999 });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({ error: 'Client not found' });
     });
 
     test('should return 400 for invalid status', async () => {
@@ -274,14 +293,21 @@ describe('Project Routes', () => {
     test('should update multiple fields', async () => {
       const updatedProject = { id: 1, name: 'New Name', description: 'New Desc', status: 'on-hold', client_id: 2 };
 
+      // First get: project existence check
       mockDb.get.mockImplementationOnce((query, params, callback) => {
         callback(null, { id: 1 });
+      });
+
+      // Second get: client ownership check
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, { id: 2 });
       });
 
       mockDb.run.mockImplementation((query, params, callback) => {
         callback(null);
       });
 
+      // Third get: retrieve updated project
       mockDb.get.mockImplementationOnce((query, params, callback) => {
         callback(null, updatedProject);
       });
@@ -292,6 +318,25 @@ describe('Project Routes', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.project).toEqual(updatedProject);
+    });
+
+    test('should return 400 if client not found during update', async () => {
+      // First get: project existence check
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, { id: 1 });
+      });
+
+      // Second get: client ownership check - not found
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, null);
+      });
+
+      const response = await request(app)
+        .put('/api/projects/1')
+        .send({ clientId: 999 });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({ error: 'Client not found' });
     });
 
     test('should return 404 if project not found', async () => {

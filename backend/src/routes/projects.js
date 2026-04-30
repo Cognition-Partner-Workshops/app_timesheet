@@ -72,10 +72,11 @@ router.post('/', (req, res, next) => {
     const { name, description, clientId, startDate, status } = value;
     const db = getDatabase();
 
-    db.run(
-      'INSERT INTO projects (name, description, client_id, start_date, status, user_email) VALUES (?, ?, ?, ?, ?, ?)',
-      [name, description || null, clientId || null, startDate || null, status, req.userEmail],
-      function(err) {
+    const insertProject = () => {
+      db.run(
+        'INSERT INTO projects (name, description, client_id, start_date, status, user_email) VALUES (?, ?, ?, ?, ?, ?)',
+        [name, description || null, clientId || null, startDate || null, status, req.userEmail],
+        function(err) {
         if (err) {
           console.error('Database error:', err);
           return res.status(500).json({ error: 'Failed to create project' });
@@ -102,6 +103,26 @@ router.post('/', (req, res, next) => {
         );
       }
     );
+    };
+
+    if (clientId) {
+      db.get(
+        'SELECT id FROM clients WHERE id = ? AND user_email = ?',
+        [clientId, req.userEmail],
+        (err, row) => {
+          if (err) {
+            console.error('Database error:', err);
+            return res.status(500).json({ error: 'Internal server error' });
+          }
+          if (!row) {
+            return res.status(400).json({ error: 'Client not found' });
+          }
+          insertProject();
+        }
+      );
+    } else {
+      insertProject();
+    }
   } catch (error) {
     next(error);
   }
@@ -137,41 +158,42 @@ router.put('/:id', (req, res, next) => {
           return res.status(404).json({ error: 'Project not found' });
         }
 
-        // Build update query dynamically
-        const updates = [];
-        const values = [];
+        const performUpdate = () => {
+          // Build update query dynamically
+          const updates = [];
+          const values = [];
 
-        if (value.name !== undefined) {
-          updates.push('name = ?');
-          values.push(value.name);
-        }
+          if (value.name !== undefined) {
+            updates.push('name = ?');
+            values.push(value.name);
+          }
 
-        if (value.description !== undefined) {
-          updates.push('description = ?');
-          values.push(value.description || null);
-        }
+          if (value.description !== undefined) {
+            updates.push('description = ?');
+            values.push(value.description || null);
+          }
 
-        if (value.clientId !== undefined) {
-          updates.push('client_id = ?');
-          values.push(value.clientId || null);
-        }
+          if (value.clientId !== undefined) {
+            updates.push('client_id = ?');
+            values.push(value.clientId || null);
+          }
 
-        if (value.startDate !== undefined) {
-          updates.push('start_date = ?');
-          values.push(value.startDate || null);
-        }
+          if (value.startDate !== undefined) {
+            updates.push('start_date = ?');
+            values.push(value.startDate || null);
+          }
 
-        if (value.status !== undefined) {
-          updates.push('status = ?');
-          values.push(value.status);
-        }
+          if (value.status !== undefined) {
+            updates.push('status = ?');
+            values.push(value.status);
+          }
 
-        updates.push('updated_at = CURRENT_TIMESTAMP');
-        values.push(projectId, req.userEmail);
+          updates.push('updated_at = CURRENT_TIMESTAMP');
+          values.push(projectId, req.userEmail);
 
-        const query = `UPDATE projects SET ${updates.join(', ')} WHERE id = ? AND user_email = ?`;
+          const query = `UPDATE projects SET ${updates.join(', ')} WHERE id = ? AND user_email = ?`;
 
-        db.run(query, values, function(err) {
+          db.run(query, values, function(err) {
           if (err) {
             console.error('Database error:', err);
             return res.status(500).json({ error: 'Failed to update project' });
@@ -197,6 +219,26 @@ router.put('/:id', (req, res, next) => {
             }
           );
         });
+        };
+
+        if (value.clientId !== undefined && value.clientId !== null) {
+          db.get(
+            'SELECT id FROM clients WHERE id = ? AND user_email = ?',
+            [value.clientId, req.userEmail],
+            (err, clientRow) => {
+              if (err) {
+                console.error('Database error:', err);
+                return res.status(500).json({ error: 'Internal server error' });
+              }
+              if (!clientRow) {
+                return res.status(400).json({ error: 'Client not found' });
+              }
+              performUpdate();
+            }
+          );
+        } else {
+          performUpdate();
+        }
       }
     );
   } catch (error) {
