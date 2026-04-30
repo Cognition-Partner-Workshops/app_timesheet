@@ -2,6 +2,20 @@
 
 A full-stack web application for tracking and reporting employee hourly work across different clients.
 
+## Quick Start
+
+Run both the backend and frontend in development mode:
+
+```bash
+# Backend
+cd backend && npm install && cp -n .env.example .env && npm run dev
+
+# Frontend (in a separate terminal)
+cd frontend && npm install && cp -n .env.example .env && npm run dev
+```
+
+Then open [http://localhost:5173](http://localhost:5173) in your browser.
+
 ## ⚠️ Important Notes
 
 ### Data Persistence
