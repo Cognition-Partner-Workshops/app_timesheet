@@ -275,7 +275,7 @@ router.get('/hours-summary', (req, res) => {
            WHERE user_email = ?`;
   }
 
-  if (clientId) {
+  if (clientId !== null) {
     sql += ' AND client_id = ?';
     params.push(clientId);
   }

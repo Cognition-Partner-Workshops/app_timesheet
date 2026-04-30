@@ -136,7 +136,7 @@ class ApiClient {
   // Hours summary
   async getHoursSummary(granularity: 'daily' | 'monthly' | 'yearly' = 'daily', clientId?: number) {
     const params: Record<string, string | number> = { granularity };
-    if (clientId) params.clientId = clientId;
+    if (clientId !== undefined) params.clientId = clientId;
     const response = await this.client.get('/api/reports/hours-summary', { params });
     return response.data;
   }
