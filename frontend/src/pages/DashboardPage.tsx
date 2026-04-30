@@ -13,10 +13,21 @@ import {
   Assignment as AssignmentIcon,
   Assessment as AssessmentIcon,
   Add as AddIcon,
+  BarChart as BarChartIcon,
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from 'recharts';
 import apiClient from '../api/client';
+import { type HoursSummaryEntry } from '../types/api';
 
 const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
@@ -33,6 +44,13 @@ const DashboardPage: React.FC = () => {
 
   const clients = clientsData?.clients || [];
   const workEntries = workEntriesData?.workEntries || [];
+
+  const { data: hoursSummaryData } = useQuery({
+    queryKey: ['hoursSummary', 'daily'],
+    queryFn: () => apiClient.getHoursSummary('daily'),
+  });
+
+  const dailyEntries: HoursSummaryEntry[] = (hoursSummaryData?.data || []).slice(-7);
 
   const totalHours = workEntries.reduce((sum: number, entry: { hours: number }) => sum + entry.hours, 0);
   const recentEntries = workEntries.slice(0, 5);
@@ -108,6 +126,47 @@ const DashboardPage: React.FC = () => {
           </Grid>
         ))}
       </Grid>
+
+      <Paper sx={{ p: 3, mb: 4 }}>
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+          <Typography variant="h6">Last 7 Days</Typography>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<BarChartIcon />}
+            onClick={() => navigate('/graphs')}
+          >
+            View Full Graph
+          </Button>
+        </Box>
+        {dailyEntries.length > 0 ? (
+          <ResponsiveContainer width="100%" height={220}>
+            <BarChart data={dailyEntries} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis
+                dataKey="period"
+                tickFormatter={(v: string) => {
+                  const d = new Date(v + 'T00:00:00');
+                  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                }}
+              />
+              <YAxis />
+              <Tooltip
+                labelFormatter={(label) => {
+                  const d = new Date(String(label) + 'T00:00:00');
+                  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                }}
+                formatter={(value) => [`${Number(value).toFixed(2)} hrs`, 'Hours']}
+              />
+              <Bar dataKey="totalHours" fill="#1976d2" name="Hours" />
+            </BarChart>
+          </ResponsiveContainer>
+        ) : (
+          <Box display="flex" justifyContent="center" alignItems="center" minHeight={220}>
+            <Typography color="text.secondary">No recent hours data</Typography>
+          </Box>
+        )}
+      </Paper>
 
       <Grid container spacing={3}>
         {/* @ts-expect-error - MUI Grid item prop type issue */}

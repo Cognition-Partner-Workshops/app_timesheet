@@ -72,6 +72,16 @@ export interface LoginResponse {
   user: User;
 }
 
+export interface HoursSummaryEntry {
+  period: string;
+  totalHours: number;
+}
+
+export interface HoursSummaryResponse {
+  data: HoursSummaryEntry[];
+  granularity: 'daily' | 'monthly' | 'yearly';
+}
+
 export interface ApiResponse<T> {
   data?: T;
   error?: string;
