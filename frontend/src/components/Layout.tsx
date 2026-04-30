@@ -22,6 +22,7 @@ import {
   Assignment as AssignmentIcon,
   Assessment as AssessmentIcon,
   AccountTree as AccountTreeIcon,
+  PictureAsPdf as PictureAsPdfIcon,
   Logout as LogoutIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -48,6 +49,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     { text: 'Clients', icon: <BusinessIcon />, path: '/clients' },
     { text: 'Work Entries', icon: <AssignmentIcon />, path: '/work-entries' },
     { text: 'Projects', icon: <AccountTreeIcon />, path: '/projects' },
+    { text: 'PDF Scanner', icon: <PictureAsPdfIcon />, path: '/pdf-scanner' },
     { text: 'Reports', icon: <AssessmentIcon />, path: '/reports' },
   ];
 

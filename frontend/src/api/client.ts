@@ -139,6 +139,17 @@ class ApiClient {
     return response.data;
   }
 
+  // PDF Scanner endpoints
+  async extractPdfText(file: File) {
+    const formData = new FormData();
+    formData.append('pdf', file);
+    const response = await this.client.post('/api/pdf/extract-text', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 120000,
+    });
+    return response.data;
+  }
+
   // Report endpoints
   async getClientReport(clientId: number) {
     const response = await this.client.get(`/api/reports/client/${clientId}`);
