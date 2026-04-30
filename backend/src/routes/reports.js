@@ -252,6 +252,10 @@ router.get('/hours-summary', (req, res) => {
     : 'daily';
   const clientId = req.query.clientId ? parseInt(req.query.clientId) : null;
 
+  if (clientId !== null && isNaN(clientId)) {
+    return res.status(400).json({ error: 'Invalid client ID' });
+  }
+
   const db = getDatabase();
 
   let sql;
