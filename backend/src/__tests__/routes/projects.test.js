@@ -131,12 +131,16 @@ describe('Project Routes', () => {
       const newProject = { name: 'New Project', description: 'New Description', clientId: 1, startDate: '2024-06-01', status: 'active' };
       const createdProject = { id: 1, name: 'New Project', description: 'New Description', client_id: 1, start_date: '2024-06-01', status: 'active', client_name: 'Client A', created_at: '2024-01-01', updated_at: '2024-01-01' };
 
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, { id: 1 }); // Client ownership check
+      });
+
       mockDb.run.mockImplementation(function(query, params, callback) {
         this.lastID = 1;
         callback.call(this, null);
       });
 
-      mockDb.get.mockImplementation((query, params, callback) => {
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
         callback(null, createdProject);
       });
 
@@ -147,6 +151,19 @@ describe('Project Routes', () => {
       expect(response.status).toBe(201);
       expect(response.body.message).toBe('Project created successfully');
       expect(response.body.project).toEqual(createdProject);
+    });
+
+    test('should return 400 when clientId does not belong to user', async () => {
+      mockDb.get.mockImplementation((query, params, callback) => {
+        callback(null, null); // Client not found for user
+      });
+
+      const response = await request(app)
+        .post('/api/projects')
+        .send({ name: 'Project', clientId: 999 });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({ error: 'Client not found or does not belong to user' });
     });
 
     test('should create project with only name', async () => {
@@ -276,7 +293,11 @@ describe('Project Routes', () => {
 
     test('should update project client assignment', async () => {
       mockDb.get.mockImplementationOnce((query, params, callback) => {
-        callback(null, { id: 1 });
+        callback(null, { id: 1 }); // Project exists
+      });
+
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, { id: 2 }); // Client ownership check
       });
 
       mockDb.run.mockImplementation((query, params, callback) => {
@@ -292,6 +313,23 @@ describe('Project Routes', () => {
         .send({ clientId: 2 });
 
       expect(response.status).toBe(200);
+    });
+
+    test('should return 400 when updating clientId that does not belong to user', async () => {
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, { id: 1 }); // Project exists
+      });
+
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, null); // Client not found for user
+      });
+
+      const response = await request(app)
+        .put('/api/projects/1')
+        .send({ clientId: 999 });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({ error: 'Client not found or does not belong to user' });
     });
 
     test('should return 404 if project not found', async () => {
