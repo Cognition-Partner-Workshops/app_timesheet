@@ -384,5 +384,270 @@ describe('Project Routes', () => {
       expect(response.status).toBe(500);
       expect(response.body).toEqual({ error: 'Failed to delete project' });
     });
+
+    test('should handle database error when checking project existence', async () => {
+      mockDb.get.mockImplementation((query, params, callback) => {
+        callback(new Error('Database error'), null);
+      });
+
+      const response = await request(app).delete('/api/projects/1');
+
+      expect(response.status).toBe(500);
+      expect(response.body).toEqual({ error: 'Internal server error' });
+    });
+  });
+
+  describe('POST /api/projects - Error Handling', () => {
+    test('should handle database error when verifying client in create', async () => {
+      mockDb.get.mockImplementation((query, params, callback) => {
+        callback(new Error('Database error'), null);
+      });
+
+      const response = await request(app)
+        .post('/api/projects')
+        .send({ name: 'Project', clientId: 1 });
+
+      expect(response.status).toBe(500);
+      expect(response.body).toEqual({ error: 'Internal server error' });
+    });
+
+    test('should handle error retrieving project after creation', async () => {
+      mockDb.run.mockImplementation(function(query, params, callback) {
+        this.lastID = 1;
+        callback.call(this, null);
+      });
+
+      mockDb.get.mockImplementation((query, params, callback) => {
+        callback(new Error('Retrieval failed'), null);
+      });
+
+      const response = await request(app)
+        .post('/api/projects')
+        .send({ name: 'Test Project' });
+
+      expect(response.status).toBe(500);
+      expect(response.body).toEqual({ error: 'Project created but failed to retrieve' });
+    });
+  });
+
+  describe('PUT /api/projects/:id - Error Handling', () => {
+    test('should handle database error when checking project existence', async () => {
+      mockDb.get.mockImplementation((query, params, callback) => {
+        callback(new Error('Database error'), null);
+      });
+
+      const response = await request(app)
+        .put('/api/projects/1')
+        .send({ name: 'Updated Name' });
+
+      expect(response.status).toBe(500);
+      expect(response.body).toEqual({ error: 'Internal server error' });
+    });
+
+    test('should handle database error during update', async () => {
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, { id: 1 });
+      });
+
+      mockDb.run.mockImplementation((query, params, callback) => {
+        callback(new Error('Update failed'));
+      });
+
+      const response = await request(app)
+        .put('/api/projects/1')
+        .send({ name: 'Updated Name' });
+
+      expect(response.status).toBe(500);
+      expect(response.body).toEqual({ error: 'Failed to update project' });
+    });
+
+    test('should handle error retrieving project after update', async () => {
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, { id: 1 });
+      });
+
+      mockDb.run.mockImplementation((query, params, callback) => {
+        callback(null);
+      });
+
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(new Error('Retrieval failed'), null);
+      });
+
+      const response = await request(app)
+        .put('/api/projects/1')
+        .send({ name: 'Updated Name' });
+
+      expect(response.status).toBe(500);
+      expect(response.body).toEqual({ error: 'Project updated but failed to retrieve' });
+    });
+
+    test('should handle database error when verifying client in update', async () => {
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, { id: 1 }); // Project exists
+      });
+
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(new Error('Database error'), null); // Client verification fails
+      });
+
+      const response = await request(app)
+        .put('/api/projects/1')
+        .send({ clientId: 99 });
+
+      expect(response.status).toBe(500);
+      expect(response.body).toEqual({ error: 'Internal server error' });
+    });
+
+    test('should return 400 for invalid client in update', async () => {
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, { id: 1 }); // Project exists
+      });
+
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, null); // Client not found
+      });
+
+      const response = await request(app)
+        .put('/api/projects/1')
+        .send({ clientId: 99 });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({ error: 'Client not found or does not belong to user' });
+    });
+
+    test('should update project description', async () => {
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, { id: 1 });
+      });
+
+      mockDb.run.mockImplementation((query, params, callback) => {
+        callback(null);
+      });
+
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, { id: 1, name: 'Project', description: 'New Desc' });
+      });
+
+      const response = await request(app)
+        .put('/api/projects/1')
+        .send({ description: 'New Desc' });
+
+      expect(response.status).toBe(200);
+    });
+
+    test('should update project clientId', async () => {
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, { id: 1 }); // Project exists
+      });
+
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, { id: 2 }); // Client exists
+      });
+
+      mockDb.run.mockImplementation((query, params, callback) => {
+        callback(null);
+      });
+
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, { id: 1, name: 'Project', client_id: 2 });
+      });
+
+      const response = await request(app)
+        .put('/api/projects/1')
+        .send({ clientId: 2 });
+
+      expect(response.status).toBe(200);
+    });
+
+    test('should update project startDate', async () => {
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, { id: 1 });
+      });
+
+      mockDb.run.mockImplementation((query, params, callback) => {
+        callback(null);
+      });
+
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, { id: 1, name: 'Project', start_date: '2024-06-01' });
+      });
+
+      const response = await request(app)
+        .put('/api/projects/1')
+        .send({ startDate: '2024-06-01' });
+
+      expect(response.status).toBe(200);
+    });
+
+    test('should update description to null when empty string provided', async () => {
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, { id: 1 });
+      });
+
+      mockDb.run.mockImplementation((query, params, callback) => {
+        callback(null);
+      });
+
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, { id: 1, name: 'Project', description: null });
+      });
+
+      const response = await request(app)
+        .put('/api/projects/1')
+        .send({ description: '' });
+
+      expect(response.status).toBe(200);
+    });
+  });
+
+  describe('POST /api/projects - catch block', () => {
+    test('should handle unexpected synchronous error in POST', async () => {
+      const catchApp = express();
+      catchApp.use(express.json());
+      catchApp.use((req, res, next) => {
+        req.userEmail = 'test@example.com';
+        Object.defineProperty(req, 'body', {
+          get() { throw new Error('Unexpected sync error'); },
+          configurable: true
+        });
+        next();
+      });
+      catchApp.use('/api/projects', projectRoutes);
+      catchApp.use((err, req, res, next) => {
+        res.status(500).json({ error: 'Internal server error' });
+      });
+
+      const response = await request(catchApp)
+        .post('/api/projects')
+        .send({ name: 'test' });
+
+      expect(response.status).toBe(500);
+    });
+  });
+
+  describe('PUT /api/projects/:id - catch block', () => {
+    test('should handle unexpected synchronous error in PUT', async () => {
+      const catchApp = express();
+      catchApp.use(express.json());
+      catchApp.use((req, res, next) => {
+        req.userEmail = 'test@example.com';
+        Object.defineProperty(req, 'body', {
+          get() { throw new Error('Unexpected sync error'); },
+          configurable: true
+        });
+        next();
+      });
+      catchApp.use('/api/projects', projectRoutes);
+      catchApp.use((err, req, res, next) => {
+        res.status(500).json({ error: 'Internal server error' });
+      });
+
+      const response = await request(catchApp)
+        .put('/api/projects/1')
+        .send({ name: 'Updated' });
+
+      expect(response.status).toBe(500);
+    });
   });
 });

@@ -165,6 +165,7 @@ const ProjectsPage: React.FC = () => {
         id: editingProject.id,
         data: {
           ...projectData,
+          description: formData.description || null,
           clientId: formData.clientId || null,
           startDate: formData.startDate ? formData.startDate.toISOString().split('T')[0] : null,
         },
