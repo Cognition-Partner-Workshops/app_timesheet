@@ -244,4 +244,57 @@ router.get('/export/pdf/:clientId', (req, res) => {
   );
 });
 
+// Get aggregated hours summary
+router.get('/hours-summary', (req, res) => {
+  const allowedGranularities = ['daily', 'monthly', 'yearly'];
+  const granularity = allowedGranularities.includes(req.query.granularity)
+    ? req.query.granularity
+    : 'daily';
+  const clientId = req.query.clientId ? parseInt(req.query.clientId) : null;
+
+  if (clientId !== null && isNaN(clientId)) {
+    return res.status(400).json({ error: 'Invalid client ID' });
+  }
+
+  const db = getDatabase();
+
+  let sql;
+  const params = [req.userEmail];
+
+  if (granularity === 'daily') {
+    sql = `SELECT date AS period, SUM(hours) AS total_hours
+           FROM work_entries
+           WHERE user_email = ?`;
+  } else if (granularity === 'monthly') {
+    sql = `SELECT strftime('%Y-%m', date) AS period, SUM(hours) AS total_hours
+           FROM work_entries
+           WHERE user_email = ?`;
+  } else {
+    sql = `SELECT strftime('%Y', date) AS period, SUM(hours) AS total_hours
+           FROM work_entries
+           WHERE user_email = ?`;
+  }
+
+  if (clientId !== null) {
+    sql += ' AND client_id = ?';
+    params.push(clientId);
+  }
+
+  sql += ' GROUP BY period ORDER BY period ASC';
+
+  db.all(sql, params, (err, rows) => {
+    if (err) {
+      console.error('Database error:', err);
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+
+    const data = (rows || []).map((row) => ({
+      period: row.period,
+      totalHours: row.total_hours,
+    }));
+
+    res.json({ data, granularity });
+  });
+});
+
 module.exports = router;
