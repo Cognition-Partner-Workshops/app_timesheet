@@ -423,8 +423,8 @@ router.get('/export/weekly-pdf', (req, res) => {
   );
 });
 
-function getWeekStartDate(dateStr) {
-  const date = new Date(dateStr + 'T00:00:00Z');
+function getWeekStartDate(dateVal) {
+  const date = typeof dateVal === 'number' ? new Date(dateVal) : new Date(dateVal + 'T00:00:00Z');
   const day = date.getUTCDay();
   const diff = day === 0 ? 6 : day - 1;
   const monday = new Date(date);
@@ -432,15 +432,21 @@ function getWeekStartDate(dateStr) {
   return monday.toISOString().split('T')[0];
 }
 
+function formatDate(dateVal) {
+  const date = typeof dateVal === 'number' ? new Date(dateVal) : new Date(dateVal + 'T00:00:00Z');
+  return date.toISOString().split('T')[0];
+}
+
 function groupEntriesByWeek(workEntries) {
   const weekMap = {};
   workEntries.forEach((entry) => {
+    const formattedDate = formatDate(entry.date);
     const weekStart = getWeekStartDate(entry.date);
     if (!weekMap[weekStart]) {
       weekMap[weekStart] = { weekStartDate: weekStart, totalHours: 0, entries: [] };
     }
     weekMap[weekStart].totalHours += parseFloat(entry.hours);
-    weekMap[weekStart].entries.push(entry);
+    weekMap[weekStart].entries.push({ ...entry, date: formattedDate });
   });
 
   return Object.values(weekMap).sort((a, b) => b.weekStartDate.localeCompare(a.weekStartDate));
