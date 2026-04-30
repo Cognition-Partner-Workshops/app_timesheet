@@ -12,6 +12,7 @@ import ClientsPage from './pages/ClientsPage';
 import WorkEntriesPage from './pages/WorkEntriesPage';
 import ReportsPage from './pages/ReportsPage';
 import TimesheetPage from './pages/TimesheetPage';
+import RecurringPage from './pages/RecurringPage';
 
 const theme = createTheme({
   palette: {
@@ -55,6 +56,7 @@ const AppContent: React.FC = () => {
                   <Route path="/work-entries" element={<WorkEntriesPage />} />
                   <Route path="/reports" element={<ReportsPage />} />
                   <Route path="/timesheet" element={<TimesheetPage />} />
+                  <Route path="/recurring" element={<RecurringPage />} />
                   <Route path="/" element={<Navigate to="/dashboard" replace />} />
                   <Route path="*" element={<Navigate to="/dashboard" replace />} />
                 </Routes>

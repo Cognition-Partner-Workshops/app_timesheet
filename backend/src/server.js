@@ -9,6 +9,7 @@ const clientRoutes = require('./routes/clients');
 const workEntryRoutes = require('./routes/workEntries');
 const reportRoutes = require('./routes/reports');
 const timesheetRoutes = require('./routes/timesheets');
+const recurringRoutes = require('./routes/recurring');
 
 const { initializeDatabase } = require('./database/init');
 const { errorHandler } = require('./middleware/errorHandler');
@@ -48,6 +49,7 @@ app.use('/api/clients', clientRoutes);
 app.use('/api/work-entries', workEntryRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/timesheets', timesheetRoutes);
+app.use('/api/recurring', recurringRoutes);
 
 // Error handling
 app.use(errorHandler);

@@ -23,6 +23,7 @@ import {
   Assessment as AssessmentIcon,
   CalendarMonth as CalendarMonthIcon,
   Logout as LogoutIcon,
+  Repeat as RepeatIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
@@ -49,6 +50,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     { text: 'Work Entries', icon: <AssignmentIcon />, path: '/work-entries' },
     { text: 'Reports', icon: <AssessmentIcon />, path: '/reports' },
     { text: 'Timesheet', icon: <CalendarMonthIcon />, path: '/timesheet' },
+    { text: 'Templates', icon: <RepeatIcon />, path: '/recurring' },
   ];
 
   const drawer = (
