@@ -6,6 +6,7 @@ import 'database_service.dart';
 
 class AuthService extends ChangeNotifier {
   User? _currentUser;
+  final DatabaseService _db = DatabaseService();
 
   User? get currentUser => _currentUser;
   bool get isLoggedIn => _currentUser != null;
@@ -21,10 +22,7 @@ class AuthService extends ChangeNotifier {
     required String password,
     required String displayName,
   }) async {
-    final db = await DatabaseService.database;
-
-    final existing = await db.query(
-      'users',
+    final existing = await _db.queryUsers(
       where: 'username = ? OR email = ?',
       whereArgs: [username, email],
     );
@@ -44,7 +42,7 @@ class AuthService extends ChangeNotifier {
       displayName: displayName,
     );
 
-    final id = await db.insert('users', user.toMap());
+    final id = await _db.insertUser(user.toMap());
     _currentUser = user.copyWith(id: id);
     notifyListeners();
     return null;
@@ -54,10 +52,7 @@ class AuthService extends ChangeNotifier {
     required String username,
     required String password,
   }) async {
-    final db = await DatabaseService.database;
-
-    final results = await db.query(
-      'users',
+    final results = await _db.queryUsers(
       where: 'username = ?',
       whereArgs: [username],
     );
