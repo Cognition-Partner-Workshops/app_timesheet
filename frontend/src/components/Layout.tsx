@@ -27,6 +27,7 @@ import {
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+import TimerFAB from './TimerFAB';
 
 const drawerWidth = 240;
 
@@ -156,6 +157,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         <Toolbar />
         {children}
       </Box>
+      <TimerFAB />
     </Box>
   );
 };
