@@ -1,50 +1,88 @@
-# React + TypeScript + Vite
+# Banking EDF — Enterprise Data Framework
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A modern React + Material UI application for managing enterprise banking data pipelines. The EDF (Enterprise Data Framework) provides a comprehensive solution for copying data between sources, with built-in validation, transfer management, and verification capabilities.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react/README.md) uses [Babel](https://babeljs.io/) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+### Dashboard
+- Real-time KPI monitoring (connected sources, active pipelines, validation rate, records moved)
+- Interactive charts: data transfer volume trend, error trend, source type distribution
+- System health monitoring (CPU, memory, storage I/O, network)
+- Recent pipeline activity feed with live progress indicators
 
-## Expanding the ESLint configuration
+### Data Sources
+- Manage enterprise data connections (Oracle DB, SQL Server, PostgreSQL, S3, Azure Blob, Kafka, Flat Files)
+- Add, edit, delete data sources with a modern card-based UI
+- Test connection functionality
+- Search and filter capabilities
+- Status indicators (connected, disconnected, error)
 
-If you are developing a production application, we recommend updating the configuration to enable type aware lint rules:
+### Data Transfer
+- Create transfer jobs with a guided step-by-step wizard
+- Source → Destination pipeline configuration
+- Live progress tracking with real-time updates
+- Pause, resume, retry, and stop job controls
+- Expandable job details with metrics and error summaries
+- Batch size and parallelism configuration
 
-- Configure the top-level `parserOptions` property like this:
+### Data Validation
+- Rules engine with categories: Schema, Data Quality, Business, Referential Integrity, Compliance
+- Severity levels: Critical, Warning, Info
+- Enable/disable individual rules
+- Run all rules or individual rule execution
+- Pass rate tracking with visual indicators
+- List and card views for validation results
 
-```js
-export default tseslint.config({
-  languageOptions: {
-    // other options...
-    parserOptions: {
-      project: ['./tsconfig.node.json', './tsconfig.app.json'],
-      tsconfigRootDir: import.meta.dirname,
-    },
-  },
-})
+### Verification & Audit
+- Complete audit trail with timestamps, actions, and user tracking
+- Checksum verification (SHA-256) for data integrity
+- Filter by action type and status
+- Export report functionality
+- Dedicated checksum verification tab with source/destination match status
+
+### Settings
+- Dark/Light theme toggle
+- Notification preferences
+- Performance tuning (batch size, parallelism, timeouts, retries)
+- Security & Compliance settings (SSL/TLS, PII masking, audit logging)
+- Scheduling configuration
+- Backup & Recovery options
+
+## Tech Stack
+
+- **React 18** with TypeScript
+- **Material UI v9** (MUI) for component library
+- **Recharts** for data visualization
+- **React Router v7** for navigation
+- **Vite** for build tooling
+- **Notistack** for notifications
+
+## Getting Started
+
+```bash
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
+
+# Build for production
+npm run build
 ```
 
-- Replace `tseslint.configs.recommended` to `tseslint.configs.recommendedTypeChecked` or `tseslint.configs.strictTypeChecked`
-- Optionally add `...tseslint.configs.stylisticTypeChecked`
-- Install [eslint-plugin-react](https://github.com/jsx-eslint/eslint-plugin-react) and update the config:
+## Project Structure
 
-```js
-// eslint.config.js
-import react from 'eslint-plugin-react'
-
-export default tseslint.config({
-  // Set the react version
-  settings: { react: { version: '18.3' } },
-  plugins: {
-    // Add the react plugin
-    react,
-  },
-  rules: {
-    // other rules...
-    // Enable its recommended rules
-    ...react.configs.recommended.rules,
-    ...react.configs['jsx-runtime'].rules,
-  },
-})
+```
+src/
+├── components/       # Reusable UI components (Layout, StatCard)
+├── context/          # React contexts (ThemeContext)
+├── data/             # Mock data and type definitions
+├── pages/            # Page components
+│   ├── Dashboard.tsx
+│   ├── DataSources.tsx
+│   ├── DataTransfer.tsx
+│   ├── DataValidation.tsx
+│   ├── Verification.tsx
+│   └── Settings.tsx
+└── theme/            # MUI theme configuration (light/dark)
 ```
