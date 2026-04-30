@@ -41,21 +41,21 @@ const DashboardPage: React.FC = () => {
 
   const statsCards = [
     {
-      title: 'Total Clients',
+      title: 'Organizations',
       value: clients.length,
       icon: <BusinessIcon />,
       color: '#1976d2',
       action: () => navigate('/clients'),
     },
     {
-      title: 'Total Work Entries',
+      title: 'Activity Entries',
       value: workEntries.length,
       icon: <AssignmentIcon />,
       color: '#388e3c',
       action: () => navigate('/work-entries'),
     },
     {
-      title: 'Total Hours',
+      title: 'Hours Logged',
       value: totalHours.toFixed(2),
       icon: <AssessmentIcon />,
       color: '#f57c00',
@@ -80,12 +80,12 @@ const DashboardPage: React.FC = () => {
           Welcome to Time Tracker!
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          Track your work hours, manage clients, and generate reports — all in one place.
+          Log your activity, manage organizations, and view analytics — all in one place.
         </Typography>
       </Alert>
 
       <Typography variant="h4" gutterBottom>
-        Dashboard
+        Overview
       </Typography>
 
       <Grid container spacing={3} sx={{ mb: 4 }}>
@@ -135,7 +135,7 @@ const DashboardPage: React.FC = () => {
         <Grid item xs={12} md={8}>
           <Paper sx={{ p: 3 }}>
             <Box display="flex" justifyContent="space-between" alignItems="center" mb={2} gap={3}>
-              <Typography variant="h6">Recent Work Entries</Typography>
+              <Typography variant="h6">Recent Activity</Typography>
               <Button
                 variant="outlined"
                 startIcon={<AddIcon />}
@@ -160,7 +160,7 @@ const DashboardPage: React.FC = () => {
                 </Box>
               ))
             ) : (
-              <Typography color="text.secondary">No work entries yet</Typography>
+              <Typography color="text.secondary">No activity logged yet</Typography>
             )}
           </Paper>
         </Grid>
@@ -178,7 +178,7 @@ const DashboardPage: React.FC = () => {
                 onClick={() => navigate('/clients')}
                 fullWidth
               >
-                Add Client
+                Add Organization
               </Button>
               <Button
                 variant="contained"
@@ -186,7 +186,7 @@ const DashboardPage: React.FC = () => {
                 onClick={() => navigate('/work-entries')}
                 fullWidth
               >
-                Add Work Entry
+                Log Activity
               </Button>
               <Button
                 variant="outlined"
@@ -194,7 +194,7 @@ const DashboardPage: React.FC = () => {
                 onClick={() => navigate('/reports')}
                 fullWidth
               >
-                View Reports
+                View Analytics
               </Button>
             </Box>
           </Paper>
