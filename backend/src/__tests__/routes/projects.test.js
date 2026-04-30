@@ -154,12 +154,18 @@ describe('Project Routes', () => {
       const newProject = { name: 'Client Project', clientId: 1, startDate: '2024-06-01', status: 'active' };
       const createdProject = { id: 2, name: 'Client Project', client_id: 1, start_date: '2024-06-01', status: 'active', client_name: 'Client A', created_at: '2024-01-01', updated_at: '2024-01-01' };
 
+      // First get: client ownership check
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, { id: 1 });
+      });
+
       mockDb.run.mockImplementation(function(query, params, callback) {
         this.lastID = 2;
         callback.call(this, null);
       });
 
-      mockDb.get.mockImplementation((query, params, callback) => {
+      // Second get: retrieve created project
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
         callback(null, createdProject);
       });
 
@@ -169,6 +175,19 @@ describe('Project Routes', () => {
 
       expect(response.status).toBe(201);
       expect(response.body.project.client_id).toBe(1);
+    });
+
+    test('should return 400 when client does not belong to user on create', async () => {
+      mockDb.get.mockImplementation((query, params, callback) => {
+        callback(null, null);
+      });
+
+      const response = await request(app)
+        .post('/api/projects')
+        .send({ name: 'Test', clientId: 999 });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({ error: 'Client not found or does not belong to user' });
     });
 
     test('should return 400 for missing required name', async () => {
@@ -283,6 +302,25 @@ describe('Project Routes', () => {
         .send({ status: 'invalid-status' });
 
       expect(response.status).toBe(400);
+    });
+
+    test('should return 400 when client does not belong to user on update', async () => {
+      // First get: project exists
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, { id: 1 });
+      });
+
+      // Second get: client ownership check fails
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, null);
+      });
+
+      const response = await request(app)
+        .put('/api/projects/1')
+        .send({ clientId: 999 });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({ error: 'Client not found or does not belong to user' });
     });
 
     test('should handle database error on existence check', async () => {
