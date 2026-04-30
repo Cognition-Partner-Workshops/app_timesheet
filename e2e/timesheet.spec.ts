@@ -69,7 +69,7 @@ test.describe('Time Tracker E2E Workflows', () => {
 
     // Wait for dialog to close and verify client appears in table
     await expect(page.getByRole('heading', { name: 'Add New Client' })).not.toBeVisible();
-    await expect(page.getByRole('cell', { name: CLIENT_NAME })).toBeVisible();
+    await expect(page.getByRole('cell', { name: CLIENT_NAME, exact: true })).toBeVisible();
     await expect(page.getByText(CLIENT_DEPT)).toBeVisible();
   });
 
@@ -98,7 +98,7 @@ test.describe('Time Tracker E2E Workflows', () => {
     await expect(page.getByRole('heading', { name: 'Add New Work Entry' })).not.toBeVisible();
 
     // Verify entry appears
-    await expect(page.getByRole('cell', { name: CLIENT_NAME })).toBeVisible();
+    await expect(page.getByRole('cell', { name: CLIENT_NAME, exact: true })).toBeVisible();
     await expect(page.getByText(`${WORK_HOURS} hours`)).toBeVisible();
     await expect(page.getByRole('cell', { name: WORK_DESC })).toBeVisible();
   });
@@ -109,7 +109,7 @@ test.describe('Time Tracker E2E Workflows', () => {
     await expect(page.getByRole('heading', { name: 'Work Entries' })).toBeVisible();
 
     // Verify the entry is still visible after reload
-    await expect(page.getByRole('cell', { name: CLIENT_NAME })).toBeVisible();
+    await expect(page.getByRole('cell', { name: CLIENT_NAME, exact: true })).toBeVisible();
     await expect(page.getByText(`${WORK_HOURS} hours`)).toBeVisible();
     await expect(page.getByRole('cell', { name: WORK_DESC })).toBeVisible();
 
