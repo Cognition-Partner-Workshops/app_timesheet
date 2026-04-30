@@ -153,12 +153,16 @@ describe('Project Routes', () => {
       const newProject = { name: 'Client Project', clientId: 1, startDate: '2024-06-01', status: 'active' };
       const createdProject = { id: 2, name: 'Client Project', description: null, client_id: 1, start_date: '2024-06-01', status: 'active', client_name: 'Client A', created_at: '2024-01-01', updated_at: '2024-01-01' };
 
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, { id: 1 });
+      });
+
       mockDb.run.mockImplementation(function(query, params, callback) {
         this.lastID = 2;
         callback.call(this, null);
       });
 
-      mockDb.get.mockImplementation((query, params, callback) => {
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
         callback(null, createdProject);
       });
 
@@ -168,6 +172,19 @@ describe('Project Routes', () => {
 
       expect(response.status).toBe(201);
       expect(response.body.project.client_id).toBe(1);
+    });
+
+    test('should reject project with non-existent client', async () => {
+      mockDb.get.mockImplementation((query, params, callback) => {
+        callback(null, null);
+      });
+
+      const response = await request(app)
+        .post('/api/projects')
+        .send({ name: 'Test', clientId: 999 });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({ error: 'Client not found' });
     });
 
     test('should reject project without name', async () => {
@@ -263,6 +280,23 @@ describe('Project Routes', () => {
 
       expect(response.status).toBe(400);
       expect(response.body).toEqual({ error: 'Invalid project ID' });
+    });
+
+    test('should reject update with non-existent client', async () => {
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, { id: 1 });
+      });
+
+      mockDb.get.mockImplementationOnce((query, params, callback) => {
+        callback(null, null);
+      });
+
+      const response = await request(app)
+        .put('/api/projects/1')
+        .send({ clientId: 999 });
+
+      expect(response.status).toBe(400);
+      expect(response.body).toEqual({ error: 'Client not found' });
     });
 
     test('should reject empty update body', async () => {
