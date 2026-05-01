@@ -52,14 +52,14 @@ const ProjectsPage: React.FC = () => {
   };
 
   const createMutation = useMutation({
-    mutationFn: (data: { name: string; description?: string; clientId?: number | null; startDate?: string | null; status?: string }) =>
+    mutationFn: (data: { name: string; description?: string | null; clientId?: number | null; startDate?: string | null; status?: string }) =>
       apiClient.createProject(data),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['projects'] }); handleClose(); },
     onError: (err: unknown) => onMutationError(err, 'Failed to create project'),
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: { name?: string; description?: string; clientId?: number | null; startDate?: string | null; status?: string } }) =>
+    mutationFn: ({ id, data }: { id: number; data: { name?: string; description?: string | null; clientId?: number | null; startDate?: string | null; status?: string } }) =>
       apiClient.updateProject(id, data),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['projects'] }); handleClose(); },
     onError: (err: unknown) => onMutationError(err, 'Failed to update project'),
@@ -100,7 +100,7 @@ const ProjectsPage: React.FC = () => {
 
     const payload = {
       name: formData.name,
-      description: formData.description || undefined,
+      description: formData.description || null,
       clientId: formData.clientId ? Number(formData.clientId) : null,
       startDate: formData.startDate || null,
       status: formData.status,
