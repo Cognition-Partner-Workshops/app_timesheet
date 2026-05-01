@@ -83,7 +83,7 @@ router.get('/reports/download', authenticateUser, (req, res) => {
     return res.status(400).json({ error: 'Invalid filename' });
   }
 
-  const baseDir = path.resolve('/tmp/reports');
+  const baseDir = path.resolve(__dirname, '../../temp');
   const filePath = path.resolve(baseDir, filename);
 
   if (!filePath.startsWith(baseDir + path.sep)) {
