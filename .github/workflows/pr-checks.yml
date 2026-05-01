@@ -309,7 +309,7 @@ jobs:
           EOF
             )
 
-            gh pr comment "${PR_NUMBER}" --body "$COMMENT"
+            gh api repos/${REPO}/issues/${PR_NUMBER}/comments -f body="$COMMENT"
           else
             echo "::error::Failed to create Devin session (HTTP ${HTTP_CODE})"
             echo "$HTTP_BODY"
