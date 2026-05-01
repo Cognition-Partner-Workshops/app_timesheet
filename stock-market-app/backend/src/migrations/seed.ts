@@ -81,7 +81,7 @@ ON CONFLICT (symbol) DO UPDATE SET
 const PRICE_INSERT = `INSERT INTO price_history (stock_id, date, open, high, low, close, volume)
   VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT DO NOTHING`;
 
-async function seed() {
+export async function seed() {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -134,8 +134,12 @@ async function seed() {
     throw err;
   } finally {
     client.release();
-    await pool.end();
   }
 }
 
-seed().catch(() => process.exit(1));
+// Allow running as standalone script
+if (require.main === module) {
+  seed()
+    .then(() => pool.end())
+    .catch(() => process.exit(1));
+}

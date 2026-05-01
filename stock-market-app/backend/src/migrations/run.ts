@@ -4,7 +4,7 @@ import { pool } from '../config/database';
  * Database migration: creates all tables with proper indexes.
  * Tables: sectors, stocks, price_history, score_history
  */
-async function migrate() {
+export async function migrate() {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -89,8 +89,12 @@ async function migrate() {
     throw err;
   } finally {
     client.release();
-    await pool.end();
   }
 }
 
-migrate().catch(() => process.exit(1));
+// Allow running as standalone script
+if (require.main === module) {
+  migrate()
+    .then(() => pool.end())
+    .catch(() => process.exit(1));
+}

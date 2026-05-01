@@ -3,6 +3,8 @@ import cors from 'cors';
 import { config } from './config';
 import { connectRedis } from './config/redis';
 import { startScheduler, runPipeline } from './jobs/pipeline';
+import { migrate } from './migrations/run';
+import { seed } from './migrations/seed';
 import { logger } from './utils/logger';
 import sectorRoutes from './routes/sectors';
 import stockRoutes from './routes/stocks';
@@ -43,6 +45,12 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 });
 
 async function start() {
+  // Run database migrations and seed data
+  logger.info('Running database migrations...');
+  await migrate();
+  logger.info('Seeding database...');
+  await seed();
+
   // Connect to Redis (non-blocking — app works without it)
   await connectRedis();
 
