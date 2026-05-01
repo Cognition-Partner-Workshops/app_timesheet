@@ -3,20 +3,31 @@ import { config } from './index';
 import { logger } from '../utils/logger';
 
 let redis: Redis | null = null;
+let redisAvailable = false;
+let redisErrorLogged = false;
 
 export function getRedis(): Redis {
   if (!redis) {
     redis = new Redis(config.redis.url, {
       maxRetriesPerRequest: 3,
       retryStrategy(times: number) {
-        const delay = Math.min(times * 50, 2000);
-        return delay;
+        if (times > 3) {
+          if (!redisErrorLogged) {
+            logger.warn('Redis unavailable — caching disabled. App continues without cache.');
+            redisErrorLogged = true;
+          }
+          return null as unknown as number;
+        }
+        return Math.min(times * 50, 2000);
       },
       lazyConnect: true,
     });
 
-    redis.on('error', (err) => {
-      logger.error('Redis connection error:', err.message);
+    redis.on('error', () => {
+      if (!redisErrorLogged) {
+        logger.warn('Redis unavailable — caching disabled. App continues without cache.');
+        redisErrorLogged = true;
+      }
     });
   }
   return redis;
