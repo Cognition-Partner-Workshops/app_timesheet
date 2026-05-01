@@ -21,6 +21,7 @@ A full-stack web application for tracking and reporting employee hourly work acr
 - ✅ User authentication (email-based with JWT tokens)
 - ✅ Add, edit, and delete clients
 - ✅ Add, edit, and delete hourly work entries for each client
+- ✅ Manage projects with client assignment and status tracking
 - ✅ View hourly reports for each client
 - ✅ Export hourly reports to CSV or PDF
 
