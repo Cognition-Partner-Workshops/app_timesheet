@@ -41,29 +41,37 @@ export async function runPipeline(): Promise<void> {
     let updatedCount = 0;
     const errors: string[] = [];
 
-    // Fetch data for all stocks (batched to avoid rate limits)
-    // Live mode uses smaller batches + longer delays for Twelve Data free tier (8 req/min)
-    const isLive = !config.useMockData;
-    const batchSize = isLive ? 2 : 5;
-    const batchDelay = isLive ? 8000 : 200;
-
-    for (let i = 0; i < symbols.length; i += batchSize) {
-      const batch = symbols.slice(i, i + batchSize);
-      const results = await Promise.allSettled(
-        batch.map((symbol: string) => fetchStockData(symbol))
-      );
-
-      for (let j = 0; j < results.length; j++) {
-        const result = results[j];
-        if (result.status === 'fulfilled' && result.value) {
-          updatedCount++;
-        } else {
-          errors.push(batch[j]);
+    // Fetch data for all stocks
+    // In live mode, fetch one at a time — the rate limiter inside fetchStockData handles pacing
+    // In mock mode, batch for speed
+    if (config.useMockData) {
+      const batchSize = 5;
+      for (let i = 0; i < symbols.length; i += batchSize) {
+        const batch = symbols.slice(i, i + batchSize);
+        const results = await Promise.allSettled(
+          batch.map((symbol: string) => fetchStockData(symbol))
+        );
+        for (let j = 0; j < results.length; j++) {
+          if (results[j].status === 'fulfilled' && (results[j] as PromiseFulfilledResult<boolean>).value) {
+            updatedCount++;
+          } else {
+            errors.push(batch[j]);
+          }
+        }
+        if (i + batchSize < symbols.length) {
+          await new Promise((resolve) => setTimeout(resolve, 200));
         }
       }
-
-      if (i + batchSize < symbols.length) {
-        await new Promise((resolve) => setTimeout(resolve, batchDelay));
+    } else {
+      // Live mode: sequential with built-in rate limiting
+      for (const symbol of symbols) {
+        try {
+          const success = await fetchStockData(symbol);
+          if (success) updatedCount++;
+          else errors.push(symbol);
+        } catch {
+          errors.push(symbol);
+        }
       }
     }
 

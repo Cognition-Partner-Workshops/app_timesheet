@@ -9,11 +9,32 @@ import { secureRandom, randomFloat } from '../utils/random';
  * free tier with demo key), with Alpha Vantage as secondary option.
  * Includes mock data generation for offline/demo mode.
  *
- * Twelve Data free tier: 8 requests/min, 800/day with demo key.
- * Get your own free key at https://twelvedata.com for higher limits.
+ * Twelve Data free tier: 8 requests/min with demo key.
+ * Get your own free key at https://twelvedata.com for higher limits (800/day).
  */
 
 const TWELVE_DATA_BASE = 'https://api.twelvedata.com';
+
+/** Rate limiter: tracks API calls per minute to stay within free tier limits */
+let apiCallsThisMinute = 0;
+let minuteWindowStart = Date.now();
+const MAX_CALLS_PER_MINUTE = 7; // stay under the 8 limit
+
+async function waitForRateLimit(): Promise<void> {
+  const now = Date.now();
+  if (now - minuteWindowStart >= 60000) {
+    apiCallsThisMinute = 0;
+    minuteWindowStart = now;
+  }
+
+  if (apiCallsThisMinute >= MAX_CALLS_PER_MINUTE) {
+    const waitMs = 60000 - (now - minuteWindowStart) + 1000;
+    logger.info(`Rate limit reached (${apiCallsThisMinute}/${MAX_CALLS_PER_MINUTE}), waiting ${Math.ceil(waitMs / 1000)}s...`);
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
+    apiCallsThisMinute = 0;
+    minuteWindowStart = Date.now();
+  }
+}
 
 interface StockQuote {
   symbol: string;
@@ -21,13 +42,8 @@ interface StockQuote {
   previous_close: number;
   day_change_pct: number;
   volume: number;
-  market_cap: number;
-  pe_ratio: number;
-  eps: number;
-  dividend_yield: number;
   fifty_two_week_high: number;
   fifty_two_week_low: number;
-  beta: number;
 }
 
 interface TechnicalIndicators {
@@ -36,38 +52,36 @@ interface TechnicalIndicators {
   ma_200: number;
 }
 
-/** Fetch quote from Twelve Data (free, works with 'demo' key) */
+/** Fetch quote from Twelve Data (1 API credit per call) */
 async function fetchTwelveDataQuote(symbol: string): Promise<StockQuote | null> {
   const apiKey = config.stockApi.twelveDataKey || 'demo';
   try {
+    await waitForRateLimit();
+
     const response = await axios.get(`${TWELVE_DATA_BASE}/quote`, {
       params: { symbol, apikey: apiKey },
       timeout: 10000,
     });
+    apiCallsThisMinute++;
 
     const data = response.data;
     if (data.status === 'error' || !data.close) {
-      logger.warn(`Twelve Data returned no data for ${symbol}: ${data.message || 'unknown'}`);
+      if (data.code === 429) {
+        logger.warn(`Rate limited on ${symbol}, will retry next cycle`);
+      } else {
+        logger.warn(`Twelve Data: no data for ${symbol}: ${data.message || 'unknown'}`);
+      }
       return null;
     }
 
-    const currentPrice = parseFloat(data.close);
-    const previousClose = parseFloat(data.previous_close);
-    const changePct = parseFloat(data.percent_change);
-
     return {
       symbol,
-      current_price: currentPrice,
-      previous_close: previousClose,
-      day_change_pct: changePct,
+      current_price: parseFloat(data.close),
+      previous_close: parseFloat(data.previous_close),
+      day_change_pct: parseFloat(data.percent_change),
       volume: parseInt(data.volume, 10) || 0,
-      market_cap: 0,
-      pe_ratio: 0,
-      eps: 0,
-      dividend_yield: 0,
       fifty_two_week_high: data.fifty_two_week?.high ? parseFloat(data.fifty_two_week.high) : 0,
       fifty_two_week_low: data.fifty_two_week?.low ? parseFloat(data.fifty_two_week.low) : 0,
-      beta: 1,
     };
   } catch (err) {
     logger.warn(`Twelve Data quote failed for ${symbol}: ${(err as Error).message}`);
@@ -75,38 +89,65 @@ async function fetchTwelveDataQuote(symbol: string): Promise<StockQuote | null> 
   }
 }
 
-/** Fetch RSI and SMA indicators from Twelve Data */
+/** Fetch time series and compute RSI/SMA locally (1 API credit) */
 async function fetchTwelveDataIndicators(symbol: string): Promise<TechnicalIndicators | null> {
   const apiKey = config.stockApi.twelveDataKey || 'demo';
   try {
-    const [rsiRes, sma50Res, sma200Res] = await Promise.all([
-      axios.get(`${TWELVE_DATA_BASE}/rsi`, {
-        params: { symbol, interval: '1day', time_period: 14, outputsize: 1, apikey: apiKey },
-        timeout: 10000,
-      }),
-      axios.get(`${TWELVE_DATA_BASE}/sma`, {
-        params: { symbol, interval: '1day', time_period: 50, outputsize: 1, apikey: apiKey },
-        timeout: 10000,
-      }),
-      axios.get(`${TWELVE_DATA_BASE}/sma`, {
-        params: { symbol, interval: '1day', time_period: 200, outputsize: 1, apikey: apiKey },
-        timeout: 10000,
-      }),
-    ]);
+    await waitForRateLimit();
 
-    const rsi = rsiRes.data?.values?.[0]?.rsi;
-    const sma50 = sma50Res.data?.values?.[0]?.sma;
-    const sma200 = sma200Res.data?.values?.[0]?.sma;
+    const response = await axios.get(`${TWELVE_DATA_BASE}/time_series`, {
+      params: { symbol, interval: '1day', outputsize: 210, apikey: apiKey },
+      timeout: 15000,
+    });
+    apiCallsThisMinute++;
+
+    const data = response.data;
+    if (data.status === 'error' || !data.values || data.values.length < 14) {
+      return null;
+    }
+
+    // Values are newest-first; reverse for chronological order
+    const closes: number[] = data.values
+      .map((v: { close: string }) => parseFloat(v.close))
+      .reverse();
+
+    const rsi14 = calculateRSI(closes, 14);
+    const ma50 = closes.length >= 50
+      ? closes.slice(-50).reduce((a: number, b: number) => a + b, 0) / 50
+      : closes.reduce((a: number, b: number) => a + b, 0) / closes.length;
+    const ma200 = closes.length >= 200
+      ? closes.slice(-200).reduce((a: number, b: number) => a + b, 0) / 200
+      : closes.reduce((a: number, b: number) => a + b, 0) / closes.length;
 
     return {
-      rsi_14: rsi ? parseFloat(rsi) : 50,
-      ma_50: sma50 ? parseFloat(sma50) : 0,
-      ma_200: sma200 ? parseFloat(sma200) : 0,
+      rsi_14: parseFloat(rsi14.toFixed(2)),
+      ma_50: parseFloat(ma50.toFixed(2)),
+      ma_200: parseFloat(ma200.toFixed(2)),
     };
   } catch (err) {
-    logger.warn(`Twelve Data indicators failed for ${symbol}: ${(err as Error).message}`);
+    logger.warn(`Twelve Data time_series failed for ${symbol}: ${(err as Error).message}`);
     return null;
   }
+}
+
+/** RSI calculation from closing prices */
+function calculateRSI(closes: number[], period: number): number {
+  if (closes.length < period + 1) return 50;
+
+  let gains = 0;
+  let losses = 0;
+  for (let i = closes.length - period; i < closes.length; i++) {
+    const diff = closes[i] - closes[i - 1];
+    if (diff > 0) gains += diff;
+    else losses -= diff;
+  }
+
+  const avgGain = gains / period;
+  const avgLoss = losses / period;
+  if (avgLoss === 0) return 100;
+
+  const rs = avgGain / avgLoss;
+  return 100 - 100 / (1 + rs);
 }
 
 /** Fetch quote from Alpha Vantage with exponential backoff retry (secondary) */
@@ -139,13 +180,8 @@ async function fetchAlphaVantageQuote(symbol: string): Promise<StockQuote | null
         previous_close: prevClose,
         day_change_pct: parseFloat(data['10. change percent']?.replace('%', '') || '0'),
         volume: parseInt(data['06. volume'], 10),
-        market_cap: 0,
-        pe_ratio: 0,
-        eps: 0,
-        dividend_yield: 0,
         fifty_two_week_high: 0,
         fifty_two_week_low: 0,
-        beta: 1,
       };
     } catch (err) {
       const delay = Math.pow(2, attempt) * 1000;
@@ -205,29 +241,42 @@ export async function fetchStockData(symbol: string): Promise<boolean> {
       return true;
     }
 
-    // Live mode: try Twelve Data first (free), then Alpha Vantage
+    // Live mode: fetch quote only (1 API call) — indicators fetched separately
     const quote = await fetchTwelveDataQuote(symbol) ?? await fetchAlphaVantageQuote(symbol);
     if (!quote) return false;
-
-    const indicators = await fetchTwelveDataIndicators(symbol);
 
     await query(
       `UPDATE stocks SET
         current_price = $1, previous_close = $2, day_change_pct = $3,
         volume = $4, fifty_two_week_high = $5, fifty_two_week_low = $6,
-        rsi_14 = $7, ma_50 = $8, ma_200 = $9,
         last_updated = NOW()
-      WHERE symbol = $10`,
+      WHERE symbol = $7`,
       [
         quote.current_price, quote.previous_close, quote.day_change_pct,
         quote.volume, quote.fifty_two_week_high, quote.fifty_two_week_low,
-        indicators?.rsi_14 ?? 50, indicators?.ma_50 ?? 0, indicators?.ma_200 ?? 0,
         symbol,
       ]
     );
     return true;
   } catch (err) {
     logger.error(`Failed to fetch data for ${symbol}:`, err);
+    return false;
+  }
+}
+
+/** Fetch and update technical indicators for a single stock (separate call) */
+export async function fetchStockIndicators(symbol: string): Promise<boolean> {
+  try {
+    const indicators = await fetchTwelveDataIndicators(symbol);
+    if (!indicators) return false;
+
+    await query(
+      `UPDATE stocks SET rsi_14 = $1, ma_50 = $2, ma_200 = $3 WHERE symbol = $4`,
+      [indicators.rsi_14, indicators.ma_50, indicators.ma_200, symbol]
+    );
+    return true;
+  } catch (err) {
+    logger.error(`Failed to fetch indicators for ${symbol}:`, err);
     return false;
   }
 }

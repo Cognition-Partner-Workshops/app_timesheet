@@ -58,17 +58,18 @@ async function start() {
   // Connect to Redis (non-blocking — app works without it)
   await connectRedis();
 
-  // Run initial pipeline to calculate scores
-  logger.info('Running initial data pipeline...');
-  await runPipeline();
-
-  // Start scheduled pipeline
-  startScheduler();
-
+  // Start server immediately so the UI can load seed data
   app.listen(config.port, () => {
     logger.info(`Server running on port ${config.port}`);
     logger.info(`Mock data mode: ${config.useMockData}`);
   });
+
+  // Run initial pipeline in the background (doesn't block the server)
+  logger.info('Running initial data pipeline in background...');
+  runPipeline().catch((err) => logger.error('Initial pipeline failed:', err));
+
+  // Start scheduled pipeline
+  startScheduler();
 }
 
 start().catch((err) => {
