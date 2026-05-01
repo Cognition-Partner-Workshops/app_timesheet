@@ -108,9 +108,9 @@ async function fetchTechnicalIndicators(symbol: string): Promise<TechnicalIndica
   }
 }
 
-/** Generate realistic mock data updates for demo mode */
+/** Generate realistic mock data updates for demo mode (Math.random is intentional for non-security mock data) */
 export function generateMockUpdate(currentPrice: number, avgVolume: number) {
-  const changePercent = (Math.random() - 0.45) * 4; // Slight positive bias
+  const changePercent = (Math.random() - 0.45) * 4; // NOSONAR — mock data, not security
   const newPrice = currentPrice * (1 + changePercent / 100);
   const volume = Math.floor(avgVolume * (0.5 + Math.random() * 1.5));
 

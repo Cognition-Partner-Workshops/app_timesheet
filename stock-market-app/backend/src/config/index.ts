@@ -4,7 +4,7 @@ dotenv.config();
 export const config = {
   port: parseInt(process.env.PORT || '3001', 10),
   database: {
-    url: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/stockmarket',
+    url: process.env.DATABASE_URL || 'postgresql://localhost:5432/stockmarket',
   },
   redis: {
     url: process.env.REDIS_URL || 'redis://localhost:6379',
