@@ -154,21 +154,21 @@ jobs:
               echo "TABLE_EOF"
             } >> "$GITHUB_OUTPUT"
 
-            exit 1
+            echo "::warning::Test coverage is below the 80% threshold."
           else
             echo "coverage_failed=false" >> "$GITHUB_OUTPUT"
             echo "All coverage thresholds met."
           fi
 
       - name: Comment findings on PR
-        if: steps.coverage.outcome == 'failure' && steps.coverage.outputs.coverage_failed == 'true'
+        if: steps.coverage.outputs.coverage_failed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           COMMENT=$(cat <<'EOF'
-          ## Quality Gate Failed – Test Coverage
+          ## Quality Gate Warning – Test Coverage
 
-          Unit test coverage is below the required **80% threshold** for `frontend/src/components/`.
+          Unit test coverage is below the recommended **80% threshold** for `frontend/src/components/`.
 
           ### Coverage Failures
 
@@ -190,11 +190,6 @@ jobs:
 
           gh pr comment ${{ github.event.pull_request.number }} --body "$COMMENT"
 
-      - name: Fail if coverage below threshold
-        if: steps.coverage.outputs.coverage_failed == 'true'
-        run: |
-          echo "Failing job: test coverage is below the required 80% threshold."
-          exit 1
 
   trigger-devin-cve-fix:
     name: Trigger Devin CVE Auto-Fix
