@@ -1,7 +1,7 @@
 const express = require('express');
 const { getDatabase } = require('../database/init');
 const { authenticateUser } = require('../middleware/auth');
-const { execFile } = require('child_process');
+const dns = require('dns');
 const path = require('path');
 
 const router = express.Router();
@@ -32,11 +32,13 @@ router.get('/system/diagnostics', authenticateUser, (req, res) => {
     return res.status(400).json({ error: 'Invalid target' });
   }
 
-  execFile('ping', ['-c', '1', target], (error, stdout, stderr) => {
+  const start = Date.now();
+  dns.resolve4(target, (error, addresses) => {
+    const duration = Date.now() - start;
     if (error) {
-      return res.status(500).json({ error: 'Diagnostics failed' });
+      return res.status(500).json({ error: 'Diagnostics failed', details: error.code });
     }
-    res.json({ output: stdout });
+    res.json({ output: `DNS resolve ${target}: ${addresses.join(', ')} (${duration}ms)` });
   });
 });
 
