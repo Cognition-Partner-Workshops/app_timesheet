@@ -1,190 +1,114 @@
-name: SAST Security Scan
+name: SAST Auto-Remediation (Devin)
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
-    branches:
-      - main
+  check_run:
+    types: [completed]
 
 permissions:
   contents: read
   pull-requests: write
+  checks: read
 
 jobs:
-  sast-scan:
-    name: SAST Scan (Semgrep)
-    if: "!contains(github.event.pull_request.user.login, 'devin')"
+  trigger-devin-fix:
+    name: Trigger Devin SAST Auto-Fix
+    if: |
+      github.event.check_run.app.slug == 'sonarcloud' &&
+      github.event.check_run.conclusion == 'failure' &&
+      github.event.check_run.pull_requests[0]
     runs-on: ubuntu-latest
-    outputs:
-      has_findings: ${{ steps.scan.outputs.has_findings }}
-      findings_count: ${{ steps.scan.outputs.findings_count }}
-      findings_summary: ${{ steps.scan.outputs.findings_summary }}
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install Semgrep
-        run: pip install semgrep
-
-      - name: Run Semgrep SAST scan
-        id: scan
-        continue-on-error: true
-        run: |
-          set +e
-
-          # Run Semgrep with security-focused rulesets, output JSON
-          semgrep scan \
-            --config "p/javascript" \
-            --config "p/nodejs" \
-            --config "p/security-audit" \
-            --config "p/cwe-top-25" \
-            --config "p/owasp-top-ten" \
-            --json \
-            --output /tmp/semgrep-results.json \
-            backend/ frontend/src/ 2>&1 || true
-
-          # Parse results
-          FINDINGS_COUNT=$(jq '.results | length' /tmp/semgrep-results.json 2>/dev/null || echo "0")
-          echo "findings_count=${FINDINGS_COUNT}" >> "$GITHUB_OUTPUT"
-
-          if [ "$FINDINGS_COUNT" -gt 0 ]; then
-            echo "has_findings=true" >> "$GITHUB_OUTPUT"
-
-            # Build a human-readable summary of findings
-            SUMMARY=$(jq -r '.results[] |
-              "- [\(.extra.severity | ascii_upcase)] \(.check_id)\n  File: \(.path):\(.start.line)\n  Message: \(.extra.message | split("\n")[0])\n"
-            ' /tmp/semgrep-results.json 2>/dev/null | head -100)
-
-            {
-              echo "findings_summary<<FINDINGS_EOF"
-              echo "$SUMMARY"
-              echo "FINDINGS_EOF"
-            } >> "$GITHUB_OUTPUT"
-
-            echo "::error::Semgrep found ${FINDINGS_COUNT} security finding(s)"
-            echo "$SUMMARY"
-            exit 1
-          else
-            echo "has_findings=false" >> "$GITHUB_OUTPUT"
-            echo "findings_summary=" >> "$GITHUB_OUTPUT"
-            echo "No security findings detected."
-          fi
-
-      - name: Upload Semgrep results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: semgrep-results
-          path: /tmp/semgrep-results.json
-          retention-days: 30
-
-      - name: Comment findings on PR
-        if: steps.scan.outcome == 'failure' && steps.scan.outputs.has_findings == 'true'
+      - name: Get PR details and validate trigger conditions
+        id: pr_check
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          COMMENT=$(cat <<'COMMENT_EOF'
-          ## 🔒 SAST Scan Failed — Security Vulnerabilities Detected
+          PR_NUMBER="${{ github.event.check_run.pull_requests[0].number }}"
+          echo "pr_number=${PR_NUMBER}" >> "$GITHUB_OUTPUT"
 
-          **Semgrep** found **${{ steps.scan.outputs.findings_count }} security vulnerability(ies)** in your code.
+          if [ -z "$PR_NUMBER" ] || [ "$PR_NUMBER" = "null" ]; then
+            echo "No PR associated with this check run. Skipping."
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
-          ### Findings
+          # Get PR details
+          PR_DATA=$(gh api repos/${{ github.repository }}/pulls/${PR_NUMBER} 2>&1)
+          PR_AUTHOR=$(echo "$PR_DATA" | jq -r '.user.login')
+          PR_BRANCH=$(echo "$PR_DATA" | jq -r '.head.ref')
+          PR_STATE=$(echo "$PR_DATA" | jq -r '.state')
 
-          ```
-          ${{ steps.scan.outputs.findings_summary }}
-          ```
+          echo "pr_author=${PR_AUTHOR}" >> "$GITHUB_OUTPUT"
+          echo "pr_branch=${PR_BRANCH}" >> "$GITHUB_OUTPUT"
 
-          ### What Happens Next
+          echo "PR #${PR_NUMBER} by ${PR_AUTHOR} on branch ${PR_BRANCH} (state: ${PR_STATE})"
 
-          A Devin session will be automatically created to fix these vulnerabilities on this branch.
+          # Only trigger for author bsmitches on open PRs
+          if [ "$PR_AUTHOR" != "bsmitches" ]; then
+            echo "PR author is '${PR_AUTHOR}', not 'bsmitches'. Skipping."
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
-          ### Manual Fix
+          if [ "$PR_STATE" != "open" ]; then
+            echo "PR is not open (state: ${PR_STATE}). Skipping."
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
-          Review each finding above and apply the recommended fix (e.g., use parameterized queries instead of string interpolation, avoid `child_process.exec` with user input, remove hardcoded credentials).
-          COMMENT_EOF
-          )
+          # Check if Devin has already attempted a fix on this PR (one-time only)
+          DEVIN_COMMENTS=$(gh api repos/${{ github.repository }}/issues/${PR_NUMBER}/comments \
+            --jq '[.[] | select(.body | contains("Devin SAST Auto-Fix"))] | length')
 
-          gh pr comment ${{ github.event.pull_request.number }} --body "$COMMENT"
+          if [ "$DEVIN_COMMENTS" -gt 0 ]; then
+            echo "Devin has already attempted a fix on this PR. Skipping (max 1 attempt)."
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
-      - name: Fail if findings detected
-        if: steps.scan.outputs.has_findings == 'true'
-        run: |
-          echo "Failing job: ${{ steps.scan.outputs.findings_count }} SAST findings detected."
-          exit 1
+          echo "All conditions met — triggering Devin auto-fix."
+          echo "should_run=true" >> "$GITHUB_OUTPUT"
 
-  trigger-devin-sast-fix:
-    name: Trigger Devin SAST Auto-Fix
-    needs: [sast-scan]
-    if: |
-      always() &&
-      !contains(github.event.pull_request.user.login, 'devin') &&
-      needs.sast-scan.result == 'failure'
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Download Semgrep results
-        uses: actions/download-artifact@v4
-        with:
-          name: semgrep-results
-          path: /tmp
-
-      - name: Build Devin prompt and create session
+      - name: Invoke Devin v3 API to remediate
+        if: steps.pr_check.outputs.should_run == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           DEVIN_API_KEY: ${{ secrets.DEVIN_API_KEY }}
           DEVIN_ORG_ID: ${{ secrets.DEVIN_ORG_ID }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+          PR_NUMBER: ${{ steps.pr_check.outputs.pr_number }}
+          PR_BRANCH: ${{ steps.pr_check.outputs.pr_branch }}
           REPO: ${{ github.repository }}
-          FINDINGS_COUNT: ${{ needs.sast-scan.outputs.findings_count }}
-          FINDINGS_SUMMARY: ${{ needs.sast-scan.outputs.findings_summary }}
+          CHECK_NAME: ${{ github.event.check_run.name }}
+          CHECK_URL: ${{ github.event.check_run.html_url }}
+          CHECK_OUTPUT_TITLE: ${{ github.event.check_run.output.title }}
+          CHECK_OUTPUT_SUMMARY: ${{ github.event.check_run.output.summary }}
         run: |
-          # Build detailed findings from the JSON artifact
-          DETAILED_FINDINGS=$(jq -r '.results[] |
-            "### \(.check_id)\n- **Severity:** \(.extra.severity)\n- **File:** \(.path):\(.start.line)-\(.end.line)\n- **Message:** \(.extra.message)\n- **Fix:** \(.extra.fix // "See message for guidance")\n"
-          ' /tmp/semgrep-results.json 2>/dev/null | head -200)
-
           PROMPT=$(cat <<PROMPT_END
-          You are a security engineer. A SAST scan (Semgrep) ran on PR #${PR_NUMBER} in repository ${REPO} on branch '${PR_BRANCH}' and found ${FINDINGS_COUNT} security vulnerability(ies).
+          A SonarCloud SAST security scan has identified issues on PR #${PR_NUMBER} in repository ${REPO} on branch '${PR_BRANCH}'.
 
-          Your job is to fix ALL the security vulnerabilities found by the SAST scan.
+          The SonarCloud quality gate FAILED with the following result:
+          - Check: ${CHECK_NAME}
+          - Details: ${CHECK_OUTPUT_TITLE}
 
-          ## Findings Summary
+          This branch has a security issue identified by SonarCloud. Please correct it — this is a one-time automated remediation attempt before the PR is merged.
 
-          ${FINDINGS_SUMMARY}
-
-          ## Detailed Findings
-
-          ${DETAILED_FINDINGS}
-
-          ## Instructions
-
+          Instructions:
           1. Clone the repository ${REPO} and checkout branch '${PR_BRANCH}'.
-          2. For each finding, apply the secure fix:
-             - SQL Injection: Replace string interpolation/concatenation in SQL queries with parameterized queries using placeholders (?).
-             - Command Injection: Replace child_process.exec() with child_process.execFile() or use input validation/sanitization. Never pass unsanitized user input to shell commands.
-             - Hardcoded Secrets: Remove any hardcoded credentials, API keys, or passwords. Use environment variables instead.
-             - Path Traversal: Validate and sanitize file paths. Use path.resolve() and verify the resolved path is within the expected directory.
-             - XSS: Sanitize user input before rendering in HTML responses.
-          3. After fixing, verify by installing semgrep (pip install semgrep) and running:
-             semgrep scan --config "p/javascript" --config "p/nodejs" --config "p/owasp-top-ten" backend/ frontend/src/
-          4. Ensure the application still builds: cd frontend && npm run build
-          5. Commit with message: "fix: resolve SAST security findings from Semgrep scan"
+          2. Review the SonarCloud findings for this PR at: https://sonarcloud.io/dashboard?id=Cognition-Partner-Workshops_app_timesheet&pullRequest=${PR_NUMBER}
+          3. Fix ALL security vulnerabilities flagged by SonarCloud:
+             - For SQL injection: use parameterized queries instead of string interpolation.
+             - For command injection: use child_process.execFile() or validate/sanitize inputs instead of exec().
+             - For code injection: remove eval() usage and use safe alternatives.
+             - For path traversal: validate file paths and ensure they resolve within the expected directory.
+          4. Run the SonarCloud scan rules locally if possible, or verify the fix addresses the specific finding.
+          5. Commit the fix with message: "fix: remediate SonarCloud security findings on PR #${PR_NUMBER}"
           6. Push to branch '${PR_BRANCH}'.
 
           Constraints:
           - Only fix the security vulnerabilities — do not refactor unrelated code.
-          - Maintain the same functionality — the fix should be a secure equivalent of the original code.
-          - Do not remove features — replace insecure patterns with secure alternatives.
+          - Maintain the same functionality — replace insecure patterns with secure equivalents.
+          - This is a ONE-TIME remediation attempt. Make it count.
           PROMPT_END
           )
 
@@ -192,13 +116,13 @@ jobs:
 
           REQUEST_BODY=$(jq -n \
             --argjson prompt "$ESCAPED_PROMPT" \
-            --arg title "Fix SAST findings on PR #${PR_NUMBER}" \
+            --arg title "Remediate SonarCloud security findings on PR #${PR_NUMBER}" \
             --arg repo "$REPO" \
             '{
               prompt: $prompt,
               title: $title,
               repos: [$repo],
-              tags: ["sast-fix", "security", "automated"]
+              tags: ["sast-fix", "sonarcloud", "security", "automated"]
             }')
 
           HTTP_RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" -X POST \
@@ -217,23 +141,24 @@ jobs:
             echo "Session ID: ${SESSION_ID}"
 
             {
-              echo "## 🤖 Devin SAST Auto-Fix Triggered"
+              echo "## Devin SAST Auto-Fix Triggered"
               echo ""
-              echo "A Devin session has been created to fix the ${FINDINGS_COUNT} SAST finding(s)."
+              echo "SonarCloud flagged security issues on PR #${PR_NUMBER}."
+              echo "A Devin session has been created for a one-time remediation attempt."
               echo ""
               echo "**Session:** ${SESSION_URL}"
-              echo ""
-              echo "Devin will commit the security fixes directly to branch \`${PR_BRANCH}\`."
             } >> "$GITHUB_STEP_SUMMARY"
 
-            # Comment on the PR with the Devin session link
-            COMMENT="## 🤖 Devin Auto-Fix In Progress
+            COMMENT=$(cat <<EOF
+          ## Devin SAST Auto-Fix — Remediation In Progress
 
-            A Devin session has been automatically created to fix the **${FINDINGS_COUNT} security vulnerability(ies)** found by the SAST scan.
+          SonarCloud identified a security issue on this branch. A Devin session has been automatically created for a **one-time remediation attempt** before merge.
 
-            **Devin Session:** ${SESSION_URL}
+          **Devin Session:** ${SESSION_URL}
 
-            Devin will commit the fixes directly to this branch (\`${PR_BRANCH}\`). The SAST scan will re-run automatically once the fixes are pushed."
+          Devin will commit the fix directly to branch \`${PR_BRANCH}\`. SonarCloud will re-analyze once the fix is pushed.
+          EOF
+            )
 
             gh pr comment "${PR_NUMBER}" --body "$COMMENT"
           else
