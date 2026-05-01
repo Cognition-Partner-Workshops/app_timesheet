@@ -1,0 +1,54 @@
+import express from 'express';
+import cors from 'cors';
+import { config } from './config';
+import { connectRedis } from './config/redis';
+import { startScheduler, runPipeline } from './jobs/pipeline';
+import { logger } from './utils/logger';
+import sectorRoutes from './routes/sectors';
+import stockRoutes from './routes/stocks';
+import searchRoutes from './routes/search';
+
+const app = express();
+
+app.use(cors());
+app.use(express.json());
+
+// API routes — order matters: specific routes before parameterized ones
+app.use('/api/sectors', sectorRoutes);
+app.use('/api/search', searchRoutes);
+app.use('/api', stockRoutes);
+
+// Health check
+app.get('/api/health', (_req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Global error handler
+app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  logger.error('Unhandled error:', err);
+  res.status(500).json({ error: 'Internal server error', code: 500 });
+});
+
+async function start() {
+  // Connect to Redis (non-blocking — app works without it)
+  await connectRedis();
+
+  // Run initial pipeline to calculate scores
+  logger.info('Running initial data pipeline...');
+  await runPipeline();
+
+  // Start scheduled pipeline
+  startScheduler();
+
+  app.listen(config.port, () => {
+    logger.info(`Server running on port ${config.port}`);
+    logger.info(`Mock data mode: ${config.useMockData}`);
+  });
+}
+
+start().catch((err) => {
+  logger.error('Failed to start server:', err);
+  process.exit(1);
+});
+
+export default app;
