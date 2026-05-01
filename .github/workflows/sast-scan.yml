@@ -79,6 +79,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           DEVIN_API_KEY: ${{ secrets.DEVIN_API_KEY }}
           DEVIN_ORG_ID: ${{ secrets.DEVIN_ORG_ID }}
+          CREATE_AS_USER_ID: ${{ secrets.DEVIN_CREATE_AS_USER_ID }}
           PR_NUMBER: ${{ steps.pr_check.outputs.pr_number }}
           PR_BRANCH: ${{ steps.pr_check.outputs.pr_branch }}
           REPO: ${{ github.repository }}
@@ -121,10 +122,12 @@ jobs:
             --argjson prompt "$ESCAPED_PROMPT" \
             --arg title "Remediate SonarCloud security findings on PR #${PR_NUMBER}" \
             --arg repo "$REPO" \
+            --arg user_id "${CREATE_AS_USER_ID}" \
             '{
               prompt: $prompt,
               title: $title,
               repos: [$repo],
+              create_as_user_id: $user_id,
               tags: ["sast-fix", "sonarcloud", "security", "automated"]
             }')
 
