@@ -115,7 +115,7 @@ jobs:
       - name: Fail if findings detected
         if: steps.scan.outputs.has_findings == 'true'
         run: |
-          echo "Failing job: ${FINDINGS_COUNT} SAST findings detected."
+          echo "Failing job: ${{ steps.scan.outputs.findings_count }} SAST findings detected."
           exit 1
 
   trigger-devin-sast-fix:
@@ -139,6 +139,7 @@ jobs:
 
       - name: Build Devin prompt and create session
         env:
+          GH_TOKEN: ${{ github.token }}
           DEVIN_API_KEY: ${{ secrets.DEVIN_API_KEY }}
           DEVIN_ORG_ID: ${{ secrets.DEVIN_ORG_ID }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
