@@ -88,6 +88,39 @@ Example: `[PROJ-123] Add CSV export for work entries`
 - New types: add to `frontend/src/types/api.ts`
 - Validation schemas: add to `backend/src/validation/schemas.js`
 
+## Security Scanning
+
+### Snyk Vulnerability Scan
+```bash
+# Install Snyk CLI (if not available)
+npm install -g snyk
+
+# Authenticate
+snyk auth $SNYK_TOKEN
+
+# Scan backend dependencies
+cd backend && snyk test --severity-threshold=high
+
+# Scan frontend dependencies
+cd frontend && snyk test --severity-threshold=high
+
+# Fallback: npm audit
+cd backend && npm audit --audit-level=high
+cd frontend && npm audit --audit-level=high
+```
+
+### Security Remediation Branch Naming
+```
+fix/snyk-vulnerability-remediation-YYYY-MM-DD
+```
+
+## Available Agent Playbooks
+
+| Playbook | Macro | Purpose |
+|----------|-------|---------|
+| SDLC Agent - Jira Ticket to PR | `!sdlc_agent` | Full SDLC workflow: Jira → Plan → Code → Review → PR |
+| Snyk Vulnerability Agent | `!snyk_agent` | Security scanning: Scan → Analyze → Remediate → PR |
+
 ## Forbidden Actions
 
 - Do NOT modify the database initialization to use file-based storage without explicit approval
@@ -95,3 +128,5 @@ Example: `[PROJ-123] Add CSV export for work entries`
 - Do NOT install new UI component libraries (use Material UI)
 - Do NOT commit `.env` files
 - Do NOT modify test files to make them pass — fix the source code
+- Do NOT commit Snyk API tokens or security scan results containing sensitive paths
+- Do NOT apply major dependency version bumps without flagging in the PR
