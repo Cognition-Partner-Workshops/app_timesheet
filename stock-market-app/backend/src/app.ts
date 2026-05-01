@@ -10,7 +10,10 @@ import searchRoutes from './routes/search';
 
 const app = express();
 
-app.use(cors());
+const allowedOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',')
+  : ['http://localhost:3000'];
+app.use(cors({ origin: allowedOrigins }));
 app.use(express.json());
 
 // API routes — order matters: specific routes before parameterized ones
