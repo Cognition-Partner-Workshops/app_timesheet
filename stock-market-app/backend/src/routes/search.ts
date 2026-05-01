@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { query } from '../config/database';
+import { logger } from '../utils/logger';
 
 const router = Router();
 
@@ -26,7 +27,7 @@ router.get('/', async (req: Request, res: Response) => {
 
     res.json(result.rows);
   } catch (err) {
-    console.error('Error searching stocks:', err);
+    logger.error('Error searching stocks:', err);
     res.status(500).json({ error: 'Search failed', code: 500 });
   }
 });

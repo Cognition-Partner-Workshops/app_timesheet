@@ -1,4 +1,5 @@
 import { pool } from '../config/database';
+import { secureRandom, randomFloat, randomInteger } from '../utils/random';
 
 /**
  * Seed data: 11 sectors and 10+ well-known tickers per sector.
@@ -41,26 +42,26 @@ const SECTORS: SectorSeed[] = [
 
 /** Generate realistic random stock data for mock/demo mode */
 function randomStockData() {
-  const basePrice = 50 + Math.random() * 450;
-  const prevClose = basePrice * (1 + (Math.random() - 0.5) * 0.02);
-  const volume = Math.floor(1e6 + Math.random() * 5e7);
+  const basePrice = randomFloat(50, 500);
+  const prevClose = basePrice * (1 + (secureRandom() - 0.5) * 0.02);
+  const volume = randomInteger(1e6, 5e7);
   return {
-    market_cap: Math.floor(1e10 + Math.random() * 2e12),
+    market_cap: randomInteger(1e10, 2e12),
     current_price: +basePrice.toFixed(4),
     previous_close: +prevClose.toFixed(4),
     day_change_pct: +(((basePrice - prevClose) / prevClose) * 100).toFixed(4),
     volume,
-    avg_volume: Math.floor(volume * (0.7 + Math.random() * 0.6)),
-    pe_ratio: +(10 + Math.random() * 40).toFixed(4),
-    eps: +(1 + Math.random() * 20).toFixed(4),
-    eps_growth_yoy: +(-10 + Math.random() * 50).toFixed(4),
-    dividend_yield: +(Math.random() * 5).toFixed(4),
-    beta: +(0.5 + Math.random() * 1.5).toFixed(4),
-    fifty_two_week_high: +(basePrice * (1.1 + Math.random() * 0.4)).toFixed(4),
-    fifty_two_week_low: +(basePrice * (0.5 + Math.random() * 0.3)).toFixed(4),
-    rsi_14: +(20 + Math.random() * 60).toFixed(4),
-    ma_50: +(basePrice * (0.95 + Math.random() * 0.1)).toFixed(4),
-    ma_200: +(basePrice * (0.9 + Math.random() * 0.15)).toFixed(4),
+    avg_volume: Math.floor(volume * randomFloat(0.7, 1.3)),
+    pe_ratio: +randomFloat(10, 50).toFixed(4),
+    eps: +randomFloat(1, 21).toFixed(4),
+    eps_growth_yoy: +randomFloat(-10, 40).toFixed(4),
+    dividend_yield: +randomFloat(0, 5).toFixed(4),
+    beta: +randomFloat(0.5, 2.0).toFixed(4),
+    fifty_two_week_high: +(basePrice * randomFloat(1.1, 1.5)).toFixed(4),
+    fifty_two_week_low: +(basePrice * randomFloat(0.5, 0.8)).toFixed(4),
+    rsi_14: +randomFloat(20, 80).toFixed(4),
+    ma_50: +(basePrice * randomFloat(0.95, 1.05)).toFixed(4),
+    ma_200: +(basePrice * randomFloat(0.9, 1.05)).toFixed(4),
   };
 }
 
@@ -112,14 +113,14 @@ async function seed() {
         for (let i = 30; i >= 0; i--) {
           const date = new Date();
           date.setDate(date.getDate() - i);
-          price *= 1 + (Math.random() - 0.48) * 0.03;
+          price *= 1 + (secureRandom() - 0.48) * 0.03;
           await client.query(PRICE_INSERT, [
             stockId, date.toISOString().split('T')[0],
-            +(price * (1 + (Math.random() - 0.5) * 0.01)).toFixed(4),
-            +(price * (1 + Math.random() * 0.02)).toFixed(4),
-            +(price * (1 - Math.random() * 0.02)).toFixed(4),
+            +(price * (1 + (secureRandom() - 0.5) * 0.01)).toFixed(4),
+            +(price * (1 + secureRandom() * 0.02)).toFixed(4),
+            +(price * (1 - secureRandom() * 0.02)).toFixed(4),
             +price.toFixed(4),
-            Math.floor(d.avg_volume * (0.5 + Math.random())),
+            Math.floor(d.avg_volume * (0.5 + secureRandom())),
           ]);
         }
       }

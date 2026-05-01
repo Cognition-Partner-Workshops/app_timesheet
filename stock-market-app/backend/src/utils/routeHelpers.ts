@@ -1,5 +1,6 @@
 import { Response } from 'express';
 import { getCached, setCache } from '../config/redis';
+import { logger } from './logger';
 
 /**
  * Wraps a route handler with caching and error handling to reduce duplication.
@@ -22,7 +23,7 @@ export async function cachedResponse<T>(
     await setCache(cacheKey, JSON.stringify(data));
     res.json(data);
   } catch (err) {
-    console.error(errorMessage, err);
+    logger.error(errorMessage, err);
     res.status(500).json({ error: errorMessage, code: 500 });
   }
 }

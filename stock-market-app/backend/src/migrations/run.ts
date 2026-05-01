@@ -78,8 +78,8 @@ async function migrate() {
     await client.query('CREATE INDEX IF NOT EXISTS idx_stocks_composite_score ON stocks(composite_score DESC);');
     await client.query('CREATE INDEX IF NOT EXISTS idx_stocks_symbol ON stocks(symbol);');
     await client.query('CREATE INDEX IF NOT EXISTS idx_stocks_last_updated ON stocks(last_updated);');
-    await client.query('CREATE INDEX IF NOT EXISTS idx_price_history_stock_date ON price_history(stock_id, date);');
-    await client.query('CREATE INDEX IF NOT EXISTS idx_score_history_stock_date ON score_history(stock_id, date);');
+    await client.query('CREATE UNIQUE INDEX IF NOT EXISTS idx_price_history_stock_date ON price_history(stock_id, date);');
+    await client.query('CREATE UNIQUE INDEX IF NOT EXISTS idx_score_history_stock_date ON score_history(stock_id, date);');
 
     await client.query('COMMIT');
     console.log('Migration completed successfully');

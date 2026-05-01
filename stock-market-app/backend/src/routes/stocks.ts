@@ -74,11 +74,26 @@ router.get('/daily-digest', async (req: Request, res: Response) => {
       `SELECT DISTINCT ON (sec.id)
         sec.name as sector, s.symbol, s.company_name as company,
         s.current_price as price, s.day_change_pct as change_pct,
-        s.composite_score, s.score_breakdown
-       FROM stocks s
+        sh.composite_score, s.score_breakdown
+       FROM score_history sh
+       JOIN stocks s ON sh.stock_id = s.id
        JOIN sectors sec ON s.sector_id = sec.id
-       ORDER BY sec.id, s.composite_score DESC`
+       WHERE sh.date = $1
+       ORDER BY sec.id, sh.composite_score DESC`,
+      [date]
     );
+    if (result.rows.length === 0) {
+      const fallback = await query(
+        `SELECT DISTINCT ON (sec.id)
+          sec.name as sector, s.symbol, s.company_name as company,
+          s.current_price as price, s.day_change_pct as change_pct,
+          s.composite_score, s.score_breakdown
+         FROM stocks s
+         JOIN sectors sec ON s.sector_id = sec.id
+         ORDER BY sec.id, s.composite_score DESC`
+      );
+      return { date, generated_at: new Date().toISOString(), top_picks: fallback.rows };
+    }
     return { date, generated_at: new Date().toISOString(), top_picks: result.rows };
   }, 'Failed to generate daily digest');
 });

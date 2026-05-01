@@ -2,6 +2,7 @@ import axios from 'axios';
 import { config } from '../config';
 import { query } from '../config/database';
 import { logger } from '../utils/logger';
+import { secureRandom, randomFloat } from '../utils/random';
 
 /**
  * Data fetcher service: retrieves stock data from Alpha Vantage (primary)
@@ -101,28 +102,28 @@ async function fetchTechnicalIndicators(symbol: string): Promise<TechnicalIndica
     return {
       rsi_14: latestRsiDate ? parseFloat(rsiData[latestRsiDate].RSI) : 50,
       ma_50: latestSmaDate ? parseFloat(smaData[latestSmaDate].SMA) : 0,
-      ma_200: 0, // Would need separate API call
+      ma_200: 0,
     };
   } catch {
     return null;
   }
 }
 
-/** Generate realistic mock data updates for demo mode (Math.random is intentional for non-security mock data) */
+/** Generate realistic mock data updates for demo mode */
 export function generateMockUpdate(currentPrice: number, avgVolume: number) {
-  const changePercent = (Math.random() - 0.45) * 4; // NOSONAR — mock data, not security
+  const changePercent = (secureRandom() - 0.45) * 4;
   const newPrice = currentPrice * (1 + changePercent / 100);
-  const volume = Math.floor(avgVolume * (0.5 + Math.random() * 1.5));
+  const volume = Math.floor(avgVolume * (0.5 + secureRandom() * 1.5));
 
   return {
     current_price: parseFloat(newPrice.toFixed(4)),
     previous_close: currentPrice,
     day_change_pct: parseFloat(changePercent.toFixed(4)),
     volume,
-    rsi_14: parseFloat((20 + Math.random() * 60).toFixed(4)),
-    ma_50: parseFloat((newPrice * (0.97 + Math.random() * 0.06)).toFixed(4)),
-    ma_200: parseFloat((newPrice * (0.93 + Math.random() * 0.1)).toFixed(4)),
-    eps_growth_yoy: parseFloat((-10 + Math.random() * 50).toFixed(4)),
+    rsi_14: parseFloat(randomFloat(20, 80).toFixed(4)),
+    ma_50: parseFloat((newPrice * randomFloat(0.97, 1.03)).toFixed(4)),
+    ma_200: parseFloat((newPrice * randomFloat(0.93, 1.03)).toFixed(4)),
+    eps_growth_yoy: parseFloat(randomFloat(-10, 40).toFixed(4)),
   };
 }
 
@@ -130,7 +131,6 @@ export function generateMockUpdate(currentPrice: number, avgVolume: number) {
 export async function fetchStockData(symbol: string): Promise<boolean> {
   try {
     if (config.useMockData) {
-      // Use mock data — read current price from DB and generate update
       const result = await query(
         'SELECT current_price, avg_volume FROM stocks WHERE symbol = $1',
         [symbol]
@@ -158,7 +158,6 @@ export async function fetchStockData(symbol: string): Promise<boolean> {
       return true;
     }
 
-    // Real API mode
     const quote = await fetchAlphaVantageQuote(symbol);
     if (!quote) return false;
 

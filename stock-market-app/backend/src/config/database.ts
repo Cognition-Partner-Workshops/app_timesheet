@@ -1,5 +1,6 @@
 import { Pool } from 'pg';
 import { config } from './index';
+import { logger } from '../utils/logger';
 
 export const pool = new Pool({
   connectionString: config.database.url,
@@ -9,7 +10,7 @@ export const pool = new Pool({
 });
 
 pool.on('error', (err) => {
-  console.error('Unexpected database pool error:', err);
+  logger.error('Unexpected database pool error:', err);
 });
 
 export async function query(text: string, params?: unknown[]) {

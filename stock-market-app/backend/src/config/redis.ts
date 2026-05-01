@@ -1,5 +1,6 @@
 import Redis from 'ioredis';
 import { config } from './index';
+import { logger } from '../utils/logger';
 
 let redis: Redis | null = null;
 
@@ -15,7 +16,7 @@ export function getRedis(): Redis {
     });
 
     redis.on('error', (err) => {
-      console.error('Redis connection error:', err.message);
+      logger.error('Redis connection error:', err.message);
     });
   }
   return redis;
@@ -25,9 +26,9 @@ export async function connectRedis(): Promise<void> {
   try {
     const r = getRedis();
     await r.connect();
-    console.log('Redis connected');
+    logger.info('Redis connected');
   } catch (err) {
-    console.warn('Redis connection failed, caching disabled:', (err as Error).message);
+    logger.warn('Redis connection failed, caching disabled:', (err as Error).message);
   }
 }
 
