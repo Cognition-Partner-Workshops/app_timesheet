@@ -36,7 +36,9 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-stockmarket}
       REDIS_URL: redis://redis:6379
-      USE_MOCK_DATA: ${USE_MOCK_DATA:-true}
+      USE_MOCK_DATA: ${USE_MOCK_DATA:-false}
+      TWELVE_DATA_API_KEY: ${TWELVE_DATA_API_KEY:-demo}
+      STOCK_API_KEY: ${STOCK_API_KEY:-}
       PORT: "3001"
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
     depends_on:

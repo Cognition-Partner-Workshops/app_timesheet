@@ -5,9 +5,15 @@ import { logger } from '../utils/logger';
 import { secureRandom, randomFloat } from '../utils/random';
 
 /**
- * Data fetcher service: retrieves stock data from Alpha Vantage (primary)
- * with Yahoo Finance fallback. Includes mock data generation for demo mode.
+ * Data fetcher service: retrieves live stock data from Twelve Data (primary,
+ * free tier with demo key), with Alpha Vantage as secondary option.
+ * Includes mock data generation for offline/demo mode.
+ *
+ * Twelve Data free tier: 8 requests/min, 800/day with demo key.
+ * Get your own free key at https://twelvedata.com for higher limits.
  */
+
+const TWELVE_DATA_BASE = 'https://api.twelvedata.com';
 
 interface StockQuote {
   symbol: string;
@@ -30,7 +36,80 @@ interface TechnicalIndicators {
   ma_200: number;
 }
 
-/** Fetch quote from Alpha Vantage with exponential backoff retry */
+/** Fetch quote from Twelve Data (free, works with 'demo' key) */
+async function fetchTwelveDataQuote(symbol: string): Promise<StockQuote | null> {
+  const apiKey = config.stockApi.twelveDataKey || 'demo';
+  try {
+    const response = await axios.get(`${TWELVE_DATA_BASE}/quote`, {
+      params: { symbol, apikey: apiKey },
+      timeout: 10000,
+    });
+
+    const data = response.data;
+    if (data.status === 'error' || !data.close) {
+      logger.warn(`Twelve Data returned no data for ${symbol}: ${data.message || 'unknown'}`);
+      return null;
+    }
+
+    const currentPrice = parseFloat(data.close);
+    const previousClose = parseFloat(data.previous_close);
+    const changePct = parseFloat(data.percent_change);
+
+    return {
+      symbol,
+      current_price: currentPrice,
+      previous_close: previousClose,
+      day_change_pct: changePct,
+      volume: parseInt(data.volume, 10) || 0,
+      market_cap: 0,
+      pe_ratio: 0,
+      eps: 0,
+      dividend_yield: 0,
+      fifty_two_week_high: data.fifty_two_week?.high ? parseFloat(data.fifty_two_week.high) : 0,
+      fifty_two_week_low: data.fifty_two_week?.low ? parseFloat(data.fifty_two_week.low) : 0,
+      beta: 1,
+    };
+  } catch (err) {
+    logger.warn(`Twelve Data quote failed for ${symbol}: ${(err as Error).message}`);
+    return null;
+  }
+}
+
+/** Fetch RSI and SMA indicators from Twelve Data */
+async function fetchTwelveDataIndicators(symbol: string): Promise<TechnicalIndicators | null> {
+  const apiKey = config.stockApi.twelveDataKey || 'demo';
+  try {
+    const [rsiRes, sma50Res, sma200Res] = await Promise.all([
+      axios.get(`${TWELVE_DATA_BASE}/rsi`, {
+        params: { symbol, interval: '1day', time_period: 14, outputsize: 1, apikey: apiKey },
+        timeout: 10000,
+      }),
+      axios.get(`${TWELVE_DATA_BASE}/sma`, {
+        params: { symbol, interval: '1day', time_period: 50, outputsize: 1, apikey: apiKey },
+        timeout: 10000,
+      }),
+      axios.get(`${TWELVE_DATA_BASE}/sma`, {
+        params: { symbol, interval: '1day', time_period: 200, outputsize: 1, apikey: apiKey },
+        timeout: 10000,
+      }),
+    ]);
+
+    const rsi = rsiRes.data?.values?.[0]?.rsi;
+    const sma50 = sma50Res.data?.values?.[0]?.sma;
+    const sma200 = sma200Res.data?.values?.[0]?.sma;
+
+    return {
+      rsi_14: rsi ? parseFloat(rsi) : 50,
+      ma_50: sma50 ? parseFloat(sma50) : 0,
+      ma_200: sma200 ? parseFloat(sma200) : 0,
+    };
+  } catch (err) {
+    logger.warn(`Twelve Data indicators failed for ${symbol}: ${(err as Error).message}`);
+    return null;
+  }
+}
+
+/** Fetch quote from Alpha Vantage with exponential backoff retry (secondary) */
 async function fetchAlphaVantageQuote(symbol: string): Promise<StockQuote | null> {
   if (!config.stockApi.key) return null;
 
@@ -75,38 +154,6 @@ async function fetchAlphaVantageQuote(symbol: string): Promise<StockQuote | null
     }
   }
   return null;
-}
-
-/** Fetch technical indicators from Alpha Vantage */
-async function fetchTechnicalIndicators(symbol: string): Promise<TechnicalIndicators | null> {
-  if (!config.stockApi.key) return null;
-
-  try {
-    const [rsiRes, smaRes] = await Promise.all([
-      axios.get(config.stockApi.baseUrl, {
-        params: { function: 'RSI', symbol, interval: 'daily', time_period: 14, series_type: 'close', apikey: config.stockApi.key },
-        timeout: 10000,
-      }),
-      axios.get(config.stockApi.baseUrl, {
-        params: { function: 'SMA', symbol, interval: 'daily', time_period: 50, series_type: 'close', apikey: config.stockApi.key },
-        timeout: 10000,
-      }),
-    ]);
-
-    const rsiData = rsiRes.data['Technical Analysis: RSI'];
-    const smaData = smaRes.data['Technical Analysis: SMA'];
-
-    const latestRsiDate = rsiData ? Object.keys(rsiData)[0] : null;
-    const latestSmaDate = smaData ? Object.keys(smaData)[0] : null;
-
-    return {
-      rsi_14: latestRsiDate ? parseFloat(rsiData[latestRsiDate].RSI) : 50,
-      ma_50: latestSmaDate ? parseFloat(smaData[latestSmaDate].SMA) : 0,
-      ma_200: 0,
-    };
-  } catch {
-    return null;
-  }
 }
 
 /** Generate realistic mock data updates for demo mode */
@@ -158,20 +205,22 @@ export async function fetchStockData(symbol: string): Promise<boolean> {
       return true;
     }
 
-    const quote = await fetchAlphaVantageQuote(symbol);
+    // Live mode: try Twelve Data first (free), then Alpha Vantage
+    const quote = await fetchTwelveDataQuote(symbol) ?? await fetchAlphaVantageQuote(symbol);
     if (!quote) return false;
 
-    const indicators = await fetchTechnicalIndicators(symbol);
+    const indicators = await fetchTwelveDataIndicators(symbol);
 
     await query(
       `UPDATE stocks SET
         current_price = $1, previous_close = $2, day_change_pct = $3,
-        volume = $4, rsi_14 = $5, ma_50 = $6, ma_200 = $7,
+        volume = $4, fifty_two_week_high = $5, fifty_two_week_low = $6,
+        rsi_14 = $7, ma_50 = $8, ma_200 = $9,
         last_updated = NOW()
-      WHERE symbol = $8`,
+      WHERE symbol = $10`,
       [
         quote.current_price, quote.previous_close, quote.day_change_pct,
-        quote.volume,
+        quote.volume, quote.fifty_two_week_high, quote.fifty_two_week_low,
         indicators?.rsi_14 ?? 50, indicators?.ma_50 ?? 0, indicators?.ma_200 ?? 0,
         symbol,
       ]

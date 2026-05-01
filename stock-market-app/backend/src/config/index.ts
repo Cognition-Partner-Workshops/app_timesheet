@@ -12,6 +12,7 @@ export const config = {
   stockApi: {
     key: process.env.STOCK_API_KEY || '',
     baseUrl: 'https://www.alphavantage.co/query',
+    twelveDataKey: process.env.TWELVE_DATA_API_KEY || 'demo',
   },
   useMockData: process.env.USE_MOCK_DATA === 'true',
   cacheTtl: 300, // 5 minutes in seconds

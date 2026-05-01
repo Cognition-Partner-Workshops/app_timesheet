@@ -1,4 +1,5 @@
 import cron from 'node-cron';
+import { config } from '../config';
 import { query } from '../config/database';
 import { invalidateCache } from '../config/redis';
 import { fetchStockData } from '../services/dataFetcher';
@@ -41,7 +42,11 @@ export async function runPipeline(): Promise<void> {
     const errors: string[] = [];
 
     // Fetch data for all stocks (batched to avoid rate limits)
-    const batchSize = 5;
+    // Live mode uses smaller batches + longer delays for Twelve Data free tier (8 req/min)
+    const isLive = !config.useMockData;
+    const batchSize = isLive ? 2 : 5;
+    const batchDelay = isLive ? 8000 : 200;
+
     for (let i = 0; i < symbols.length; i += batchSize) {
       const batch = symbols.slice(i, i + batchSize);
       const results = await Promise.allSettled(
@@ -57,9 +62,8 @@ export async function runPipeline(): Promise<void> {
         }
       }
 
-      // Small delay between batches to respect rate limits
       if (i + batchSize < symbols.length) {
-        await new Promise((resolve) => setTimeout(resolve, 200));
+        await new Promise((resolve) => setTimeout(resolve, batchDelay));
       }
     }
 
