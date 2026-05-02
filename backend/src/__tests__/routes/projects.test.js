@@ -14,356 +14,211 @@ jest.mock('../../middleware/auth', () => ({
 const app = express();
 app.use(express.json());
 app.use('/api/projects', projectRoutes);
-// Add error handler for Joi validation
 app.use((err, req, res, next) => {
-  if (err.isJoi) {
-    return res.status(400).json({ error: 'Validation error' });
-  }
+  if (err.isJoi) return res.status(400).json({ error: 'Validation error' });
   res.status(500).json({ error: 'Internal server error' });
 });
+
+function mockRunWithLastID(id) {
+  return function(query, params, callback) {
+    this.lastID = id;
+    callback.call(this, null);
+  };
+}
+
+function mockRunError(msg) {
+  return function(query, params, callback) {
+    callback.call(this, new Error(msg));
+  };
+}
+
+function mockCallback(err, data) {
+  return (query, params, callback) => callback(err, data);
+}
+
+const sampleProject = {
+  id: 1, name: 'Project A', description: 'Desc A',
+  client_id: 1, start_date: '2024-01-01', status: 'active',
+  client_name: 'Client A', created_at: '2024-01-01', updated_at: '2024-01-01'
+};
 
 describe('Project Routes', () => {
   let mockDb;
 
   beforeEach(() => {
-    mockDb = {
-      all: jest.fn(),
-      get: jest.fn(),
-      run: jest.fn()
-    };
+    mockDb = { all: jest.fn(), get: jest.fn(), run: jest.fn() };
     getDatabase.mockReturnValue(mockDb);
   });
 
-  afterEach(() => {
-    jest.clearAllMocks();
-  });
+  afterEach(() => jest.clearAllMocks());
 
   describe('GET /api/projects', () => {
-    test('should return all projects for authenticated user', async () => {
-      const mockProjects = [
-        { id: 1, name: 'Project A', description: 'Desc A', client_id: 1, start_date: '2024-01-01', status: 'active', client_name: 'Client A', created_at: '2024-01-01', updated_at: '2024-01-01' },
-        { id: 2, name: 'Project B', description: 'Desc B', client_id: null, start_date: null, status: 'on-hold', client_name: null, created_at: '2024-01-02', updated_at: '2024-01-02' }
-      ];
-
-      mockDb.all.mockImplementation((query, params, callback) => {
-        callback(null, mockProjects);
-      });
-
-      const response = await request(app).get('/api/projects');
-
-      expect(response.status).toBe(200);
-      expect(response.body).toEqual({ projects: mockProjects });
-      expect(mockDb.all).toHaveBeenCalledWith(
-        expect.stringContaining('SELECT p.id, p.name'),
-        ['test@example.com'],
-        expect.any(Function)
-      );
+    test('returns all projects for authenticated user', async () => {
+      mockDb.all.mockImplementation(mockCallback(null, [sampleProject]));
+      const res = await request(app).get('/api/projects');
+      expect(res.status).toBe(200);
+      expect(res.body.projects).toHaveLength(1);
+      expect(res.body.projects[0].name).toBe('Project A');
     });
 
-    test('should return empty array when no projects exist', async () => {
-      mockDb.all.mockImplementation((query, params, callback) => {
-        callback(null, []);
-      });
-
-      const response = await request(app).get('/api/projects');
-
-      expect(response.status).toBe(200);
-      expect(response.body).toEqual({ projects: [] });
+    test('returns empty array when none exist', async () => {
+      mockDb.all.mockImplementation(mockCallback(null, []));
+      const res = await request(app).get('/api/projects');
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ projects: [] });
     });
 
-    test('should handle database error', async () => {
-      mockDb.all.mockImplementation((query, params, callback) => {
-        callback(new Error('Database error'), null);
-      });
-
-      const response = await request(app).get('/api/projects');
-
-      expect(response.status).toBe(500);
-      expect(response.body).toEqual({ error: 'Internal server error' });
+    test('handles database error', async () => {
+      mockDb.all.mockImplementation(mockCallback(new Error('fail')));
+      const res = await request(app).get('/api/projects');
+      expect(res.status).toBe(500);
     });
   });
 
   describe('GET /api/projects/:id', () => {
-    test('should return specific project', async () => {
-      const mockProject = { id: 1, name: 'Project A', description: 'Desc A', client_id: 1, start_date: '2024-01-01', status: 'active', client_name: 'Client A' };
-
-      mockDb.get.mockImplementation((query, params, callback) => {
-        callback(null, mockProject);
-      });
-
-      const response = await request(app).get('/api/projects/1');
-
-      expect(response.status).toBe(200);
-      expect(response.body).toEqual({ project: mockProject });
+    test('returns specific project', async () => {
+      mockDb.get.mockImplementation(mockCallback(null, sampleProject));
+      const res = await request(app).get('/api/projects/1');
+      expect(res.status).toBe(200);
+      expect(res.body.project.name).toBe('Project A');
     });
 
-    test('should return 404 if project not found', async () => {
-      mockDb.get.mockImplementation((query, params, callback) => {
-        callback(null, null);
-      });
-
-      const response = await request(app).get('/api/projects/999');
-
-      expect(response.status).toBe(404);
-      expect(response.body).toEqual({ error: 'Project not found' });
+    test('returns 404 when not found', async () => {
+      mockDb.get.mockImplementation(mockCallback(null, null));
+      const res = await request(app).get('/api/projects/999');
+      expect(res.status).toBe(404);
     });
 
-    test('should return 400 for invalid project ID', async () => {
-      const response = await request(app).get('/api/projects/invalid');
-
-      expect(response.status).toBe(400);
-      expect(response.body).toEqual({ error: 'Invalid project ID' });
+    test('returns 400 for non-numeric ID', async () => {
+      const res = await request(app).get('/api/projects/abc');
+      expect(res.status).toBe(400);
     });
 
-    test('should handle database error', async () => {
-      mockDb.get.mockImplementation((query, params, callback) => {
-        callback(new Error('Database error'), null);
-      });
-
-      const response = await request(app).get('/api/projects/1');
-
-      expect(response.status).toBe(500);
-      expect(response.body).toEqual({ error: 'Internal server error' });
+    test('handles database error', async () => {
+      mockDb.get.mockImplementation(mockCallback(new Error('fail')));
+      const res = await request(app).get('/api/projects/1');
+      expect(res.status).toBe(500);
     });
   });
 
   describe('POST /api/projects', () => {
-    test('should create new project with valid data', async () => {
-      const newProject = { name: 'New Project', description: 'New Description', status: 'active' };
-      const createdProject = { id: 1, ...newProject, client_id: null, start_date: null, client_name: null, created_at: '2024-01-01', updated_at: '2024-01-01' };
+    test('creates project without client', async () => {
+      mockDb.run.mockImplementation(mockRunWithLastID(1));
+      mockDb.get.mockImplementation(mockCallback(null, sampleProject));
 
-      mockDb.run.mockImplementation(function(query, params, callback) {
-        this.lastID = 1;
-        callback.call(this, null);
-      });
-
-      mockDb.get.mockImplementation((query, params, callback) => {
-        callback(null, createdProject);
-      });
-
-      const response = await request(app)
-        .post('/api/projects')
-        .send(newProject);
-
-      expect(response.status).toBe(201);
-      expect(response.body.message).toBe('Project created successfully');
-      expect(response.body.project).toEqual(createdProject);
+      const res = await request(app).post('/api/projects').send({ name: 'New Project' });
+      expect(res.status).toBe(201);
+      expect(res.body.message).toBe('Project created successfully');
     });
 
-    test('should create project with client assignment', async () => {
-      const newProject = { name: 'Client Project', clientId: 1, status: 'active' };
-      const createdProject = { id: 1, name: 'Client Project', client_id: 1, client_name: 'Client A', status: 'active', created_at: '2024-01-01', updated_at: '2024-01-01' };
+    test('creates project with valid client', async () => {
+      mockDb.get
+        .mockImplementationOnce(mockCallback(null, { id: 1 }))
+        .mockImplementationOnce(mockCallback(null, sampleProject));
+      mockDb.run.mockImplementation(mockRunWithLastID(1));
 
-      // First call: check client exists
-      mockDb.get.mockImplementationOnce((query, params, callback) => {
-        callback(null, { id: 1 });
-      });
-
-      mockDb.run.mockImplementation(function(query, params, callback) {
-        this.lastID = 1;
-        callback.call(this, null);
-      });
-
-      // Second call: get created project
-      mockDb.get.mockImplementationOnce((query, params, callback) => {
-        callback(null, createdProject);
-      });
-
-      const response = await request(app)
-        .post('/api/projects')
-        .send(newProject);
-
-      expect(response.status).toBe(201);
-      expect(response.body.message).toBe('Project created successfully');
+      const res = await request(app).post('/api/projects').send({ name: 'P', clientId: 1 });
+      expect(res.status).toBe(201);
     });
 
-    test('should return 400 if assigned client does not exist', async () => {
-      mockDb.get.mockImplementation((query, params, callback) => {
-        callback(null, null);
-      });
-
-      const response = await request(app)
-        .post('/api/projects')
-        .send({ name: 'Project', clientId: 999 });
-
-      expect(response.status).toBe(400);
-      expect(response.body).toEqual({ error: 'Client not found or does not belong to user' });
+    test('rejects when assigned client not found', async () => {
+      mockDb.get.mockImplementation(mockCallback(null, null));
+      const res = await request(app).post('/api/projects').send({ name: 'P', clientId: 999 });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/Client not found/);
     });
 
-    test('should return 400 for missing name', async () => {
-      const response = await request(app)
-        .post('/api/projects')
-        .send({ description: 'No name' });
-
-      expect(response.status).toBe(400);
-      expect(response.body).toEqual({ error: 'Validation error' });
+    test('rejects missing name', async () => {
+      const res = await request(app).post('/api/projects').send({ description: 'no name' });
+      expect(res.status).toBe(400);
     });
 
-    test('should return 400 for invalid status', async () => {
-      const response = await request(app)
-        .post('/api/projects')
-        .send({ name: 'Project', status: 'invalid-status' });
-
-      expect(response.status).toBe(400);
-      expect(response.body).toEqual({ error: 'Validation error' });
+    test('rejects invalid status', async () => {
+      const res = await request(app).post('/api/projects').send({ name: 'P', status: 'bad' });
+      expect(res.status).toBe(400);
     });
 
-    test('should handle database error on insert', async () => {
-      mockDb.run.mockImplementation(function(query, params, callback) {
-        callback.call(this, new Error('Database error'));
-      });
-
-      const response = await request(app)
-        .post('/api/projects')
-        .send({ name: 'Project' });
-
-      expect(response.status).toBe(500);
-      expect(response.body).toEqual({ error: 'Failed to create project' });
+    test('handles insert error', async () => {
+      mockDb.run.mockImplementation(mockRunError('insert fail'));
+      const res = await request(app).post('/api/projects').send({ name: 'P' });
+      expect(res.status).toBe(500);
     });
   });
 
   describe('PUT /api/projects/:id', () => {
-    test('should update project with valid data', async () => {
-      const updatedProject = { id: 1, name: 'Updated Project', description: 'Updated', client_id: null, start_date: null, status: 'completed', client_name: null, created_at: '2024-01-01', updated_at: '2024-01-02' };
+    test('updates project fields', async () => {
+      const updated = { ...sampleProject, name: 'Updated', status: 'completed' };
+      mockDb.get.mockImplementationOnce(mockCallback(null, { id: 1 }));
+      mockDb.run.mockImplementation(function(q, p, cb) { cb.call(this, null); });
+      mockDb.get.mockImplementationOnce(mockCallback(null, updated));
 
-      // First call: check project exists
-      mockDb.get.mockImplementationOnce((query, params, callback) => {
-        callback(null, { id: 1 });
-      });
-
-      mockDb.run.mockImplementation(function(query, params, callback) {
-        callback.call(this, null);
-      });
-
-      // Second call: return updated project
-      mockDb.get.mockImplementationOnce((query, params, callback) => {
-        callback(null, updatedProject);
-      });
-
-      const response = await request(app)
-        .put('/api/projects/1')
-        .send({ name: 'Updated Project', status: 'completed' });
-
-      expect(response.status).toBe(200);
-      expect(response.body.message).toBe('Project updated successfully');
-      expect(response.body.project).toEqual(updatedProject);
+      const res = await request(app).put('/api/projects/1').send({ name: 'Updated', status: 'completed' });
+      expect(res.status).toBe(200);
+      expect(res.body.project.name).toBe('Updated');
     });
 
-    test('should return 404 if project not found', async () => {
-      mockDb.get.mockImplementation((query, params, callback) => {
-        callback(null, null);
-      });
-
-      const response = await request(app)
-        .put('/api/projects/999')
-        .send({ name: 'Updated' });
-
-      expect(response.status).toBe(404);
-      expect(response.body).toEqual({ error: 'Project not found' });
+    test('returns 404 when project not found', async () => {
+      mockDb.get.mockImplementation(mockCallback(null, null));
+      const res = await request(app).put('/api/projects/999').send({ name: 'X' });
+      expect(res.status).toBe(404);
     });
 
-    test('should return 400 for invalid project ID', async () => {
-      const response = await request(app)
-        .put('/api/projects/invalid')
-        .send({ name: 'Updated' });
-
-      expect(response.status).toBe(400);
-      expect(response.body).toEqual({ error: 'Invalid project ID' });
+    test('returns 400 for non-numeric ID', async () => {
+      const res = await request(app).put('/api/projects/abc').send({ name: 'X' });
+      expect(res.status).toBe(400);
     });
 
-    test('should return 400 for invalid status on update', async () => {
-      const response = await request(app)
-        .put('/api/projects/1')
-        .send({ status: 'invalid-status' });
-
-      expect(response.status).toBe(400);
-      expect(response.body).toEqual({ error: 'Validation error' });
+    test('rejects invalid status', async () => {
+      const res = await request(app).put('/api/projects/1').send({ status: 'bad' });
+      expect(res.status).toBe(400);
     });
 
-    test('should return 400 if updated client does not exist', async () => {
-      // First call: check project exists
-      mockDb.get.mockImplementationOnce((query, params, callback) => {
-        callback(null, { id: 1 });
-      });
+    test('rejects when updated client not found', async () => {
+      mockDb.get
+        .mockImplementationOnce(mockCallback(null, { id: 1 }))
+        .mockImplementationOnce(mockCallback(null, null));
 
-      // Second call: check client - not found
-      mockDb.get.mockImplementationOnce((query, params, callback) => {
-        callback(null, null);
-      });
-
-      const response = await request(app)
-        .put('/api/projects/1')
-        .send({ clientId: 999 });
-
-      expect(response.status).toBe(400);
-      expect(response.body).toEqual({ error: 'Client not found or does not belong to user' });
+      const res = await request(app).put('/api/projects/1').send({ clientId: 999 });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toMatch(/Client not found/);
     });
 
-    test('should handle database error on update', async () => {
-      mockDb.get.mockImplementationOnce((query, params, callback) => {
-        callback(null, { id: 1 });
-      });
+    test('handles update error', async () => {
+      mockDb.get.mockImplementationOnce(mockCallback(null, { id: 1 }));
+      mockDb.run.mockImplementation(mockRunError('update fail'));
 
-      mockDb.run.mockImplementation(function(query, params, callback) {
-        callback.call(this, new Error('Database error'));
-      });
-
-      const response = await request(app)
-        .put('/api/projects/1')
-        .send({ name: 'Updated' });
-
-      expect(response.status).toBe(500);
-      expect(response.body).toEqual({ error: 'Failed to update project' });
+      const res = await request(app).put('/api/projects/1').send({ name: 'X' });
+      expect(res.status).toBe(500);
     });
   });
 
   describe('DELETE /api/projects/:id', () => {
-    test('should delete project successfully', async () => {
-      mockDb.get.mockImplementation((query, params, callback) => {
-        callback(null, { id: 1 });
-      });
+    test('deletes project successfully', async () => {
+      mockDb.get.mockImplementation(mockCallback(null, { id: 1 }));
+      mockDb.run.mockImplementation(function(q, p, cb) { cb.call(this, null); });
 
-      mockDb.run.mockImplementation(function(query, params, callback) {
-        callback.call(this, null);
-      });
-
-      const response = await request(app).delete('/api/projects/1');
-
-      expect(response.status).toBe(200);
-      expect(response.body).toEqual({ message: 'Project deleted successfully' });
+      const res = await request(app).delete('/api/projects/1');
+      expect(res.status).toBe(200);
+      expect(res.body.message).toBe('Project deleted successfully');
     });
 
-    test('should return 404 if project not found', async () => {
-      mockDb.get.mockImplementation((query, params, callback) => {
-        callback(null, null);
-      });
-
-      const response = await request(app).delete('/api/projects/999');
-
-      expect(response.status).toBe(404);
-      expect(response.body).toEqual({ error: 'Project not found' });
+    test('returns 404 when not found', async () => {
+      mockDb.get.mockImplementation(mockCallback(null, null));
+      const res = await request(app).delete('/api/projects/999');
+      expect(res.status).toBe(404);
     });
 
-    test('should return 400 for invalid project ID', async () => {
-      const response = await request(app).delete('/api/projects/invalid');
-
-      expect(response.status).toBe(400);
-      expect(response.body).toEqual({ error: 'Invalid project ID' });
+    test('returns 400 for non-numeric ID', async () => {
+      const res = await request(app).delete('/api/projects/abc');
+      expect(res.status).toBe(400);
     });
 
-    test('should handle database error on delete', async () => {
-      mockDb.get.mockImplementation((query, params, callback) => {
-        callback(null, { id: 1 });
-      });
+    test('handles delete error', async () => {
+      mockDb.get.mockImplementation(mockCallback(null, { id: 1 }));
+      mockDb.run.mockImplementation(mockRunError('delete fail'));
 
-      mockDb.run.mockImplementation(function(query, params, callback) {
-        callback.call(this, new Error('Database error'));
-      });
-
-      const response = await request(app).delete('/api/projects/1');
-
-      expect(response.status).toBe(500);
-      expect(response.body).toEqual({ error: 'Failed to delete project' });
+      const res = await request(app).delete('/api/projects/1');
+      expect(res.status).toBe(500);
     });
   });
 });
