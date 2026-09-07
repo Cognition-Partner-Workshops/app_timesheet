@@ -1,5 +1,7 @@
 const { validateIdParam, buildUpdateSet } = require('../../utils/routeHelpers');
 
+const buildRequest = (params) => ({ params });
+
 describe('routeHelpers', () => {
   describe('validateIdParam', () => {
     let res;
@@ -14,26 +16,26 @@ describe('routeHelpers', () => {
     });
 
     test('should parse a numeric param to an integer and call next', () => {
-      const req = { params: { id: '42' } };
+      const req = buildRequest({ id: '42' });
 
       validateIdParam('id', 'client')(req, res, next);
 
-      expect(req.params.id).toBe(42);
+      expect(req.params).toEqual({ id: 42 });
       expect(next).toHaveBeenCalledTimes(1);
       expect(res.status).not.toHaveBeenCalled();
     });
 
     test('should use the configured param name', () => {
-      const req = { params: { clientId: '7' } };
+      const req = buildRequest({ clientId: '7' });
 
       validateIdParam('clientId', 'client')(req, res, next);
 
-      expect(req.params.clientId).toBe(7);
+      expect(req.params).toEqual({ clientId: 7 });
       expect(next).toHaveBeenCalled();
     });
 
     test('should respond 400 with labelled error for a non-numeric param', () => {
-      const req = { params: { id: 'abc' } };
+      const req = buildRequest({ id: 'abc' });
 
       validateIdParam('id', 'work entry')(req, res, next);
 
@@ -43,7 +45,7 @@ describe('routeHelpers', () => {
     });
 
     test('should respond 400 when the param is missing', () => {
-      const req = { params: {} };
+      const req = buildRequest({});
 
       validateIdParam('id', 'client')(req, res, next);
 

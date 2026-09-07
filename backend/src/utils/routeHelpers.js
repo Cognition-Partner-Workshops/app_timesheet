@@ -15,9 +15,9 @@
  */
 function validateIdParam(paramName, label) {
   return (req, res, next) => {
-    const id = parseInt(req.params[paramName], 10);
+    const id = Number.parseInt(req.params[paramName], 10);
 
-    if (isNaN(id)) {
+    if (Number.isNaN(id)) {
       return res.status(400).json({ error: `Invalid ${label} ID` });
     }
 
